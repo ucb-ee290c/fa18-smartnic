@@ -2,4 +2,4 @@
 
 We will be using branches within Firesim and its submodules for this project.
 
-<add info about which branches are which here>.
+`add info about which branches are which here.`
