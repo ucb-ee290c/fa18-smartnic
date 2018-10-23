@@ -14,20 +14,29 @@ class Compressor extends Module {
   io.out := io.in
 }
 
-class VarintEncoder (bytes: Int) extends Module {
+/*
+  maxBytes is the maximum number of bytes supported. The input width
+  is up to 7*maxBytes bits, and the output width is up to 8*maxBytes bits.
+ */
+case class VarintParams (maxBytes: Int) {
+  val outWidth = maxBytes * 8
+  val inWidth = maxBytes * 7
+}
+
+class VarintEncoder (p: VarintParams) extends Module {
   val io = IO(new Bundle {
-    val in = Input(UInt((bytes*7).W))
-    val out = Output(UInt((bytes*8).W))
+    val in = Input(UInt(p.inWidth.W))
+    val out = Output(UInt(p.outWidth.W))
+//    val outBytes = Output(UInt(log2Up(p.maxBytes).W))
   })
-  val outWidth = bytes * 8
-  val inWidth = bytes * 7
-  val result = Wire(Vec(outWidth, UInt(1.W)))
+  val numBytes = Mux((io.in >> Log2(io.in)).asUInt() === 0.U, Log2(io.in), Log2(io.in) + 1.U)
+  val result = Wire(Vec(p.outWidth, UInt(1.W)))
   //assign all the bits
-  for(i <- 0 until outWidth) {
+  for(i <- 0 until p.outWidth) {
     //first bit of byte
     if(i % 8 == 0) {
       //0 on last byte
-      result(i) := Mux((outWidth - i == 8).asBool(), 0.U(1.W), 1.U(1.W))
+      result(i) := Mux((p.outWidth - i == (p.maxBytes-1)*8).asBool(), 0.U(1.W), 1.U(1.W))
     }
     else {
       result(i) := io.in(7 - i + 15 * (i/8))

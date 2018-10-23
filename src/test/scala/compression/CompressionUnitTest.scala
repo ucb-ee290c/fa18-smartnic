@@ -15,7 +15,7 @@ class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
 class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
   poke(c.io.in, 300)
   step(1)
-  expect(c.io.out, 44034)
+  expect(c.io.out, 44034 << 24)
 }
 
 /**
@@ -33,7 +33,7 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "VarintEncoder" should "encode" in {
-    Driver(() => new VarintEncoder(2), "firrtl") {
+    Driver(() => new VarintEncoder(new VarintParams(5)), "firrtl") {
       c => new VarintEncoderUnitTester(c)
     } should be (true)
   }
