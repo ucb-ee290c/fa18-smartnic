@@ -4,12 +4,18 @@ import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
-  //for(i <- 1 to 40 by 3) {
-  //  poke(gcd.io.value1, i)
-  //  step(1)
-  //  val (expected_gcd, steps) = computeGcd(i, j)
-  //  expect(gcd.io.outputGCD, expected_gcd)
-  //}
+  poke(c.io.in, true)
+  step(1)
+  expect(c.io.out, true)
+  poke(c.io.in, false)
+  step(1)
+  expect(c.io.out, false)
+}
+
+class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
+  poke(c.io.in, 300)
+  step(1)
+  expect(c.io.out, 44034)
 }
 
 /**
@@ -19,18 +25,17 @@ class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
   * sbt 'testOnly example.test.CompressionTester'
   */
 class CompressionTester extends ChiselFlatSpec {
-  private val backendNames = if(false && firrtl.FileUtils.isCommandAvailable(Seq("verilator", "--version"))) {
-    Array("firrtl", "verilator")
+
+  "Compression" should "work" in {
+    Driver(() => new Compressor, "firrtl") {
+      c => new CompressionUnitTester(c)
+    } should be(true)
   }
-  else {
-    Array("firrtl")
-  }
-  for ( backendName <- backendNames ) {
-    "Compression" should s"calculate proper greatest common denominator (with $backendName)" in {
-      Driver(() => new Compressor, backendName) {
-        c => new CompressionUnitTester(c)
-      } should be (true)
-    }
+
+  "VarintEncoder" should "encode" in {
+    Driver(() => new VarintEncoder(2), "firrtl") {
+      c => new VarintEncoderUnitTester(c)
+    } should be (true)
   }
 
   "running with --fint-write-vcd" should "create a vcd file from your test" in {
