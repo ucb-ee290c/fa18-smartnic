@@ -1,5 +1,4 @@
 // See README.md for license details.
-
 def scalacOptionsVersion(scalaVersion: String): Seq[String] = {
   Seq() ++ {
     // If we're building with Scala > 2.11, enable the compile option
@@ -26,11 +25,11 @@ def javacOptionsVersion(scalaVersion: String): Seq[String] = {
   }
 }
 
-name := "compressor"
+name := "creec"
 
-version := "3.1.0"
+version := "0.0.1-SNAPSHOT"
 
-scalaVersion := "2.12.6"
+scalaVersion := "2.12.4"
 
 crossScalaVersions := Seq("2.11.12", "2.12.4")
 
@@ -41,11 +40,11 @@ resolvers ++= Seq(
 
 // Provide a managed dependency on X if -DXVersion="" is supplied on the command line.
 val defaultVersions = Map(
-  "chisel3" -> "3.1.+",
+  "chisel3" -> "3.2-SNAPSHOT",
   "chisel-iotesters" -> "1.2.+"
-  )
+)
 
-libraryDependencies ++= (Seq("chisel3","chisel-iotesters").map {
+libraryDependencies ++= (Seq("chisel3", "chisel-iotesters").map {
   dep: String => "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep)) })
 
 scalacOptions ++= scalacOptionsVersion(scalaVersion.value)
