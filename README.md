@@ -6,17 +6,30 @@ We will add shims from these implementations to `rocket-chip` and the block devi
 
 TODO: `add info about what branches we are using.`
 
-# Building
-To get started, clone the latest [`chisel3`](https://github.com/freechipsproject/chisel3), [`chisel-testers`](https://github.com/freechipsproject/chisel-testers) repos and publish their JARs locally, so we can depend on SNAPSHOT versions.
-
-Like this:
-
+# Initial Setup
 ```
-git clone git@github.com:freechipsproject/chisel3
-cd chisel3
-sbt compile
-sbt publishLocal
+git clone git@github.com:ucberkeley-ee290c/fa18-smartnic
+cd fa18-smartnic
+
+git submodule update --init --recursive
+
+# Clean local ivy package cache of chisel/firrtl JARs
+cd ~/.ivy2/local/edu.berkeley.cs
+rm -rf firrtl*
+rm -rf chisel*
+
+cd firrtl
+sbt
+sbt:firrtl> compile
+sbt:firrtl> +publishLocal
+sbt:firrtl> exit
+
+cd ../chisel3
+sbt
+sbt:chisel3> compile
+sbt:chisel3> +publishLocal
+sbt:chisel3> exit
 ```
 
-# Testing
-You should be able to run `sbt test`.
+# Building / Testing
+At the top level of `fa18-smartnic` run `sbt compile` and `sbt test`.
