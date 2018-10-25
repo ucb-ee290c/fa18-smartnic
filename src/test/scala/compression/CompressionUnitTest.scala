@@ -21,6 +21,15 @@ class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
   expect(c.io.out, BigInt(1) << 32)
 }
 
+class VarintDecoderUnitTester(c: VarintDecoder) extends PeekPokeTester(c) {
+  poke(c.io.in, BigInt(44034) << 24)
+  step(1)
+  expect(c.io.out, 300)
+  poke(c.io.in, BigInt(1) << 32)
+  step(1)
+  expect(c.io.out, 1)
+}
+
 /**
   * From within sbt use:
   * testOnly example.test.CompressionTester
@@ -36,8 +45,14 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "VarintEncoder" should "encode" in {
-    Driver(() => new VarintEncoder(new VarintParams(5)), "firrtl") {
+    Driver(() => new VarintEncoder(), "firrtl") {
       c => new VarintEncoderUnitTester(c)
+    } should be (true)
+  }
+
+  "VarintDecoder" should "decode" in {
+    Driver(() => new VarintDecoder(), "firrtl") {
+      c => new VarintDecoderUnitTester(c)
     } should be (true)
   }
 

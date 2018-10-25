@@ -1,6 +1,6 @@
 [submodule "chisel3"]
 	path = chisel3
-	url = git@github.com:freechipsproject/chisel3
+	url = https://github.com/freechipsproject/chisel3
 [submodule "firrtl"]
 	path = firrtl
-	url = git@github.com:freechipsproject/firrtl
+	url = https://github.com/freechipsproject/firrtl
