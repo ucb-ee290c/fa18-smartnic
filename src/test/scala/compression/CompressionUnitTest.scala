@@ -6,12 +6,6 @@ import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
-  poke(c.io.in, true)
-  step(1)
-  expect(c.io.out, true)
-  poke(c.io.in, false)
-  step(1)
-  expect(c.io.out, false)
 }
 
 object VarintUtils {

@@ -5,13 +5,34 @@ package compression
 import chisel3._
 import chisel3.util._
 
-class Compressor extends Module {
-  val io = IO(new Bundle {
-    val in = Input(Bool())
-    val out = Output(Bool())
-  })
+case class CompressorParams(inputSize: Int = 64) {
+  val outputSize = 32 + inputSize + inputSize/6
+}
 
-  io.out := io.in
+class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
+  val io = IO(new Bundle {
+    val dataIn = Input(UInt(p.inputSize.W))
+    val inputLength = Input(UInt(32.W))//TODO: Not sure what this should be
+    val dataOut = Output(UInt(p.outputSize.W))
+    val compressedLength = Output(UInt())
+  })
+  val varintEncoder = Module(new VarintEncoder())
+
+  val sIdle :: sAccepting :: sCompressing :: Nil = Enum(2)
+  val state = RegInit(sAccepting)
+
+  switch(state) {
+    is(sIdle) {
+
+    }
+    is(sAccepting) {
+
+    }
+    is(sCompressing) {
+
+    }
+  }
+
 }
 
 
