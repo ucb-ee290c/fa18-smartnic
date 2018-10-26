@@ -1,5 +1,7 @@
 package compression
 
+import scala.collection.immutable.BitSet
+
 import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
@@ -12,17 +14,26 @@ class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
   expect(c.io.out, false)
 }
 
+object VarintUtils {
+  def encode(i: BigInt): BigInt = {
+    val s = i.toString(2).reverse // reverse so that chunking the tail of the int works
+    val dataParts = s.grouped(7).toList.map(_.reverse)
+    val dataPartsWithValid = dataParts.map(_ + "1")
+    BigInt(dataPartsWithValid.reverse.reduce(_ + _), 2)
+  }
+}
+
 class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
   // 300 = 0b10_0101100
   poke(c.io.in, 300)
   step(1)
   // enc(300) = 0000_0101 0101_1001
-  expect(c.io.out, BigInt(1369))
+  expect(c.io.out, VarintUtils.encode(300))
   // 1 = 0b1
   poke(c.io.in, 1)
   step(1)
   // enc(1) = 0000_0011
-  expect(c.io.out, BigInt(3))
+  expect(c.io.out, VarintUtils.encode(1))
 }
 
 class VarintDecoderUnitTester(c: VarintDecoder) extends PeekPokeTester(c) {
