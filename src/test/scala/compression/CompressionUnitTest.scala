@@ -13,19 +13,23 @@ class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
 }
 
 class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
+  // 300 = 0b10_0101100
   poke(c.io.in, 300)
   step(1)
-  expect(c.io.out, BigInt(44034) << 24)
+  // enc(300) = 0000_0101 0101_1001
+  expect(c.io.out, BigInt(1369))
+  // 1 = 0b1
   poke(c.io.in, 1)
   step(1)
-  expect(c.io.out, BigInt(1) << 32)
+  // enc(1) = 0000_0011
+  expect(c.io.out, BigInt(3))
 }
 
 class VarintDecoderUnitTester(c: VarintDecoder) extends PeekPokeTester(c) {
-  poke(c.io.in, BigInt(44034) << 24)
+  poke(c.io.in, BigInt(1369))
   step(1)
   expect(c.io.out, 300)
-  poke(c.io.in, BigInt(1) << 32)
+  poke(c.io.in, BigInt(3))
   step(1)
   expect(c.io.out, 1)
 }
