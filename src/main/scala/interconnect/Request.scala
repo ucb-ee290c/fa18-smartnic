@@ -23,29 +23,29 @@ class BlockDeviceIOBusParams extends BusParams(64, 64, 1, 64)
 // Used internally to connect (compression -> parity/ECC -> encryption -> mapping/MMU unit)
 class CREECBusParams extends BusParams(64, 128, 1, 64)
 
-class WriteRequest(p: BusParams) extends Bundle {
+class WriteRequest(val p: BusParams) extends Bundle {
   val addr = UInt(p.addrBits.W)
   val len = UInt(p.beatBits.W)
   val id = UInt(p.maxInFlight.W)
 }
 
-class WriteData(p: BusParams) extends Bundle {
+class WriteData(val p: BusParams) extends Bundle {
   val id = UInt(p.maxInFlight.W)
   val data = UInt(p.dataWidth.W)
 }
 
-class ReadRequest(p: BusParams) extends Bundle {
+class ReadRequest(val p: BusParams) extends Bundle {
   val addr = UInt(p.addrBits.W)
   val len = UInt(p.beatBits.W)
   val id = UInt(p.maxInFlight.W)
 }
 
-class ReadData(p: BusParams) extends Bundle {
+class ReadData(val p: BusParams) extends Bundle {
   val id = UInt(p.maxInFlight.W)
   val data = UInt(p.dataWidth.W)
 }
 
-class Bus(p: BusParams) extends Bundle {
+class Bus(val p: BusParams) extends Bundle {
   val wrReq = Decoupled(new WriteRequest(p))
   val wrData = Decoupled(new WriteData(p))
   val rdReq = Decoupled(new ReadRequest(p))
