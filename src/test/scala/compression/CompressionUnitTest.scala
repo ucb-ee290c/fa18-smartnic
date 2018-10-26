@@ -16,6 +16,7 @@ class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
 
 object VarintUtils {
   def encode(i: BigInt): BigInt = {
+    require(i >= 0)
     val s = i.toString(2).reverse // reverse so that chunking the tail of the int works
     val dataParts = s.grouped(7).toList.map(_.reverse)
     val dataPartsWithValid = dataParts.map(_ + "1")
