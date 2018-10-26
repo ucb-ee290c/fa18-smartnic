@@ -5,34 +5,95 @@ package compression
 import chisel3._
 import chisel3.util._
 
-case class CompressorParams(inputSize: Int = 64) {
-  val outputSize = 32 + inputSize + inputSize/6
+class DifferentialEncoder extends Module {
+  val io = IO(new Bundle {
+    val in = Input(Bool())
+  })
+}
+
+case class CompressorParams(busWidth: Int = 8, chunkSize: Int = 512) {
+  val outputSize = 32 + chunkSize*7/6
 }
 
 class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
   val io = IO(new Bundle {
-    val dataIn = Input(UInt(p.inputSize.W))
-    val inputLength = Input(UInt(32.W))//TODO: Not sure what this should be
-    val dataOut = Output(UInt(p.outputSize.W))
-    val compressedLength = Output(UInt())
+    val in = Flipped(Decoupled(UInt(p.busWidth.W)))
+    val out = Decoupled((UInt(p.busWidth.W)))
   })
   val varintEncoder = Module(new VarintEncoder())
 
-  val sIdle :: sAccepting :: sCompressing :: Nil = Enum(2)
+  //States
+  //  Idle: Initial state. Nothing is happening.
+  //  Accepting: The raw data buffer is being filled.
+  //  Compressing: The compression algorithm is running.
+  //  Sending: The compression is done, and the output buffer is being consumed.
+  val sIdle :: sAccepting :: sCompressing :: sSending :: Nil = Enum(4)
   val state = RegInit(sAccepting)
 
+  //Points to the location in the buffers for accepting and sending data
+  val bufferFillPointer = RegInit(0.U(9.W))
+
+  //Buffer for the raw data
+  val rawData = Mem(p.chunkSize, UInt(8.W))
+  //Buffer for the compressed data
+  val compressedData = Mem(p.outputSize, UInt(8.W))
+
+  //Flag that tells when the compression is done
+  val compressionDone = RegInit(false.B)
+
+  //State machine
   switch(state) {
     is(sIdle) {
-
+      when(fire_accept(false.B)) {
+        state := sAccepting
+      }.otherwise {
+        bufferFillPointer := 0.U
+        compressionDone := false.B
+      }
     }
     is(sAccepting) {
-
+      when(bufferFillPointer === (p.chunkSize - 1).U) {
+        bufferFillPointer := 0.U
+        state := sCompressing
+      }.elsewhen(fire_accept(false.B)) {
+        bufferFillPointer := bufferFillPointer + 1.U
+        rawData.write(bufferFillPointer, io.in.bits)
+      }
     }
     is(sCompressing) {
-
+      //do nothing for now
+      state := sSending
+      compressionDone := true.B
+    }
+    is(sSending) {
+      when(bufferFillPointer === (p.chunkSize - 1).U) {
+        bufferFillPointer := 0.U
+        state := sIdle
+      }.elsewhen(fire_send(false.B)) {
+        bufferFillPointer := bufferFillPointer + 1.U
+        io.out.bits := compressedData.read(bufferFillPointer)
+      }
     }
   }
 
+  io.in.ready := fire_accept(io.in.valid)
+  io.out.valid := fire_send(io.out.ready)
+
+  def fire_accept(exclude: Bool, includes: Bool*) = {
+    val values = Array(
+      io.in.valid,
+      (state === sIdle || state === sAccepting) && bufferFillPointer < (p.chunkSize - 1).U
+    )
+    (values.filter(_ ne exclude) ++ includes).reduce(_ && _)
+  }
+
+  def fire_send(exclude: Bool, includes: Bool*) = {
+    val values = Array(
+      io.out.ready,
+      (state === sSending || state === sCompressing) && compressionDone
+    )
+    (values.filter(_ ne exclude) ++ includes).reduce(_ && _)
+  }
 }
 
 
@@ -69,7 +130,7 @@ class VarintDecoder(p: VarintParams = VarintParams()) extends Module {
 
 /**
   * Varint Encoding
-  *            MSB                            LSB
+  * MSB                            LSB
   * Let   in = 0000000 |1010100 |0000000 |1010000
   * Then out = 00000000|10101001|00000001|10100001
   * LSB of each byte of out indicates a valid 7-bit data field (copied from in)
@@ -77,16 +138,17 @@ class VarintDecoder(p: VarintParams = VarintParams()) extends Module {
 class VarintEncoder(p: VarintParams = VarintParams()) extends Module {
   val io = IO(new Bundle {
     // TODO: the input bitwidth is wrong (should be a round up to multiple of 8)
-    val in = Input(UInt((p.bytes*7).W))
-    val out = Output(UInt((p.bytes*8).W))
+    val in = Input(UInt((p.bytes * 7).W))
+    val out = Output(UInt((p.bytes * 8).W))
   })
   val inCoded: Vec[UInt] = io.in.asTypeOf(Vec(p.bytes, UInt(7.W)))
   val numBytes: UInt = (Log2(io.in) >> 3.U).asUInt() + 1.U
-  val outCoded : Vec[VarintEncodedByte] = VecInit(inCoded.zipWithIndex.map{case (inByte, i) => {
+  val outCoded: Vec[VarintEncodedByte] = VecInit(inCoded.zipWithIndex.map { case (inByte, i) => {
     val v = Wire(new VarintEncodedByte())
     v.data := inByte
     v.valid := i.U < numBytes
     v
-  }})
+  }
+  })
   io.out := outCoded.asUInt()
 }

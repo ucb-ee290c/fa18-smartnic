@@ -1,11 +1,11 @@
 package compression
 
-import scala.collection.immutable.BitSet
-
 import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 class CompressionUnitTester(c: Compressor) extends PeekPokeTester(c) {
+  poke(c.io.in.bits, 25)
+  poke(c.io.in.valid, 1)
 }
 
 object VarintUtils {
@@ -23,6 +23,38 @@ object VarintUtils {
     val dataPartsWithoutValid = dataParts.map(_.dropRight(1))
     BigInt(dataPartsWithoutValid.reverse.reduce(_ + _), 2)
   }
+}
+
+object CompressionFunctions {
+  private def differential(input: List[Byte], encode: Boolean): List[Byte] = {
+    var output = List[Byte]()
+    var prev = 0.toByte
+    for(i <- 0 until input.length) {
+      output = output :+ (if(encode) (Byte)(input(i) - prev) else (Byte)(input(i) + prev))
+      prev = if(encode) input(i) else output(i)
+    }
+    output
+  }
+  def differentialEncode(input: List[Byte]): List[Byte] = {
+    differential(input, true)
+  }
+
+  def differentialDecode(input: List[Byte]): List[Byte] = {
+    differential(input, false)
+  }
+
+//  def runLengthEcode(input: List[Boolean]): List[Boolean] = {
+//    var 
+//  }
+}
+
+class DifferentialEncoderTester(c: DifferentialEncoder) extends PeekPokeTester(c) {
+  val testInput = List(45, 46, 47, 45, 43, 40, 41, 41, 42, 40, 20)
+  val encoded = CompressionFunctions.differentialEncode(testInput)
+  val recovered = CompressionFunctions.differentialDecode(encoded)
+  println(testInput.toString())
+  println(encoded.toString())
+  println(recovered.toString())
 }
 
 class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
@@ -70,6 +102,12 @@ class CompressionTester extends ChiselFlatSpec {
   "VarintDecoder" should "decode" in {
     Driver(() => new VarintDecoder(), "firrtl") {
       c => new VarintDecoderUnitTester(c)
+    } should be (true)
+  }
+
+  "DifferentialEncoderTester" should "encode" in {
+    Driver(() => new DifferentialEncoder, "firrtl") {
+      c => new DifferentialEncoderTester(c)
     } should be (true)
   }
 
