@@ -21,6 +21,13 @@ object VarintUtils {
     val dataPartsWithValid = dataParts.map(_ + "1")
     BigInt(dataPartsWithValid.reverse.reduce(_ + _), 2)
   }
+
+  def decode(i: BigInt): BigInt = {
+    val s = i.toString(2).reverse
+    val dataParts = s.grouped(8).toList.map(_.reverse)
+    val dataPartsWithoutValid = dataParts.map(_.dropRight(1))
+    BigInt(dataPartsWithoutValid.reverse.reduce(_ + _), 2)
+  }
 }
 
 class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
@@ -39,10 +46,10 @@ class VarintEncoderUnitTester(c: VarintEncoder) extends PeekPokeTester(c) {
 class VarintDecoderUnitTester(c: VarintDecoder) extends PeekPokeTester(c) {
   poke(c.io.in, BigInt(1369))
   step(1)
-  expect(c.io.out, 300)
+  expect(c.io.out, VarintUtils.decode(1369))
   poke(c.io.in, BigInt(3))
   step(1)
-  expect(c.io.out, 1)
+  expect(c.io.out, VarintUtils.decode(3))
 }
 
 /**
