@@ -4,6 +4,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import interconnect.{BlockDeviceIOBusParams, Bus, CREECBusParams}
 
 class DifferentialEncoder extends Module {
   val io = IO(new Bundle {
@@ -17,8 +18,8 @@ case class CompressorParams(busWidth: Int = 8, chunkSize: Int = 512) {
 
 class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(UInt(p.busWidth.W)))
-    val out = Decoupled((UInt(p.busWidth.W)))
+    val slave = Flipped(new Bus(new BlockDeviceIOBusParams))
+    val master = new Bus(new CREECBusParams)
   })
   val varintEncoder = Module(new VarintEncoder())
 
@@ -57,7 +58,7 @@ class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
         state := sCompressing
       }.elsewhen(fire_accept(false.B)) {
         bufferFillPointer := bufferFillPointer + 1.U
-        rawData.write(bufferFillPointer, io.in.bits)
+        rawData.write(bufferFillPointer, io.slave.rdData.bits.data)
       }
     }
     is(sCompressing) {
@@ -71,17 +72,17 @@ class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
         state := sIdle
       }.elsewhen(fire_send(false.B)) {
         bufferFillPointer := bufferFillPointer + 1.U
-        io.out.bits := compressedData.read(bufferFillPointer)
+        io.master.wrData.bits.data := compressedData.read(bufferFillPointer)
       }
     }
   }
 
-  io.in.ready := fire_accept(io.in.valid)
-  io.out.valid := fire_send(io.out.ready)
+  io.slave.wrData.ready := fire_accept(io.slave.wrData.valid)
+  io.master.wrData.valid := fire_send(io.master.wrData.ready)
 
   def fire_accept(exclude: Bool, includes: Bool*) = {
     val values = Array(
-      io.in.valid,
+      io.slave.wrData.valid,
       (state === sIdle || state === sAccepting) && bufferFillPointer < (p.chunkSize - 1).U
     )
     (values.filter(_ ne exclude) ++ includes).reduce(_ && _)
@@ -89,7 +90,7 @@ class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
 
   def fire_send(exclude: Bool, includes: Bool*) = {
     val values = Array(
-      io.out.ready,
+      io.master.wrData.ready,
       (state === sSending || state === sCompressing) && compressionDone
     )
     (values.filter(_ ne exclude) ++ includes).reduce(_ && _)
