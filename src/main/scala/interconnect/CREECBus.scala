@@ -45,7 +45,7 @@ class ReadData(val p: BusParams) extends Bundle {
   val data = UInt(p.dataWidth.W)
 }
 
-class Bus(val p: BusParams) extends Bundle {
+class CREECBus(val p: BusParams) extends Bundle {
   val wrReq = Decoupled(new WriteRequest(p))
   val wrData = Decoupled(new WriteData(p))
   val rdReq = Decoupled(new ReadRequest(p))

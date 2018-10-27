@@ -1,8 +1,8 @@
 package aes
 
 import chisel3._
+import chisel3.iotesters.PeekPokeTester
 import chisel3.util._
-import dsptools.DspTester
 
 /**
  * Case class holding information needed to run an individual test
@@ -16,10 +16,15 @@ case class AESTrial(
  * DspTester for AES128Combinational
  * Does not work with FIRRTL emulator because of size
  */
-class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) extends DspTester(dut) {
+class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) extends PeekPokeTester(dut) {
     poke(dut.io.data_in, trial.data_in)
     poke(dut.io.key_in, trial.key_in)
-    peek(dut.io.data_out.data)
+    step(1)
+    val bigIntOut : BigInt = peek(dut.io.data_out.data)
+    logger info s" Output as dec: $bigIntOut"
+    val hex0 : Long = (bigIntOut << 64 >> 64).toLong
+    val hex1 : Long = (bigIntOut >> 64).toLong
+    logger info s" Output as hex: ${hex1.toHexString} ${hex0.toHexString}"
 }
 
 /**
@@ -37,7 +42,8 @@ object AES128CombinationalTester {
   * DspTester for AES128
   * Currently runs 1 trial
   */
-class AES128Tester(dut: AES128, trial: AESTrial) extends DspTester(dut) {
+class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
+  /*
     //Copied from DspTester b/c the existing implementation does not account for BigInt
     private def dspPeek(node: Data): (Double, BigInt) = {
       val bi: BigInt = updatableDspVerbose.withValue(updatableSubVerbose.value) {
@@ -54,7 +60,7 @@ class AES128Tester(dut: AES128, trial: AESTrial) extends DspTester(dut) {
     }
 
     def peekLocal(node: UInt): BigInt = BigInt(dspPeek(node)._1.round)
-
+*/
 
     //Tester setup
     val maxCyclesWait = 4
@@ -64,11 +70,11 @@ class AES128Tester(dut: AES128, trial: AESTrial) extends DspTester(dut) {
     poke(dut.io.key_in, trial.key_in)
     poke(dut.io.data_out.ready, 1)
     poke(dut.io.data_in.valid, 1)
-    while (!peek(dut.io.data_out.valid) && cyclesWaiting < maxCyclesWait) {
+    while ((peek(dut.io.data_out.valid) == 0) && cyclesWaiting < maxCyclesWait) {
       cyclesWaiting += 1
     }
 
-    val bigIntOut : BigInt = peekLocal(dut.io.data_out.bits.data)
+    val bigIntOut : BigInt = peek(dut.io.data_out.bits.data)
     logger info s" Output as dec: $bigIntOut"
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
     val hex1 : Long = (bigIntOut >> 64).toLong
