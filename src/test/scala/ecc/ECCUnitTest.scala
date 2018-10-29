@@ -36,6 +36,14 @@ class RSCode(numSyms: Int, symbolWidth: Int,
     }
   }
 
+  def pow(a: Int, n: Int): Int = {
+    var t: Int = 1
+    for (i <- 0 until n) {
+      t = mul(a, t)
+    }
+    t
+  }
+
   def printValRootTable() {
     for (i <- 0 until numVals) {
       printf("Val2Log(%d) = %d\n", i, Val2Log(i))
@@ -67,6 +75,25 @@ class RSCode(numSyms: Int, symbolWidth: Int,
     }
     // Append input messages with the generated parity symbols
     msgs ++ pars.reverse
+  }
+
+
+  // Make sure the generated symbol sequence forms a polynomial
+  // that equals to zero at all the *numPars* roots
+  // E.g., out(X) = syms(0) * X^(n - 1) + sym(1) * X^(n - 2) + ... + sym(n - 1) * X^0
+  // then we need to ensure that: out(a^1) = 0, out(a^2) = 0, ... out(a^(numPars)) = 0
+  def verify_encode(syms: Seq[Int]): Boolean = {
+    var check: Boolean = true
+    for (r <- 1 to numPars) {
+      var t: Int = 0
+      for (i <- 0 until syms.size) {
+        t = add(t, mul(syms(i), pow(Log2Val(r), syms.size - i - 1)))
+      }
+      if (t != 0) {
+        check = false
+      }
+    }
+    check
   }
 
 }
@@ -129,6 +156,8 @@ class ECCTester extends ChiselFlatSpec {
   for (i <- 0 until swSyms.size) {
     printf("swSyms(%d) = %d\n", i, swSyms(i))
   }
+
+  require(rs.verify_encode(swSyms))
 
   val params = RSParams(
     n = numSymbols,
