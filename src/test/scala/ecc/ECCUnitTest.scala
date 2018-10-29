@@ -53,7 +53,7 @@ class RSCode(numSyms: Int, symbolWidth: Int,
 
   def encode(): Seq[Int] = {
     var pars: Array[Int] = new Array[Int](numPars)
-    for (i <- 0 until 3) {
+    for (i <- 0 until numMsgs) {
       val tmp = pars.map(x => x)
       val feedback = add(msgs(i), pars(numPars - 1))
 
@@ -113,8 +113,11 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
 class ECCTester extends ChiselFlatSpec {
   // RS(7, 3) --> 7 symbols in total: 3 message symbols, 4 parity symbols
   val numSymbols = 7
-  val symbolWidth = 3
-  val msgs = Seq(7, 3, 2)
+  val numMsgs = 3
+  val symbolWidth = 3 
+  var msgs = Seq.fill(numMsgs) {
+    scala.util.Random.nextInt(BigInt(2).pow(symbolWidth).toInt - 1) }
+
   // gCoeffs and fConst need to be pre-computed (see the docs)
   // g(X) = (X + a^1)(X + a^2)(X + a^3)(X + a^4)
   // --> g(X) = 3 + 2 * X^1 + 1 * X^2 + 3 * X^3 + X^4
