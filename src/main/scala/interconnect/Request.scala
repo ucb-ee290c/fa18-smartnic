@@ -45,6 +45,7 @@ class ReadData(val p: BusParams) extends Bundle {
   val data = UInt(p.dataWidth.W)
 }
 
+//TODO: shouldn't wrReq and wrData be Flipped, and rdReq and rdData not?
 class Bus(val p: BusParams) extends Bundle {
   val wrReq = Decoupled(new WriteRequest(p))
   val wrData = Decoupled(new WriteData(p))

@@ -4,7 +4,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
-import interconnect.{BlockDeviceIOBusParams, Bus, CREECBusParams, WriteData}
+import interconnect._
 
 /*
  * When encode is true, generate an encoder. When false, generate a decoder
@@ -18,16 +18,18 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
     val master = new Bus(new CREECBusParams)
   })
   //States
-  //  Idle: Waiting for some input. lastValue is invalid.
-  //  Coding: Actively working on an en-/decode operation.
-  val sIdle :: sCoding :: Nil = Enum(2)
-  val state = RegInit(sIdle)
+  //  AwaitRequest: Waiting for a request to come in.
+  //  SendRequest: Waiting to forward that request to the next block
+  //  AwaitData: Waiting for some data to appear valid.
+  //  SendData: Waiting for transformed data to be accepted.
+  val sAwaitRequest :: sSendRequest :: sAwaitData :: sSendData :: Nil = Enum(4)
+  val state = RegInit(sAwaitRequest)
 
   //keeps track of the last byte through the encoder across beats
   val lastValue = RegInit(0.U(8.W))
 
   //convert the current beat of data into a vec of bytes
-  val bytesIn = io.slave.rdData.bits.data.asTypeOf(Vec(io.slave.p.dataWidth / 8, UInt(8.W)))
+  val bytesIn = dataIn.bits.data.asTypeOf(Vec(io.slave.p.dataWidth / 8, UInt(8.W)))
   val bytesOut = bytesIn.cloneType
 
   //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
@@ -38,35 +40,72 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
       bytesOut(i) = bytesIn(i) + (if (i == 0) lastValue else bytesOut(i - 1))
   }
 
-  //hold the request and data
-  val request = Reg(io.slave.rdReq.cloneType)
-  val data = Reg(io.slave.rdData.cloneType)
+  //hold the request and data inputs
+  val requestIn = Reg(io.slave.rdReq.cloneType)
+  val dataIn = Reg(io.slave.rdData.cloneType)
+  val requestOut = Reg(io.master.wrReq.cloneType)
+  val dataOut = Reg(io.master.wrData.cloneType)
+  //keep track of how many more data beats we need to process
+  val beatsToGo = Reg(io.slave.rdReq.bits.len.cloneType)
 
-  //in idle state, accept requests into the request register and transition
-  //  to coding state when a request comes.
-  //in coding state, accept data into the data register and transition back
-  //  to idle state when the last one arrives
-  when(state === sIdle) {
-    request := io.slave.rdReq.deq()
+  //in the AwaitRequest state, accept requests into the request register and transition
+  //  to the SendRequest state when a request comes.
+  //in the SendRequest state, wait to hand off the request.
+  //in the AwaitData state, accept data into the data register and transition
+  //  to the SendData state when one arrives.
+  //in the SendData state, wait to hand off the data. Transition to the AwaitRequest
+  //  state when the last one is handed off.
+  when(state === sAwaitRequest) {
+    requestIn := io.slave.rdReq.deq()
+    beatsToGo := requestIn.bits.len
+    requestOut := {
+      val out = new WriteRequest(io.master.p)
+      out.addr := requestIn.bits.addr
+      out.id := requestIn.bits.id
+      out.len := requestIn.bits.len
+      out
+    }
     io.slave.rdData.nodeq()
+    io.master.wrData.noenq()
+    io.master.wrReq.noenq()
     when(io.slave.rdReq.fire()) {
-      state := sCoding
+      state := sSendRequest
     }
-  }.otherwise {
+  }.elsewhen(state === sSendRequest) {
+    io.slave.rdData.nodeq()
     io.slave.rdReq.nodeq()
-    data := io.slave.rdData.deq()
-    when(io.slave.rdData.fire() && request.bits.len === 1.U) {
-      state := sIdle
+    io.master.wrData.noenq()
+    io.master.wrReq.enq(requestOut.bits)
+    when(io.master.wrReq.fire()) {
+      state := sAwaitData
     }
+  }.elsewhen(state === sAwaitData) {
+    io.slave.rdReq.nodeq()
+    dataIn := io.slave.rdData.deq()
+    dataOut := {
+      val out = new WriteData(io.master.p)
+      out.data := bytesOut.asUInt()
+      out.id := dataIn.bits.id
+      out
+    }
+    io.master.wrReq.noenq()
+    io.master.wrData.noenq()
     when(io.slave.rdData.fire()) {
-      lastValue := Mux(p.encode.asBool(), bytesIn.last, bytesOut.last)
-      request.bits.len := request.bits.len - 1.U
-      io.master.wrData.enq({
-        val out = new WriteData(io.master.p)
-        out.data := bytesOut.asUInt()
-        out.id := data.bits.id
-        out
-      })
+      state := sSendData
+    }
+  }.elsewhen(state === sSendData) {
+    io.slave.rdReq.nodeq()
+    io.slave.rdData.nodeq()
+    io.master.wrReq.noenq()
+    io.master.wrData.enq(dataOut.bits)
+    lastValue := Mux(p.encode.asBool(), bytesIn.last, bytesOut.last)
+    when(io.slave.wrData.fire()) {
+      when(beatsToGo === 1.U) {
+        state := sAwaitRequest
+      }.otherwise {
+        beatsToGo := beatsToGo - 1.U
+        state := sAwaitData
+      }
     }
   }
 }

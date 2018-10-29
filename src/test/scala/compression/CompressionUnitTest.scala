@@ -88,7 +88,7 @@ object CompressionFunctions {
   }
 }
 
-class DifferentialEncoderTester(c: DifferentialEncoder) extends PeekPokeTester(c) {
+class DifferentialEncoderTester(c: DifferentialCoder) extends PeekPokeTester(c) {
 //  var myList = List.fill(10)(45.toByte)
   var myList = List(5, 6, 7, 6, 6, 6, 6, 6, 6, 6, 7, 6, 7, 5, 6, 7, 7, 6, 5, 6, 5).map{_.toByte}
   println(myList.toString())
@@ -151,7 +151,7 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "DifferentialEncoderTester" should "encode" in {
-    Driver(() => new DifferentialEncoder, "firrtl") {
+    Driver(() => new DifferentialCoder, "firrtl") {
       c => new DifferentialEncoderTester(c)
     } should be(true)
   }
