@@ -69,6 +69,10 @@ object GMul {
 // This module will accept k symbols (io.in.fire() === true.B until received k symbols)
 // It will emit n symbols (io.out.fire() === true.B until sent n symbols)
 // Each symbol has a width of *symbolWidth*
+// FIXME: the incoming data is likely to be a multiple of symbol width
+// TODO:
+//   + Incorporate CREECBus
+//   + symbolWidth of 3 is rather odd. Should test with 4 or 8
 class RSEncoder(val param: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(param.symbolWidth.W)))
