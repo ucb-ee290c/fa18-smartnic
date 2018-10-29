@@ -4,16 +4,75 @@ package compression
 
 import chisel3._
 import chisel3.util._
-import interconnect.{BlockDeviceIOBusParams, Bus, CREECBusParams}
+import interconnect.{BlockDeviceIOBusParams, Bus, CREECBusParams, WriteData}
 
-class DifferentialEncoder extends Module {
+/*
+ * When encode is true, generate an encoder. When false, generate a decoder
+ */
+case class CoderParams(encode: Boolean = true) {
+}
+
+class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val in = Input(Bool())
+    val slave = Flipped(new Bus(new CREECBusParams))
+    val master = new Bus(new CREECBusParams)
   })
+  //States
+  //  Idle: Waiting for some input. lastValue is invalid.
+  //  Coding: Actively working on an en-/decode operation.
+  val sIdle :: sCoding :: Nil = Enum(2)
+  val state = RegInit(sIdle)
+
+  //keeps track of the last byte through the encoder across beats
+  val lastValue = RegInit(0.U(8.W))
+
+  //convert the current beat of data into a vec of bytes
+  val bytesIn = io.slave.rdData.bits.data.asTypeOf(Vec(io.slave.p.dataWidth / 8, UInt(8.W)))
+  val bytesOut = bytesIn.cloneType
+
+  //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
+  for (i <- 0 until bytesIn.length) {
+    if (p.encode)
+      bytesOut(i) = bytesIn(i) - (if (i == 0) lastValue else bytesIn(i - 1))
+    else
+      bytesOut(i) = bytesIn(i) + (if (i == 0) lastValue else bytesOut(i - 1))
+  }
+
+  //hold the request and data
+  val request = Reg(io.slave.rdReq.cloneType)
+  val data = Reg(io.slave.rdData.cloneType)
+
+  //in idle state, accept requests into the request register and transition
+  //  to coding state when a request comes.
+  //in coding state, accept data into the data register and transition back
+  //  to idle state when the last one arrives
+  when(state === sIdle) {
+    request := io.slave.rdReq.deq()
+    io.slave.rdData.nodeq()
+    when(io.slave.rdReq.fire()) {
+      state := sCoding
+    }
+  }.otherwise {
+    io.slave.rdReq.nodeq()
+    data := io.slave.rdData.deq()
+    when(io.slave.rdData.fire() && request.bits.len === 1.U) {
+      state := sIdle
+    }
+    when(io.slave.rdData.fire()) {
+      lastValue := Mux(p.encode.asBool(), bytesIn.last, bytesOut.last)
+      request.bits.len := request.bits.len - 1.U
+      io.master.wrData.enq({
+        val out = new WriteData(io.master.p)
+        out.data := bytesOut.asUInt()
+        out.id := data.bits.id
+        out
+      })
+    }
+  }
 }
 
 case class CompressorParams(busWidth: Int = 8, chunkSize: Int = 512) {
-  val outputSize = 32 + chunkSize*7/6
+  val outputSize = 32 + chunkSize * 7 / 6
 }
 
 class Compressor(p: CompressorParams = new CompressorParams()) extends Module {

@@ -46,7 +46,7 @@ object CompressionFunctions {
 
   /*TODO all these functions have the form {create output, use 1 state variable,
    *  loop through input, apply some function that assigns to the output from
-   *  the input based on the state, and return the output. Generalize this.
+   *  the input based on the state, and return the output}. Generalize this.
    */
 
   def runLengthEcode(input: List[Byte]): List[Byte] = {
