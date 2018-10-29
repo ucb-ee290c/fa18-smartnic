@@ -14,8 +14,8 @@ case class CoderParams(encode: Boolean = true) {
 
 class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new Bus(new CREECBusParams))
-    val master = new Bus(new CREECBusParams)
+    val slave = Flipped(new CREECBus(new CREECBusParams))
+    val master = new CREECBus(new CREECBusParams)
   })
   //States
   //  AwaitRequest: Waiting for a request to come in.
@@ -116,8 +116,8 @@ case class CompressorParams(busWidth: Int = 8, chunkSize: Int = 512) {
 
 class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new Bus(new BlockDeviceIOBusParams))
-    val master = new Bus(new CREECBusParams)
+    val slave = Flipped(new CREECBus(new BlockDeviceIOBusParams))
+    val master = new CREECBus(new CREECBusParams)
   })
   val varintEncoder = Module(new VarintEncoder())
 

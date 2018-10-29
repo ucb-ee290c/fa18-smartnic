@@ -5,59 +5,123 @@ package ecc
 import chisel3._
 import chisel3.util._
 
-case class ECCParams(dataWidth: Int = 64) {
-  val inW = dataWidth.W
-  val outW = (dataWidth + 1).W
+// Reference: http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
+//
+// Reed-Solomon(7, 3) with 3-bit symbol
+// #symbols: n=7, #message symbols: k=3, #parity symbols: n-k=4
+// With symbolWidth = 3 (or GF(2^3))
+// a^0 --> 1
+// a^1 --> 2
+// a^2 --> 4
+// a^3 --> 3
+// a^4 --> 6
+// a^5 --> 7
+// a^6 --> 5
+// a^7 --> 1
+// We need two things:
+// Primitive polynomial f(X) = X^3 + X^1 + 1 --> 1011(2) --> 11(10)
+// Generator polynomial g(X) = a^3 * X^0 + a^1 * X^1 + a^0 * X^2 + a^3 * X^3 + X^4
+//                      g(X) =   3 * X^0 +   2 * X^1 +   1 * X^2 +   3 * X^3 + X^4
+// output(X) = message(X) * X^(n - k) + (message(X) * X^(n - k) % g(X))
+// Note that the arithmetic operations in GF(2^m) are different from the conven-
+// tional ones
+// Addition is simply bit-wise XOR
+// Multiplication is slightly more complicated. The result needs to be mod by
+// the value representing the primitive polynomial (in this case, 11)
+// In general, the operations of two m-bit operands results to a m-bit value
+//
+case class RSParams(
+  val n: Int = 7,
+  val k: Int = 3,
+  val symbolWidth: Int = 3
+)
+
+// TODO: Evaluate the effectiveness of this combinational circuit
+// of doing Galois multiplication versus the simpler approach of using
+// a Lookup Table
+object GMul {
+  def apply(a: UInt, b: UInt, dataWidth: Int): UInt = {
+    val op1 = a.asTypeOf(UInt(dataWidth.W))
+    val op2 = b.asTypeOf(UInt(dataWidth.W))
+    // With symbolWidth = 3, f(x) = x^3 + x + 1 --> 1011
+    // FIXME: Lookup table?
+    val fConst = 11.U
+    val tmp = Wire(Vec(dataWidth, UInt((2 * dataWidth - 1).W)))
+    for (i <- dataWidth - 1 to 0 by - 1) {
+      val tmp0 = if (i == dataWidth - 1) {
+                 Mux(op2(i), op1 << i, 0.U)
+               } else {
+                 tmp(i + 1) ^ Mux(op2(i), op1 << i, 0.U)
+               }
+
+      val tmp1 = if (i == 0) {
+                tmp0
+              } else {
+                Mux(tmp0(i + dataWidth - 1), tmp0 ^ fConst << (i - 1), tmp0)
+              }
+
+      tmp(i) := tmp1
+    }
+    tmp(0)
+  }
 }
 
-// TODO: Implement different ECC algorithms and have a parameter
-// to select them. EE290C's lecture note is a good starting point
-// + single parity check
-// + vertical parity check
-// + Reed-Solomon check
-// + LDPC check
-
-class ECCEncoder (val p: ECCParams = new ECCParams()) extends Module {
+// This module will accept k symbols (io.in.fire() === true.B until received k symbols)
+// It will emit n symbols (io.out.fire() === true.B until sent n symbols)
+// Each symbol has a width of *symbolWidth*
+// FIXME: the incoming data is likely to be a multiple of symbol width
+// TODO:
+//   + Incorporate CREECBus
+//   + symbolWidth of 3 is rather odd. Should test with 4 or 8
+class RSEncoder(val param: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(new DecoupledIO(UInt(p.inW)))
-    val out = new DecoupledIO(UInt(p.outW))
+    val in = Flipped(new DecoupledIO(UInt(param.symbolWidth.W)))
+    val out = new DecoupledIO(UInt(param.symbolWidth.W))
   })
 
   val inReadyReg = RegInit(true.B)
   val outValidReg = RegInit(false.B)
 
+  val inputSymbolCnt = RegInit(0.U(32.W))
+  val outputSymbolCnt = RegInit(0.U(32.W))
+
   io.in.ready := inReadyReg
   io.out.valid := outValidReg
 
-  val start = RegInit(false.B)
-  val dataIn = RegInit(0.U(p.inW))
-  val dataOut = RegInit(0.U(p.outW))
-
-  when (io.in.fire()) {
-    start := true.B
-    dataIn := io.in.bits
+  when (inputSymbolCnt === param.k.asUInt() - 1.U) {
+    inputSymbolCnt := 0.U
     inReadyReg := false.B
   }
-
-  when (start) {
-    // Count the number of hot (1) bits of the input
-    val numHotBits = PopCount(dataIn)
-
-    when ((numHotBits & 1.U) === 1.U) {
-      dataOut := Cat(dataIn, 1.U)
-      outValidReg := true.B
-    } .otherwise {
-      dataOut := dataIn
-      outValidReg := true.B
-    }
-
-    start := false.B
+  .elsewhen (io.in.fire()) {
+    inputSymbolCnt := inputSymbolCnt + 1.U
+    outValidReg := true.B
   }
 
-  when (outValidReg && io.out.ready) {
+  when (outputSymbolCnt === param.n.asUInt() - 1.U) {
+    outputSymbolCnt := 0.U
     outValidReg := false.B
     inReadyReg := true.B
   }
+  .elsewhen (io.out.fire()) {
+    outputSymbolCnt := outputSymbolCnt + 1.U
+  }
 
-  io.out.bits := dataOut
+  val Regs = RegInit(VecInit(Seq.fill(param.n - param.k)(0.U(param.symbolWidth.W))))
+  // FIXME: Lookup table?
+  val gCoeffs = VecInit(3.U, 2.U, 1.U, 3.U)
+  val inputBitsReg = RegNext(io.in.bits, 0.U)
+
+  // Make sure the arithmetic operations are correct (in Galois field)
+  val feedback = Mux(outputSymbolCnt < param.k.asUInt(),
+                     inputBitsReg ^ Regs(param.n - param.k - 1), 0.U)
+  for (i <- 0 until param.n - param.k) {
+    if (i == 0) {
+      Regs(0) := GMul(feedback, gCoeffs(0), param.symbolWidth)
+    } else {
+      Regs(i) := Regs(i - 1) ^ GMul(feedback, gCoeffs(i), param.symbolWidth)
+    }
+  }
+
+  io.out.bits := Mux(outputSymbolCnt < param.k.asUInt(),
+                     inputBitsReg, Regs(param.n - param.k - 1))
 }

@@ -46,7 +46,7 @@ class ReadData(val p: BusParams) extends Bundle {
 }
 
 //TODO: shouldn't wrReq and wrData be Flipped, and rdReq and rdData not?
-class Bus(val p: BusParams) extends Bundle {
+class CREECBus(val p: BusParams) extends Bundle {
   val wrReq = Decoupled(new WriteRequest(p))
   val wrData = Decoupled(new WriteData(p))
   val rdReq = Decoupled(new ReadRequest(p))
