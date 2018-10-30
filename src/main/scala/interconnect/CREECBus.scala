@@ -55,7 +55,6 @@ class ReadData(val p: BusParams) extends Bundle {
   val data = UInt(p.dataWidth.W)
 }
 
-//TODO: shouldn't wrReq and wrData be Flipped, and rdReq and rdData not?
 class CREECBus(val p: BusParams) extends Bundle {
   val wrReq = Decoupled(new WriteRequest(p) with BusAddress with CREECMetadata)
   val wrData = Decoupled(new WriteData(p))
