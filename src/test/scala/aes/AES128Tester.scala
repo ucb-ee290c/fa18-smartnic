@@ -2,7 +2,6 @@ package aes
 
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
-import chisel3.util._
 
 /**
  * Case class holding information needed to run an individual test
@@ -10,6 +9,7 @@ import chisel3.util._
 case class AESTrial(
     data_in  : BigInt, // UInt(128.W)
     key_in   : BigInt, // UInt(128.W)
+    ref_out  : BigInt,
 )
 
 /**
@@ -17,14 +17,39 @@ case class AESTrial(
  * Does not work with FIRRTL emulator because of size
  */
 class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) extends PeekPokeTester(dut) {
+    def readOutput(signal: Bits, name : String): Unit = {
+      val bigIntOut : BigInt = peek(signal)
+      val hex0 : Long = (bigIntOut << 64 >> 64).toLong
+      val hex1 : Long = (bigIntOut >> 64).toLong
+      logger info s" $name : Output as hex: ${hex1.toHexString} ${hex0.toHexString}"
+    }
+
     poke(dut.io.data_in, trial.data_in)
     poke(dut.io.key_in, trial.key_in)
     step(1)
+
     val bigIntOut : BigInt = peek(dut.io.data_out.data)
-    logger info s" Output as dec: $bigIntOut"
+    logger info s"Combinational"
+    /*
+    readOutput(dut.io.stage1out, "stage1out")
+    readOutput(dut.io.stage2key, "stage2key")
+    readOutput(dut.io.stage2out, "stage2out")
+    readOutput(dut.io.stage3key, "stage3key")
+    readOutput(dut.io.stage3out, "stage3out")
+    readOutput(dut.io.stage3rcon, "stage3rcon")
+    readOutput(dut.io.stage4out, "stage4out")
+    readOutput(dut.io.stage5out, "stage5out")
+    readOutput(dut.io.stage6out, "stage6out")
+    readOutput(dut.io.stage7out, "stage7out")
+    readOutput(dut.io.stage8out, "stage8out")
+    readOutput(dut.io.stage9out, "stage9out")
+    */
+
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
     val hex1 : Long = (bigIntOut >> 64).toLong
     logger info s" Output as hex: ${hex1.toHexString} ${hex0.toHexString}"
+    logger info s" Expect as hex: ${(trial.ref_out >> 64).toLong.toHexString} ${(trial.ref_out << 64 >> 64).toLong.toHexString}"
+    expect(dut.io.data_out, trial.ref_out, "Output did not match!")
 }
 
 /**
@@ -32,7 +57,7 @@ class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) exten
  */
 object AES128CombinationalTester {
   def apply(trial: AESTrial): Boolean = {
-    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AES128Combinational()) {
+    chisel3.iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () => new AES128Combinational()) {
       c => new AES128CombinationalTester(c, trial)
     }
   }
@@ -43,42 +68,45 @@ object AES128CombinationalTester {
   * Currently runs 1 trial
   */
 class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
-  /*
-    //Copied from DspTester b/c the existing implementation does not account for BigInt
-    private def dspPeek(node: Data): (Double, BigInt) = {
-      val bi: BigInt = updatableDspVerbose.withValue(updatableSubVerbose.value) {
-        node match {
-          // Unsigned bigint
-          case b: Bits => peek(b.asInstanceOf[Bits])
-        }
-      }
-      val (dblOut, bigIntOut) = node match {
-        // UInt + SInt = Bits
-        case _: Bits => (bi.doubleValue, bi)
-      }
-      (dblOut, bigIntOut)
-    }
-
-    def peekLocal(node: UInt): BigInt = BigInt(dspPeek(node)._1.round)
-*/
-
-    //Tester setup
-    val maxCyclesWait = 4
+    logger info s"Pipelined AES128"
+    val maxCyclesWait = 12
     var cyclesWaiting = 0
+
+//    logger info s"counter: ${peek(dut.io.counter)}"
+//    logger info s"in ready? : ${peek(dut.io.data_in.ready) == 1}"
+    logger info s"Start!"
 
     poke(dut.io.data_in.bits, trial.data_in)
     poke(dut.io.key_in, trial.key_in)
     poke(dut.io.data_out.ready, 1)
     poke(dut.io.data_in.valid, 1)
+    step(1)
+
+    poke(dut.io.data_out.ready, 0)
+    poke(dut.io.data_in.valid, 0)
     while ((peek(dut.io.data_out.valid) == 0) && cyclesWaiting < maxCyclesWait) {
-      cyclesWaiting += 1
+        cyclesWaiting += 1
+        logger info s"waited: $cyclesWaiting cycles"
+        logger info s"counter: ${peek(dut.io.counter)}"
+//        logger info s"running? : ${peek(dut.io.running) == 1}"
+//        var peekstage = peek(dut.io.peek_stage)
+//        logger info s"peek stage? : ${(peekstage >> 64).toLong.toHexString} ${(peekstage << 64 >> 64).toLong.toHexString}"
+//        logger info s"in ready? : ${peek(dut.io.data_in.ready) == 1}"
+//        logger info s""
+        step(1)
+      }
+
+    if (cyclesWaiting >= maxCyclesWait) {
+      expect(false, "Waited too long")
     }
 
-    val bigIntOut : BigInt = peek(dut.io.data_out.bits.data)
+    val bigIntOut : BigInt = peek(dut.io.data_out.bits)
     logger info s" Output as dec: $bigIntOut"
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
     val hex1 : Long = (bigIntOut >> 64).toLong
     logger info s" Output as hex: ${hex1.toHexString} ${hex0.toHexString}"
+    logger info s" Expect as hex: ${(trial.ref_out >> 64).toLong.toHexString} ${(trial.ref_out << 64 >> 64).toLong.toHexString}"
+    expect(dut.io.data_out.bits, trial.ref_out, "Output did not match!")
 }
 
 /**
