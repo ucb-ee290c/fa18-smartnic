@@ -6,10 +6,30 @@ import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 // Software implementation of the RSEncoder
 class RSCode(numSyms: Int, symbolWidth: Int,
-             msgs: Seq[Int], gCoeffs: Seq[Int], fConst: Int) {
+             msgs: Seq[Int]) {
   val numVals = BigInt(2).pow(symbolWidth).toInt
   var Log2Val: Array[Int] = new Array[Int](numVals)
   var Val2Log: Array[Int] = new Array[Int](numVals)
+  // Primitive Polynomial
+  val fConst = {
+    symbolWidth match {
+      // x^3 + x + 1
+      case 3 => Integer.parseInt("1011", 2)
+      // x^4 + x + 1
+      case 4 => Integer.parseInt("10011", 2)
+      // x^5 + x^2 + 1
+      case 5 => Integer.parseInt("100101", 2)
+      // x^6 + x + 1
+      case 6 => Integer.parseInt("1000011", 2)
+      // x^7 + x^3 + 1
+      case 7 => Integer.parseInt("10001001", 2)
+      // x^8 + x^4 + x^3 + x^2 + 1
+      case 8 => Integer.parseInt("100011101", 2)
+      case _ => 0
+    }
+  }
+
+  require(fConst != 0, "Unsupported symbol width!")
 
   Log2Val(0) = 1
   Log2Val(1) = 2 // according to the spec, usually choose a^1 to be 2
@@ -58,6 +78,28 @@ class RSCode(numSyms: Int, symbolWidth: Int,
 
   val numMsgs = msgs.size
   val numPars = numSyms - numMsgs
+
+  // Generator Polynomial
+  // g(X) = (X + a^1)(X + a^2)(X + a^3) ... (X + a^numPars)
+  //      = gCoeffs(0) + gCoeffs(1) * X^1 + gCoeffs(2) * X^2 + ... + gCoeffs(numPars) * X^numPars
+  val gCoeffs = {
+    var coeffs = Seq[Int]()
+    val powSets = (1 to numPars).toSet[Int].subsets.map(_.toList).toList
+    for (j <- numPars to 1 by -1) {
+      var tmpSum: Int = 0
+      for (i <- 0 until powSets.size) {
+        if (powSets(i).size == j) {
+          var tmpMul: Int = 1
+          for (k <- 0 until j) {
+            tmpMul = mul(tmpMul, Log2Val(powSets(i)(k)))
+          }
+          tmpSum = add(tmpSum, tmpMul)
+        }
+      }
+      coeffs = coeffs :+ tmpSum
+    }
+    coeffs
+  }
 
   def encode(): Seq[Int] = {
     var pars: Array[Int] = new Array[Int](numPars)
@@ -133,36 +175,38 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
 
 /**
   * From within sbt use:
-  * testOnly example.test.ECCTester
+  * testOnly ecc.ECCTester
   * From a terminal shell use:
-  * sbt 'testOnly example.test.ECCTester'
+  * sbt 'testOnly ecc.ECCTester'
   */
 class ECCTester extends ChiselFlatSpec {
-  // RS(7, 3) --> 7 symbols in total: 3 message symbols, 4 parity symbols
-  val numSymbols = 7
-  val numMsgs = 3
-  val symbolWidth = 3 
+  // RS(16, 8)
+  val numSymbols = 16
+  val numMsgs = 8
+  val symbolWidth = 8
   var msgs = Seq.fill(numMsgs) {
-    scala.util.Random.nextInt(BigInt(2).pow(symbolWidth).toInt - 1) }
+    scala.util.Random.nextInt(BigInt(2).pow(symbolWidth).toInt - 1)
+  }
 
-  // gCoeffs and fConst need to be pre-computed (see the docs)
-  // g(X) = (X + a^1)(X + a^2)(X + a^3)(X + a^4)
-  // --> g(X) = 3 + 2 * X^1 + 1 * X^2 + 3 * X^3 + X^4
-  val gCoeffs = Seq(3, 2, 1, 3)
-  // f(X) = X^3 + X + 1 --> 1011 --> 11
-  val fConst = 11
-  val rs = new RSCode(numSymbols, symbolWidth, msgs, gCoeffs, fConst)
+  val rs = new RSCode(numSymbols, symbolWidth, msgs)
+
+  val gCoeffs = rs.gCoeffs
+  val fConst = rs.fConst
+
   val swSyms = rs.encode()
   for (i <- 0 until swSyms.size) {
     printf("swSyms(%d) = %d\n", i, swSyms(i))
   }
 
-  require(rs.verify_encode(swSyms))
+  // Need to pass this test to go further
+  require(rs.verify_encode(swSyms), "Incorrect software RSEncoding generator!")
 
   val params = RSParams(
     n = numSymbols,
     k = msgs.size,
-    symbolWidth = symbolWidth
+    symbolWidth = symbolWidth,
+    gCoeffs = gCoeffs,
+    fConst = fConst
   )
 
   "RSEncoder" should "work" in {
