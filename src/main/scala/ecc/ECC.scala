@@ -33,19 +33,18 @@ import chisel3.util._
 case class RSParams(
   val n: Int = 7,
   val k: Int = 3,
-  val symbolWidth: Int = 3
+  val symbolWidth: Int = 3,
+  val gCoeffs: Seq[Int] = Seq(3, 2, 1, 3),
+  val fConst: Int = 11
 )
 
 // TODO: Evaluate the effectiveness of this combinational circuit
 // of doing Galois multiplication versus the simpler approach of using
 // a Lookup Table
 object GMul {
-  def apply(a: UInt, b: UInt, dataWidth: Int): UInt = {
+  def apply(a: UInt, b: UInt, dataWidth: Int, fConst: UInt): UInt = {
     val op1 = a.asTypeOf(UInt(dataWidth.W))
     val op2 = b.asTypeOf(UInt(dataWidth.W))
-    // With symbolWidth = 3, f(x) = x^3 + x + 1 --> 1011
-    // FIXME: Lookup table?
-    val fConst = 11.U
     val tmp = Wire(Vec(dataWidth, UInt((2 * dataWidth - 1).W)))
     for (i <- dataWidth - 1 to 0 by - 1) {
       val tmp0 = if (i == dataWidth - 1) {
@@ -107,8 +106,6 @@ class RSEncoder(val param: RSParams = new RSParams()) extends Module {
   }
 
   val Regs = RegInit(VecInit(Seq.fill(param.n - param.k)(0.U(param.symbolWidth.W))))
-  // FIXME: Lookup table?
-  val gCoeffs = VecInit(3.U, 2.U, 1.U, 3.U)
   val inputBitsReg = RegNext(io.in.bits, 0.U)
 
   // Make sure the arithmetic operations are correct (in Galois field)
@@ -116,9 +113,11 @@ class RSEncoder(val param: RSParams = new RSParams()) extends Module {
                      inputBitsReg ^ Regs(param.n - param.k - 1), 0.U)
   for (i <- 0 until param.n - param.k) {
     if (i == 0) {
-      Regs(0) := GMul(feedback, gCoeffs(0), param.symbolWidth)
+      Regs(0) := GMul(feedback, param.gCoeffs(0).asUInt(),
+                      param.symbolWidth, param.fConst.asUInt())
     } else {
-      Regs(i) := Regs(i - 1) ^ GMul(feedback, gCoeffs(i), param.symbolWidth)
+      Regs(i) := Regs(i - 1) ^ GMul(feedback, param.gCoeffs(i).asUInt(),
+                                    param.symbolWidth, param.fConst.asUInt())
     }
   }
 
