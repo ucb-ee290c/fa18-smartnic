@@ -13,12 +13,18 @@ class RSCode(numSyms: Int, symbolWidth: Int,
   // Primitive Polynomial
   val fConst = {
     symbolWidth match {
-      case 3 => Integer.parseInt("1011", 2)      // x^3 + x + 1
-      case 4 => Integer.parseInt("10011", 2)     // x^4 + x + 1
-      case 5 => Integer.parseInt("100101", 2)    // x^5 + x^2 + 1
-      case 6 => Integer.parseInt("1000011", 2)   // x^6 + x + 1
-      case 7 => Integer.parseInt("10001001", 2)  // x^7 + x^3 + 1
-      case 8 => Integer.parseInt("100011101", 2) // x^8 + x^4 + x^3 + x^2 + 1
+      // x^3 + x + 1
+      case 3 => Integer.parseInt("1011", 2)
+      // x^4 + x + 1
+      case 4 => Integer.parseInt("10011", 2)
+      // x^5 + x^2 + 1
+      case 5 => Integer.parseInt("100101", 2)
+      // x^6 + x + 1
+      case 6 => Integer.parseInt("1000011", 2)
+      // x^7 + x^3 + 1
+      case 7 => Integer.parseInt("10001001", 2)
+      // x^8 + x^4 + x^3 + x^2 + 1
+      case 8 => Integer.parseInt("100011101", 2)
       case _ => 0
     }
   }
@@ -169,15 +175,15 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
 
 /**
   * From within sbt use:
-  * testOnly example.test.ECCTester
+  * testOnly ecc.ECCTester
   * From a terminal shell use:
-  * sbt 'testOnly example.test.ECCTester'
+  * sbt 'testOnly ecc.ECCTester'
   */
 class ECCTester extends ChiselFlatSpec {
-  // RS(7, 3) --> 7 symbols in total: 3 message symbols, 4 parity symbols
-  val numSymbols = 7
-  val numMsgs = 3
-  val symbolWidth = 3 
+  // RS(16, 8)
+  val numSymbols = 16
+  val numMsgs = 8
+  val symbolWidth = 8
   var msgs = Seq.fill(numMsgs) {
     scala.util.Random.nextInt(BigInt(2).pow(symbolWidth).toInt - 1)
   }
@@ -192,7 +198,8 @@ class ECCTester extends ChiselFlatSpec {
     printf("swSyms(%d) = %d\n", i, swSyms(i))
   }
 
-  require(rs.verify_encode(swSyms))
+  // Need to pass this test to go further
+  require(rs.verify_encode(swSyms), "Incorrect software RSEncoding generator!")
 
   val params = RSParams(
     n = numSymbols,

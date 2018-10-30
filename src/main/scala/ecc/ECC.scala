@@ -5,8 +5,10 @@ package ecc
 import chisel3._
 import chisel3.util._
 
-// Reference: http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
-//
+// References:
+// [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
+// [2] https://downloads.bbc.co.uk/rd/pubs/whp/whp-pdf-files/WHP031.pdf
+// Here is a brief description on one example of Reed-Solomon encoder
 // Reed-Solomon(7, 3) with 3-bit symbol
 // #symbols: n=7, #message symbols: k=3, #parity symbols: n-k=4
 // With symbolWidth = 3 (or GF(2^3))
@@ -28,7 +30,7 @@ import chisel3.util._
 // Addition is simply bit-wise XOR
 // Multiplication is slightly more complicated. The result needs to be mod by
 // the value representing the primitive polynomial (in this case, 11)
-// In general, the operations of two m-bit operands results to a m-bit value
+// In general, a GF operations of two m-bit operands results to a m-bit value
 //
 case class RSParams(
   val n: Int = 7,
@@ -71,7 +73,6 @@ object GMul {
 // FIXME: the incoming data is likely to be a multiple of symbol width
 // TODO:
 //   + Incorporate CREECBus
-//   + symbolWidth of 3 is rather odd. Should test with 4 or 8
 class RSEncoder(val param: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(param.symbolWidth.W)))
