@@ -4,9 +4,12 @@ package ecc
 
 import chisel3._
 import chisel3.util._
+import interconnect._
 
-// Reference: http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
-//
+// References:
+// [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
+// [2] https://downloads.bbc.co.uk/rd/pubs/whp/whp-pdf-files/WHP031.pdf
+// Here is a brief description on one example of Reed-Solomon encoder
 // Reed-Solomon(7, 3) with 3-bit symbol
 // #symbols: n=7, #message symbols: k=3, #parity symbols: n-k=4
 // With symbolWidth = 3 (or GF(2^3))
@@ -28,24 +31,23 @@ import chisel3.util._
 // Addition is simply bit-wise XOR
 // Multiplication is slightly more complicated. The result needs to be mod by
 // the value representing the primitive polynomial (in this case, 11)
-// In general, the operations of two m-bit operands results to a m-bit value
+// In general, a GF operations of two m-bit operands results to a m-bit value
 //
 case class RSParams(
   val n: Int = 7,
   val k: Int = 3,
-  val symbolWidth: Int = 3
+  val symbolWidth: Int = 3,
+  val gCoeffs: Seq[Int] = Seq(3, 2, 1, 3),
+  val fConst: Int = 11
 )
 
 // TODO: Evaluate the effectiveness of this combinational circuit
 // of doing Galois multiplication versus the simpler approach of using
 // a Lookup Table
 object GMul {
-  def apply(a: UInt, b: UInt, dataWidth: Int): UInt = {
+  def apply(a: UInt, b: UInt, dataWidth: Int, fConst: UInt): UInt = {
     val op1 = a.asTypeOf(UInt(dataWidth.W))
     val op2 = b.asTypeOf(UInt(dataWidth.W))
-    // With symbolWidth = 3, f(x) = x^3 + x + 1 --> 1011
-    // FIXME: Lookup table?
-    val fConst = 11.U
     val tmp = Wire(Vec(dataWidth, UInt((2 * dataWidth - 1).W)))
     for (i <- dataWidth - 1 to 0 by - 1) {
       val tmp0 = if (i == dataWidth - 1) {
@@ -72,11 +74,10 @@ object GMul {
 // FIXME: the incoming data is likely to be a multiple of symbol width
 // TODO:
 //   + Incorporate CREECBus
-//   + symbolWidth of 3 is rather odd. Should test with 4 or 8
-class RSEncoder(val param: RSParams = new RSParams()) extends Module {
+class RSEncoder(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(new DecoupledIO(UInt(param.symbolWidth.W)))
-    val out = new DecoupledIO(UInt(param.symbolWidth.W))
+    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
+    val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
 
   val inReadyReg = RegInit(true.B)
@@ -88,7 +89,7 @@ class RSEncoder(val param: RSParams = new RSParams()) extends Module {
   io.in.ready := inReadyReg
   io.out.valid := outValidReg
 
-  when (inputSymbolCnt === param.k.asUInt() - 1.U) {
+  when (inputSymbolCnt === p.k.asUInt() - 1.U) {
     inputSymbolCnt := 0.U
     inReadyReg := false.B
   }
@@ -97,7 +98,7 @@ class RSEncoder(val param: RSParams = new RSParams()) extends Module {
     outValidReg := true.B
   }
 
-  when (outputSymbolCnt === param.n.asUInt() - 1.U) {
+  when (outputSymbolCnt === p.n.asUInt() - 1.U) {
     outputSymbolCnt := 0.U
     outValidReg := false.B
     inReadyReg := true.B
@@ -106,22 +107,135 @@ class RSEncoder(val param: RSParams = new RSParams()) extends Module {
     outputSymbolCnt := outputSymbolCnt + 1.U
   }
 
-  val Regs = RegInit(VecInit(Seq.fill(param.n - param.k)(0.U(param.symbolWidth.W))))
-  // FIXME: Lookup table?
-  val gCoeffs = VecInit(3.U, 2.U, 1.U, 3.U)
+  val Regs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
   val inputBitsReg = RegNext(io.in.bits, 0.U)
 
   // Make sure the arithmetic operations are correct (in Galois field)
-  val feedback = Mux(outputSymbolCnt < param.k.asUInt(),
-                     inputBitsReg ^ Regs(param.n - param.k - 1), 0.U)
-  for (i <- 0 until param.n - param.k) {
+  val feedback = Mux(outputSymbolCnt < p.k.asUInt(),
+                     inputBitsReg ^ Regs(p.n - p.k - 1), 0.U)
+  for (i <- 0 until p.n - p.k) {
     if (i == 0) {
-      Regs(0) := GMul(feedback, gCoeffs(0), param.symbolWidth)
+      Regs(0) := GMul(feedback, p.gCoeffs(0).asUInt(),
+                      p.symbolWidth, p.fConst.asUInt())
     } else {
-      Regs(i) := Regs(i - 1) ^ GMul(feedback, gCoeffs(i), param.symbolWidth)
+      Regs(i) := Regs(i - 1) ^ GMul(feedback, p.gCoeffs(i).asUInt(),
+                                    p.symbolWidth, p.fConst.asUInt())
     }
   }
 
-  io.out.bits := Mux(outputSymbolCnt < param.k.asUInt(),
-                     inputBitsReg, Regs(param.n - param.k - 1))
+  io.out.bits := Mux(outputSymbolCnt < p.k.asUInt(),
+                     inputBitsReg, Regs(p.n - p.k - 1))
+}
+
+// Top-level ECC module that hooks up with the rest of the system
+// What to do:
+//   + Receive write request from upstream block (slave)
+//   + Send write request to downstream block (master)
+//   + Receive write data from upstream block (slave)
+//   + Send write data to downstream block (master)
+//   + Receive read request from upstream block (slave)
+//   + Send read request to downstream block (master)
+//   + Receive read response from downstream block (master)
+//   + Send read response to upstream block (slave)
+// TODO: Make it generic (parameterized) to different ECC algorithms
+class ECC(val rsParams: RSParams = new RSParams(),
+          val busParams: CREECBusParams = new CREECBusParams()
+  ) extends Module {
+  val io = IO(new Bundle {
+    val slave = Flipped(new CREECBus(busParams))
+    val master = new CREECBus(busParams)
+  })
+
+  io.master.wrReq.bits.compressed := false.B
+  io.master.wrReq.bits.ecc := true.B
+  io.master.wrReq.bits.encrypted := false.B
+
+  io.slave.rdData.bits.compressed := io.master.rdData.bits.compressed
+  io.slave.rdData.bits.ecc := io.master.rdData.bits.ecc
+  io.slave.rdData.bits.encrypted := io.master.rdData.bits.encrypted
+
+  io.master.wrReq.bits.addr := io.slave.wrReq.bits.addr
+  io.master.wrReq.bits.len := io.slave.wrReq.bits.len
+  io.master.wrReq.bits.id := io.slave.wrReq.bits.id
+
+  io.master.wrData.bits.id := io.slave.wrData.bits.id
+
+  // TODO: handle read request
+  // Before even doing that, I need to implement the RSDecoder
+  io.slave.rdReq.ready := false.B
+
+  io.master.rdReq.bits.addr := io.slave.rdReq.bits.addr
+  io.master.rdReq.bits.len := io.slave.rdReq.bits.len
+  io.master.rdReq.bits.id := io.slave.rdReq.bits.id
+
+  io.master.rdReq.valid := false.B
+
+  io.slave.rdData.bits.id := io.master.rdData.bits.id
+  io.slave.rdData.bits.data := 0.U
+  io.slave.rdData.valid := false.B
+
+  io.master.rdData.ready := false.B
+
+  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
+  val sInit :: sCompute :: sDone :: Nil = Enum(3)
+  val state = RegInit(sInit)
+
+  val enc = Module(new RSEncoder(rsParams))
+
+  val dataInReg = RegInit(0.U(busParams.dataWidth.W))
+  val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
+
+  io.slave.wrReq.ready := state === sInit
+  io.slave.wrData.ready :=  state === sInit
+  io.master.wrReq.valid := state === sDone
+  io.master.wrData.valid := state === sDone
+  io.master.wrData.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
+
+  val encInCnt = RegInit(0.U(32.W))
+  val encOutCnt = RegInit(0.U(32.W))
+  val itemCnt = RegInit(0.U(32.W))
+
+  enc.io.in.valid := (state === sCompute) && (encInCnt < rsParams.k.asUInt())
+  enc.io.in.bits := dataInReg
+  enc.io.out.ready := (state === sCompute) && (encOutCnt < rsParams.n.asUInt())
+
+  when (state === sInit) {
+    encInCnt := 0.U
+    encOutCnt := 0.U
+    itemCnt := 0.U
+
+    when (io.slave.wrReq.fire() && io.slave.wrData.fire()) {
+      state := sCompute
+      dataInReg := io.slave.wrData.bits.data
+    }
+  }
+
+  when (state === sCompute) {
+    when (enc.io.in.fire()) {
+      encInCnt := encInCnt + 1.U
+      dataInReg := (dataInReg >> rsParams.symbolWidth)
+    }
+
+    when (enc.io.out.fire()) {
+      when (encOutCnt === rsParams.n.asUInt() - 1.U) {
+        state := sDone
+      }
+      .otherwise {
+        encOutCnt := encOutCnt + 1.U
+      }
+      dataOutReg := (dataOutReg << rsParams.symbolWidth) + enc.io.out.bits
+    }
+  }
+
+  when (state === sDone) {
+    when (io.master.wrReq.fire() && io.master.wrData.fire()) {
+      dataOutReg := (dataOutReg >> busParams.dataWidth)
+      when (itemCnt === numItems.asUInt() - 1.U) {
+        state := sInit
+      }
+      .otherwise {
+        itemCnt := itemCnt + 1.U
+      }
+    }
+  }
 }
