@@ -3,6 +3,7 @@ import scala.math
 
 import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
+import interconnect._
 
 // Software implementation of the RSEncoder
 class RSCode(numSyms: Int, symbolWidth: Int,
@@ -140,13 +141,14 @@ class RSCode(numSyms: Int, symbolWidth: Int,
 
 }
 
+// This only tests the Reed-Solomon encoder
 class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester(c) {
   var hwSyms = List[Int]()
 
   poke(c.io.in.valid, true)
   poke(c.io.out.ready, true)
 
-  for (i <- 0 until c.param.k) {
+  for (i <- 0 until c.p.k) {
     poke(c.io.in.bits, swSyms(i))
     // This is rather awkward
     if (peek(c.io.out.valid) == BigInt(1) &&
@@ -164,11 +166,77 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
     step(1)
   }
 
-  for (i <- 0 until c.param.n) {
+  for (i <- 0 until c.p.n) {
     printf("hwSyms(%d) = %d\n", i, hwSyms(i))
   }
 
-  for (i <- 0 until c.param.n) {
+  for (i <- 0 until c.p.n) {
+    expect(hwSyms(i) == swSyms(i), "symbols do not match!")
+  }
+}
+
+// This will test the whole ECC block with the CREECBus
+// At the moment, the ECC only handles encoding
+// This test assumes that the upstream block sends a
+// write request to the ECC block. The ECC block generates
+// the parity symbols and then sends a write request to
+// the downstream block.
+// Apparently, RS(16, 8) of 8-bit symbols is chosen. It means
+// the data bus of 64-bit will be decomposed into eight 8-bit symbols
+// We need to generate 8 parity symbols, which is another 64-bit data
+// The flow goes like this:
+// Upstream --> 64-bit slave wrData --> ECC Computation --> 128-bit master wrData --> Downstream
+// In this case, two bus transactions will be needed to send the data (of 64-bit each) to the downstream block
+// I have no idea how good this scheme is, or is it even practical.
+// TODO:
+//   + Test the decoder
+//   + Test the bus interface rigorously
+class ECCUnitTester(c: ECC, swSyms: Seq[Int]) extends PeekPokeTester(c) {
+  var hwSyms = List[Int]()
+
+  poke(c.io.slave.wrReq.valid, true)
+  poke(c.io.slave.wrData.valid, true)
+  poke(c.io.master.wrReq.ready, true)
+  poke(c.io.master.wrData.ready, true)
+
+  var inputBits: BigInt = 0
+  for (i <- 0 until c.rsParams.k) {
+    inputBits = (inputBits << c.rsParams.symbolWidth) + swSyms(c.rsParams.k - i - 1)
+  }
+  poke(c.io.slave.wrData.bits.data, inputBits)
+
+  var numCycles = 0
+  val maxCycles = 30
+  var tmpList = List[Int]()
+
+  // Wait until getting enough data or timeout
+  while (numCycles < maxCycles && tmpList.size < swSyms.size) {
+    numCycles += 1
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
+    }
+
+    if (peek(c.io.master.wrReq.valid) == BigInt(1) &&
+        peek(c.io.master.wrReq.ready) == BigInt(1) &&
+        peek(c.io.master.wrData.valid) == BigInt(1) &&
+        peek(c.io.master.wrData.valid) == BigInt(1)) {
+      var result: BigInt = peek(c.io.master.wrData.bits.data)
+      var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
+      for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
+        tmpList = tmpList :+ (result & mask).toInt
+        result = result >> c.rsParams.symbolWidth
+      }
+    }
+    step(1)
+  }
+  // Be careful of the order of the bytes
+  hwSyms = hwSyms ++ tmpList.reverse
+
+  for (i <- 0 until c.rsParams.n) {
+    printf("hwSyms(%d) = %d\n", i, hwSyms(i))
+  }
+
+  for (i <- 0 until c.rsParams.n) {
     expect(hwSyms(i) == swSyms(i), "symbols do not match!")
   }
 }
@@ -215,4 +283,12 @@ class ECCTester extends ChiselFlatSpec {
       c => new RSEncoderUnitTester(c, swSyms)
     } should be(true)
   }
+
+  "ECC" should "work" in {
+    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
+    new ECC(params)) {
+      c => new ECCUnitTester(c, swSyms)
+    } should be(true)
+  }
+
 }
