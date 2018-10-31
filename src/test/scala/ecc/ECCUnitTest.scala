@@ -175,6 +175,36 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
   }
 }
 
+class SyndromeComputeUnitTester(c: SyndromeCompute, swSyms: Seq[Int]) extends PeekPokeTester(c) {
+  poke(c.io.in.valid, true)
+  poke(c.io.out.ready, true)
+
+  for (i <- 0 until c.p.k) {
+    poke(c.io.in.bits, swSyms(i))
+    step(1)
+  }
+
+  var numCycles = 0
+  val maxCycles = 30
+  var outCnt = 0
+
+  while (numCycles < maxCycles && outCnt < c.p.n - c.p.k) {
+    numCycles += 1
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
+    }
+
+    if (peek(c.io.out.valid) == BigInt(1) &&
+        peek(c.io.out.ready) == BigInt(1)) {
+      // Expect 0 here ...
+      printf("test: %d\n", peek(c.io.out.bits))
+      outCnt += 1
+    }
+
+    step(1)
+  }
+}
+
 // This will test the whole ECC block with the CREECBus
 // At the moment, the ECC only handles encoding
 // This test assumes that the upstream block sends a
@@ -274,21 +304,30 @@ class ECCTester extends ChiselFlatSpec {
     k = msgs.size,
     symbolWidth = symbolWidth,
     gCoeffs = gCoeffs,
-    fConst = fConst
+    fConst = fConst,
+    rs.Log2Val,
+    rs.Val2Log
   )
 
-  "RSEncoder" should "work" in {
+//  "RSEncoder" should "work" in {
+//    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
+//    new RSEncoder(params)) {
+//      c => new RSEncoderUnitTester(c, swSyms)
+//    } should be(true)
+//  }
+
+  "SyndromeCompute" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new RSEncoder(params)) {
-      c => new RSEncoderUnitTester(c, swSyms)
+    new SyndromeCompute(params)) {
+      c => new SyndromeComputeUnitTester(c, swSyms)
     } should be(true)
   }
 
-  "ECC" should "work" in {
-    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ECC(params)) {
-      c => new ECCUnitTester(c, swSyms)
-    } should be(true)
-  }
+//  "ECC" should "work" in {
+//    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
+//    new ECC(params)) {
+//      c => new ECCUnitTester(c, swSyms)
+//    } should be(true)
+//  }
 
 }

@@ -38,7 +38,9 @@ case class RSParams(
   val k: Int = 3,
   val symbolWidth: Int = 3,
   val gCoeffs: Seq[Int] = Seq(3, 2, 1, 3),
-  val fConst: Int = 11
+  val fConst: Int = 11,
+  val Log2Val: Seq[Int] = Seq(1, 2, 4, 3, 6, 7, 5, 1),
+  val Val2Log: Seq[Int] = Seq(0, 7, 1, 3, 2, 6, 4, 5)
 )
 
 // TODO: Evaluate the effectiveness of this combinational circuit
@@ -125,6 +127,91 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
 
   io.out.bits := Mux(outputSymbolCnt < p.k.asUInt(),
                      inputBitsReg, Regs(p.n - p.k - 1))
+}
+
+class SyndromeCell(val p: RSParams = new RSParams(),
+                   val cellIndex: Int = 0)
+  extends Module {
+  val io = IO(new Bundle {
+    val SIn = Input(UInt(p.symbolWidth.W))
+    val Rx = Input(UInt(p.symbolWidth.W))
+    val select = Input(Bool())
+
+    val SOut = Output(UInt(p.symbolWidth.W))
+  })
+
+  val Reg0 = RegInit(0.U(p.symbolWidth.W))
+  val Reg1 = RegInit(0.U(p.symbolWidth.W))
+  val Reg2 = RegInit(0.U(p.symbolWidth.W))
+
+  Reg0 := io.Rx
+  Reg1 := GMul((Reg0 ^ Reg1), p.Log2Val(cellIndex).asUInt(),
+               p.symbolWidth, p.fConst.asUInt())
+  Reg2 := Mux(io.select, (Reg0 ^ Reg1), io.SIn)
+
+  io.SOut := Reg2
+}
+
+class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
+    val out = new DecoupledIO(UInt(p.symbolWidth.W))
+  })
+
+  val cells = Seq.tabulate(p.n - p.k)(i => Module(new SyndromeCell(p, i)))
+  val sInit :: sCompute :: sDone :: Nil = Enum(3)
+  val state = RegInit(sInit)
+
+  val inCnt = RegInit(0.U(32.W))
+  val outCnt = RegInit(0.U(32.W))
+
+  io.in.ready := (state === sCompute)
+  io.out.valid := (state === sDone)
+  io.out.bits := cells(0).io.SOut
+
+  val dataInReg = RegNext(io.in.bits)
+
+  // Systolic array of SyndromeCells
+  for (i <- p.n - p.k - 1 to 0 by - 1) {
+    cells(i).io.Rx := dataInReg
+
+    if (i == p.n - p.k - 1) {
+      cells(i).io.SIn := 0.U
+    } else {
+      cells(i).io.SIn := cells(i).io.SOut
+    }
+
+    cells(i).io.select := (state === sCompute)
+  }
+
+  when (state === sInit) {
+    state := sCompute
+    inCnt := 0.U
+    outCnt := 0.U
+  }
+
+  when (state === sCompute) {
+    when (io.in.fire()) {
+      when (inCnt === p.n.asUInt()) {
+        state := sDone
+      }
+      .otherwise {
+        inCnt := inCnt + 1.U
+      }
+    }
+  }
+
+  when (state === sDone) {
+    when (io.out.fire()) {
+      when (outCnt === (p.n - p.k).asUInt()) {
+        state := sInit
+      }
+      .otherwise {
+        outCnt := outCnt + 1.U
+      }
+    }
+  }
+
 }
 
 // Top-level ECC module that hooks up with the rest of the system
