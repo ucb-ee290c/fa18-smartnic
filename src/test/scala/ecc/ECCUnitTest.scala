@@ -179,7 +179,7 @@ class SyndromeComputeUnitTester(c: SyndromeCompute, swSyms: Seq[Int]) extends Pe
   poke(c.io.in.valid, true)
   poke(c.io.out.ready, true)
 
-  for (i <- 0 until c.p.k) {
+  for (i <- 0 until c.p.n) {
     poke(c.io.in.bits, swSyms(i))
     step(1)
   }
@@ -196,8 +196,7 @@ class SyndromeComputeUnitTester(c: SyndromeCompute, swSyms: Seq[Int]) extends Pe
 
     if (peek(c.io.out.valid) == BigInt(1) &&
         peek(c.io.out.ready) == BigInt(1)) {
-      // Expect 0 here ...
-      printf("test: %d\n", peek(c.io.out.bits))
+      expect(c.io.out.bits, 0)
       outCnt += 1
     }
 

@@ -135,7 +135,7 @@ class SyndromeCell(val p: RSParams = new RSParams(),
   val io = IO(new Bundle {
     val SIn = Input(UInt(p.symbolWidth.W))
     val Rx = Input(UInt(p.symbolWidth.W))
-    val select = Input(Bool())
+    val passThrough = Input(Bool())
 
     val SOut = Output(UInt(p.symbolWidth.W))
   })
@@ -145,13 +145,30 @@ class SyndromeCell(val p: RSParams = new RSParams(),
   val Reg2 = RegInit(0.U(p.symbolWidth.W))
 
   Reg0 := io.Rx
-  Reg1 := GMul((Reg0 ^ Reg1), p.Log2Val(cellIndex).asUInt(),
+  Reg1 := GMul((Reg0 ^ Reg1), p.Log2Val(cellIndex + 1).asUInt(),
                p.symbolWidth, p.fConst.asUInt())
-  Reg2 := Mux(io.select, (Reg0 ^ Reg1), io.SIn)
-
+  Reg2 := Mux(io.passThrough, (Reg0 ^ Reg1), io.SIn)
   io.SOut := Reg2
 }
 
+// This is the first step of RSDecoder
+// Here we want to verify whether the incoming sequence of symbols forms
+// a polynomial in(X) that has roots of a^1, a^2, ..., a^(n - k)
+// i.e., in(a^1) = 0, in(a^2) = 0, ..., in(a^(n - k)) = 0
+// in(X) = in(0) * X^(n - 1) + in(1) * X^(n - 2) + ... + in(n - 1) * X^0
+// We want to use systolic array of (n - k) cells, where each cell computes
+// in(a^i), i = 1..(n - k)
+// The cells chain together like this:
+// cell_(n - k - 1) --> cell_(n - k - 2) --> ... --> cell_1 --> cell_0 --> output
+// like a shift register
+// At each cycle, we broadcast one input symbol to all the cells. Each cell
+// performs individual computation and stores its temporary result into internal
+// registers. Once all the (n) input symbols have been supplied to the cells,
+// the cells should have their final value (which hopefully is zero).
+// Then each cell passes its value to the previous cell in a shift-register
+// fashion. Thus, at the output side, we would expect to receive (n - k) zeroes
+// This is a very simple version of systolic array which cells do not communicate
+// often (only passing data at the end)
 class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
@@ -169,11 +186,9 @@ class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
   io.out.valid := (state === sDone)
   io.out.bits := cells(0).io.SOut
 
-  val dataInReg = RegNext(io.in.bits)
-
   // Systolic array of SyndromeCells
   for (i <- p.n - p.k - 1 to 0 by - 1) {
-    cells(i).io.Rx := dataInReg
+    cells(i).io.Rx := io.in.bits
 
     if (i == p.n - p.k - 1) {
       cells(i).io.SIn := 0.U
@@ -181,7 +196,7 @@ class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
       cells(i).io.SIn := cells(i).io.SOut
     }
 
-    cells(i).io.select := (state === sCompute)
+    cells(i).io.passThrough := (state === sCompute)
   }
 
   when (state === sInit) {
@@ -192,7 +207,7 @@ class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
 
   when (state === sCompute) {
     when (io.in.fire()) {
-      when (inCnt === p.n.asUInt()) {
+      when (inCnt === p.n.asUInt() - 1.U) {
         state := sDone
       }
       .otherwise {
@@ -203,7 +218,7 @@ class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
 
   when (state === sDone) {
     when (io.out.fire()) {
-      when (outCnt === (p.n - p.k).asUInt()) {
+      when (outCnt === (p.n - p.k).asUInt() - 1.U) {
         state := sInit
       }
       .otherwise {
