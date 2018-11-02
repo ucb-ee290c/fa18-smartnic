@@ -7,11 +7,28 @@ import interconnect._
 /*
  * When encode is true, generate an encoder. When false, generate a decoder
  */
-case class CoderParams(encode: Boolean = true, p: CREECBusParams = new CREECBusParams) {
+case class CoderParams(encode: Boolean = true) {
+}
+
+class DifferentialCoder(numElements: Int, width: Int = 8, encode: Boolean = true) extends Module {
+  val io = IO(new Bundle {
+    val input = Input(Vec(numElements, UInt(width.W)))
+    val output = Output(Vec(numElements, UInt(width.W)))
+    val last = Input(UInt(width.W))
+  })
+  val out = Wire(io.output.cloneType)
+  //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
+  for (i <- 0 until io.input.length) {
+    if (encode)
+      out(i) = io.input(i) - (if (i == 0) io.last else io.output(i - 1))
+    else
+      out(i) = io.input(i) + (if (i == 0) io.last else io.output(i - 1))
+  }
+  io.output := out
 }
 
 //TODO: deal with CREECMetadata
-class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
+class Coder(p: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = {
       if (p.encode)
@@ -51,16 +68,12 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
   val lastValue = RegInit(0.U(8.W))
 
   //convert the current beat of data into a vec of bytes
-  val bytesIn = dataIn.bits.data.asTypeOf(Vec(p.p.dataWidth / 8, UInt(8.W)))
+  val bytesIn = Wire(dataIn.bits.data.asTypeOf(Vec(new CREECBusParams().dataWidth / 8, UInt(8.W))))
   val bytesOut = Wire(bytesIn.cloneType)
-
-  //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
-  for (i <- 0 until bytesIn.length) {
-    if (p.encode)
-      bytesOut(i) = bytesIn(i) - (if (i == 0) lastValue else bytesIn(i - 1))
-    else
-      bytesOut(i) = bytesIn(i) + (if (i == 0) lastValue else bytesOut(i - 1))
-  }
+  val coder = Module(new DifferentialCoder(new CREECBusParams().dataWidth / 8, 8, p.encode))
+  coder.io.input := bytesIn
+  bytesOut := coder.io.output
+  coder.io.last := lastValue
 
   //in the AwaitRequest state, accept requests into the request register and transition
   //  to the SendRequest state when a request comes.
@@ -73,7 +86,7 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
     requestIn := io.in.header.deq()
     beatsToGo := requestIn.bits.len
     requestOut := {
-      val out = new TransactionHeader(p.p) with BusAddress
+      val out = new TransactionHeader(new CREECBusParams) with BusAddress
       out.addr := requestIn.bits.addr
       out.id := requestIn.bits.id
       out.len := requestIn.bits.len
@@ -97,7 +110,7 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
     io.in.header.nodeq()
     dataIn := io.in.data.deq()
     dataOut := {
-      val out = new TransactionData(p.p)
+      val out = new TransactionData(new CREECBusParams)
       out.data := bytesOut.asUInt()
       out.id := dataIn.bits.id
       out
@@ -124,13 +137,28 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
   }
 }
 
-case class CompressorParams(busWidth: Int = 8, chunkSize: Int = 512) {
+case class CompressorParams(busWidth: Int = 8, chunkSize: Int = 512, compress: Boolean = true) {
+}
+
+class SnappyCompressorParams extends CompressorParams {
   val outputSize = 32 + chunkSize * 7 / 6
 }
 
 class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new CREECBus(new BlockDeviceIOBusParams))
-    val master = new CREECBus(new CREECBusParams)
+    val in: CREECBus = {
+      if (p.compress)
+        Flipped(new CREECWriteBus(new BlockDeviceIOBusParams))
+      else
+        Flipped(new CREECReadBus(new BlockDeviceIOBusParams))
+
+    }
+    val out: CREECBus = {
+      if (p.compress)
+        new CREECWriteBus(new CREECBusParams)
+      else
+        new CREECReadBus(new CREECBusParams)
+    }
   })
+  //TODO:
 }
