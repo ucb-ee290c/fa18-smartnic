@@ -66,17 +66,21 @@ object CompressionFunctions {
 }
 
 class DifferentialEncoderTester(c: Coder) extends PeekPokeTester(c) {
-//  var myList = List.fill(10)(45.toByte)
-  var myList = List(5, 6, 7, 6, 6, 6, 6, 6, 6, 6, 7, 6, 7, 5, 6, 7, 7, 6, 5, 6, 5).map{_.toByte}
-  println(myList.toString())
-  myList = CompressionFunctions.differentialEncode(myList)
-  println(myList.toString())
-  myList = CompressionFunctions.runLengthEcode(myList)
-  println(myList.toString())
-  myList = CompressionFunctions.runLengthDecode(myList)
-  println(myList.toString())
-  myList = CompressionFunctions.differentialDecode(myList)
-  println(myList.toString())
+//  var myList = List(5, 6, 7, 6, 6, 6, 6, 6, 6, 6, 7, 6, 7, 5, 6, 7, 7, 6, 5, 6, 5).map{_.toByte}
+//  println(myList.toString())
+//  myList = CompressionFunctions.differentialEncode(myList)
+//  println(myList.toString())
+//  myList = CompressionFunctions.runLengthEcode(myList)
+//  println(myList.toString())
+//  myList = CompressionFunctions.runLengthDecode(myList)
+//  println(myList.toString())
+//  myList = CompressionFunctions.differentialDecode(myList)
+//  println(myList.toString())
+  //TODO
+}
+
+class DifferentialDecoderTester(c: Coder) extends PeekPokeTester(c) {
+  //TODO
 }
 
 /**
@@ -89,6 +93,12 @@ class CompressionTester extends ChiselFlatSpec {
   "DifferentialCoderTester" should "encode" in {
     Driver(() => new Coder, "firrtl") {
       c => new DifferentialEncoderTester(c)
+    } should be(true)
+  }
+
+  "DifferentialCoderTester" should "decode" in {
+    Driver(() => new Coder(new CoderParams(false)), "firrtl") {
+      c => new DifferentialDecoderTester(c)
     } should be(true)
   }
 
