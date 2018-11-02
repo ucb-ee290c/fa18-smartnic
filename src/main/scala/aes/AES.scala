@@ -9,15 +9,29 @@ import chisel3.util._
 //import freechips.rocketchip.tilelink._
 
 trait hasSubByte {
+    val sBoxTable = VecInit(
+    Seq(99, 124, 119, 123, 242, 107, 111, 197, 48, 1, 103, 43, 254, 215, 171, 118,
+        202, 130, 201, 125, 250, 89, 71, 240, 173, 212, 162, 175, 156, 164, 114, 192,
+        183, 253, 147, 38, 54, 63, 247, 204, 52, 165, 229, 241, 113, 216, 49, 21,
+        4, 199, 35, 195, 24, 150, 5, 154, 7, 18, 128, 226, 235, 39, 178, 117,
+        9, 131, 44, 26, 27, 110, 90, 160, 82, 59, 214, 179, 41, 227, 47, 132,
+        83, 209, 0, 237, 32, 252, 177, 91, 106, 203, 190, 57, 74, 76, 88, 207,
+        208, 239, 170, 251, 67, 77, 51, 133, 69, 249, 2, 127, 80, 60, 159, 168,
+        81, 163, 64, 143, 146, 157, 56, 245, 188, 182, 218, 33, 16, 255, 243, 210,
+        205, 12, 19, 236, 95, 151, 68, 23, 196, 167, 126, 61, 100, 93, 25, 115,
+        96, 129, 79, 220, 34, 42, 144, 136, 70, 238, 184, 20, 222, 94, 11, 219,
+        224, 50, 58, 10, 73, 6, 36, 92, 194, 211, 172, 98, 145, 149, 228, 121,
+        231, 200, 55, 109, 141, 213, 78, 169, 108, 86, 244, 234, 101, 122, 174, 8,
+        186, 120, 37, 46, 28, 166, 180, 198, 232, 221, 116, 31, 75, 189, 139, 138,
+        112, 62, 181, 102, 72, 3, 246, 14, 97, 53, 87, 185, 134, 193, 29, 158,
+        225, 248, 152, 17, 105, 217, 142, 148, 155, 30, 135, 233, 206, 85, 40, 223,
+        140, 161, 137, 13, 191, 230, 66, 104, 65, 153, 45, 15, 176, 84, 187, 22)
+      .map(_.U(8.W))
+    )
+
     def subByte(byte_in: UInt): UInt = {
-        (byte_in
-          ^ (byte_in << 1).asTypeOf(UInt(8.W))
-          ^ (byte_in << 2).asTypeOf(UInt(8.W))
-          ^ (byte_in << 3).asTypeOf(UInt(8.W))
-          ^ (byte_in << 4).asTypeOf(UInt(8.W))
-          ^ 99.U(8.W)
-          ).asTypeOf(UInt(8.W))
-    }
+       sBoxTable(byte_in)
+   }
 }
 
 class DataBundle extends Bundle {
@@ -30,7 +44,6 @@ class DataBundleWithKeyIn extends DataBundle {
 }
 
 //Byte substitution using the S-box method
-//out = b + b << 1 + b << 2 + b << 3 + b << 4 + (99l mod 16)
 class SubByte extends Module with hasSubByte {
     val io = IO(new DataBundle())
 
@@ -78,14 +91,24 @@ class MMDataBundle extends Bundle {
     val data_in = Input(Vec(4, UInt(8.W)))
     val data_out = Output(Vec(4, UInt(8.W)))
 }
+//TODO: Resolve
+trait MixColumnsFunctions {
+    def gmul2(a : UInt): UInt = {
+        Mux((a & 0x80.U(8.W)).orR, (a << 1) ^ 0x1b.U(8.W), a << 1)
+    }
 
-class MixColumnsMM extends Module {
+    def gmul3(a : UInt): UInt = {
+        Mux((a & 0x80.U(8.W)).orR, (a << 1) ^ a ^ 0x1b.U(8.W), (a << 1) ^ a)
+    }
+}
+
+class MixColumnsMM extends Module with MixColumnsFunctions{
     val io = IO(new MMDataBundle())
 
-    io.data_out(0) := 2.U * io.data_in(0) + 3.U * io.data_in(1) + 1.U * io.data_in(2) + 1.U * io.data_in(3)
-    io.data_out(1) := 1.U * io.data_in(0) + 2.U * io.data_in(1) + 3.U * io.data_in(2) + 1.U * io.data_in(3)
-    io.data_out(2) := 1.U * io.data_in(0) + 1.U * io.data_in(1) + 2.U * io.data_in(2) + 3.U * io.data_in(3)
-    io.data_out(3) := 3.U * io.data_in(0) + 1.U * io.data_in(1) + 1.U * io.data_in(2) + 2.U * io.data_in(3)
+    io.data_out(0) := gmul2(io.data_in(0)) ^ gmul3(io.data_in(1)) ^ io.data_in(2) ^ io.data_in(3)
+    io.data_out(1) := io.data_in(0) ^ gmul2(io.data_in(1)) ^ gmul3(io.data_in(2)) ^ io.data_in(3)
+    io.data_out(2) := io.data_in(0) ^ io.data_in(1) ^ gmul2(io.data_in(2)) ^ gmul3(io.data_in(3))
+    io.data_out(3) := gmul3(io.data_in(0)) ^ io.data_in(1) ^ io.data_in(2) ^ gmul2(io.data_in(3))
 }
 
 //Column Mixing provides the primary obfuscation in AES
@@ -109,7 +132,7 @@ class MixColumns extends Module {
     d_out(1) := MM1.io.data_out
 
     MM2.io.data_in := d_in(2)
-    d_out(2) := MM1.io.data_out
+    d_out(2) := MM2.io.data_out
 
     MM3.io.data_in := d_in(3)
     d_out(3) := MM3.io.data_out
@@ -123,31 +146,30 @@ class KeyExpansionBundle extends Bundle {
 
 //KeyExpansion stage. Applies the AES key schedule
 //TODO: Consider pipelining? Long critical path
-//TODO: Verify the addition
 class KeyExpansion extends Module with hasSubByte {
     val io = IO(new KeyExpansionBundle())
 
-    //aliases
-    val k_in = io.key_in
-    val k_out = Wire(Vec(16, UInt(8.W)))
-    io.key_out := k_out
-
     //Wi
-    k_out(0) := k_in(0) ^ subByte(k_in(1)) ^ io.rcon
-    k_out(1) := k_in(1) ^ subByte(k_in(2))
-    k_out(2) := k_in(2) ^ subByte(k_in(3))
-    k_out(3) := k_in(3) ^ subByte(k_in(0))
+    io.key_out(0) := io.key_in(0) ^ subByte(io.key_in(13)) ^ io.rcon
+    io.key_out(1) := io.key_in(1) ^ subByte(io.key_in(14))
+    io.key_out(2) := io.key_in(2) ^ subByte(io.key_in(15))
+    io.key_out(3) := io.key_in(3) ^ subByte(io.key_in(12))
 
     //Wi+1...3
     for (i <- 4 until 16) {
-        k_out(i) := k_in(i) ^ k_out(i-4)
-        k_out(i) := k_in(i) ^ k_out(i-4)
-        k_out(i) := k_in(i) ^ k_out(i-4)
+        io.key_out(i) := io.key_in(i) ^ io.key_out(i-4)
     }
+
+}
+
+class DataBundleWithKeyInDebug extends DataBundleWithKeyIn {
+    val subbyteout = Output(UInt(128.W))
+    val shiftrowsout  = Output(UInt(128.W))
+    val mixcolsout = Output(UInt(128.W))
 }
 
 class AESCipherStage extends Module {
-    val io = IO(new DataBundleWithKeyIn())
+    val io = IO(new DataBundleWithKeyInDebug())
 
     val sub_byte = Module(new SubByte())
     val shift_rows = Module(new ShiftRows())
@@ -162,6 +184,11 @@ class AESCipherStage extends Module {
     mix_columns.io.data_in :=  shift_rows.io.data_out
     add_round_key.io.data_in := mix_columns.io.data_out
     io.data_out := add_round_key.io.data_out
+
+    //Debug
+    io.subbyteout := sub_byte.io.data_out.asTypeOf(UInt(128.W))
+    io.shiftrowsout := shift_rows.io.data_out.asTypeOf(UInt(128.W))
+    io.mixcolsout := mix_columns.io.data_out.asTypeOf(UInt(128.W))
 }
 
 class AESCipherEndStage extends Module {
@@ -189,10 +216,10 @@ class RCONBundle extends Bundle{
 class RCON extends Module {
     val io = IO(new RCONBundle)
 
-    when (io.last_rcon >= 128.U(8.W)) {
-        io.next_rcon := (io.last_rcon << 2) ^ 27.U(8.W) // TODO: make intellij resolve the XOR
+    when ((io.last_rcon & 0x80.U(8.W)).orR) {
+        io.next_rcon := (io.last_rcon << 1) ^ 0x1B.U(8.W) // TODO: make intellij resolve the XOR
     } .otherwise {
-        io.next_rcon := io.last_rcon << 2
+        io.next_rcon := io.last_rcon << 1
     }
 
 }
@@ -240,18 +267,36 @@ class DataBundleTop extends Bundle {
     val key_in   = Input(UInt(128.W))
 }
 
+class DataBundleTopDebug extends Bundle {
+  val data_in  = Input(UInt(128.W))
+  val data_out = Output(UInt(128.W))
+  val key_in   = Input(UInt(128.W))
+  val stage1out = Output(UInt(128.W))
+  val stage2out = Output(UInt(128.W))
+  val stage2key = Output(UInt(128.W))
+  val stage3out = Output(UInt(128.W))
+  val stage3key = Output(UInt(128.W))
+  val stage3rcon = Output(UInt(8.W))
+  val stage4out = Output(UInt(128.W))
+  val stage5out = Output(UInt(128.W))
+  val stage6out = Output(UInt(128.W))
+  val stage7out = Output(UInt(128.W))
+  val stage8out = Output(UInt(128.W))
+  val stage9out = Output(UInt(128.W))
+}
+
 //Purely combinational form
 //Generally avoid this block because its long critical path
 class AES128Combinational extends Module with connectsStages{
-    val io = IO (new DataBundleTop)
+    val io = IO (new DataBundleTopDebug)
 
     val data_in_top = io.data_in.asTypeOf(Vec(16, UInt(8.W)))
     val key_in_top  = io.key_in.asTypeOf(Vec(16, UInt(8.W)))
 
     //Initial round
     val stage0_addRoundKey = Module(new AddRoundKey())
-    stage0_addRoundKey.io.key_in := data_in_top
-    stage0_addRoundKey.io.data_in := key_in_top
+    stage0_addRoundKey.io.key_in := key_in_top
+    stage0_addRoundKey.io.data_in := data_in_top
     val stage0_data_out = stage0_addRoundKey.io.data_out
 
     // Round 1
@@ -314,6 +359,18 @@ class AES128Combinational extends Module with connectsStages{
     stage10_cipher.io.key_in := stage10_key
 
     io.data_out := stage10_cipher.io.data_out.asTypeOf(UInt(128.W))
+    io.stage9out := stage9.io.data_out.asTypeOf(UInt(128.W))
+    io.stage8out := stage8.io.data_out.asTypeOf(UInt(128.W))
+    io.stage7out := stage7.io.data_out.asTypeOf(UInt(128.W))
+    io.stage6out := stage6.io.data_out.asTypeOf(UInt(128.W))
+    io.stage5out := stage5.io.data_out.asTypeOf(UInt(128.W))
+    io.stage4out := stage4.io.data_out.asTypeOf(UInt(128.W))
+    io.stage3out := stage3.io.data_out.asTypeOf(UInt(128.W))
+    io.stage2out := stage2.io.data_out.asTypeOf(UInt(128.W))
+    io.stage1out := stage1_cipher.io.data_out.asTypeOf(UInt(128.W))
+    io.stage3key := stage3.io.key_out.asTypeOf(UInt(128.W))
+    io.stage2key := stage2.io.key_out.asTypeOf(UInt(128.W))
+    io.stage3rcon := stage3.io.next_rcon.asTypeOf(UInt(128.W))
 }
 
 class DataBundleTopDecoupled extends Bundle {
@@ -322,25 +379,34 @@ class DataBundleTopDecoupled extends Bundle {
     val key_in      = Input(UInt(128.W))
 }
 
+class DataBundleTopDecoupledDebug extends DataBundleTopDecoupled {
+    val running     = Output(Bool())
+    val peek_stage  = Output(UInt(128.W))
+    val counter     = Output(UInt(4.W))
+}
+
 /*
  * Pipelined AES module
  * 10 stages plus initial stage
  * Initial and first stage are combined, making for 10 periods to complete
  */
 class AES128 extends Module {
-    val io = IO (new DataBundleTopDecoupled)
+    val io = IO (new DataBundleTopDecoupledDebug)
 
     val data_in_top = io.data_in.bits.asTypeOf(Vec(16, UInt(8.W)))
     val key_in_top  = io.key_in.asTypeOf(Vec(16, UInt(8.W)))
 
     //State Machine ---------------------------------------
-    val start = io.data_in.fire && io.data_out.fire
-    val counter = Reg(UInt(4.W))
-    val running = counter < 10.U // Halt at 10.U
-    counter := Mux(start, 0.U,
-        Mux(running, counter + 1.U, counter))
+    val numStages = 10 //for AES128
 
-    val mux_select_stage1 = counter === 0.U
+    val start = io.data_in.fire && io.data_out.fire
+    val counter = RegInit(0.U(4.W))
+    val running = counter > 0.U
+
+    counter := Mux(running, counter-1.U,
+            Mux(start, numStages.U, counter))
+
+    val mux_select_stage1 = counter === numStages.U
 
     // Ready Valid
     io.data_in.ready  := !running
@@ -400,4 +466,9 @@ class AES128 extends Module {
 
     val data_out_top = stage10_cipher.io.data_out.asTypeOf(UInt(128.W))
     io.data_out.bits    := RegEnable(data_out_top, running)
+
+    //Debug
+    io.running      := running
+    io.counter      := counter
+    io.peek_stage   := data_reg.asTypeOf(UInt(128.W))
 }

@@ -38,7 +38,9 @@ case class RSParams(
   val k: Int = 3,
   val symbolWidth: Int = 3,
   val gCoeffs: Seq[Int] = Seq(3, 2, 1, 3),
-  val fConst: Int = 11
+  val fConst: Int = 11,
+  val Log2Val: Seq[Int] = Seq(1, 2, 4, 3, 6, 7, 5, 1),
+  val Val2Log: Seq[Int] = Seq(0, 7, 1, 3, 2, 6, 4, 5)
 )
 
 // TODO: Evaluate the effectiveness of this combinational circuit
@@ -125,6 +127,106 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
 
   io.out.bits := Mux(outputSymbolCnt < p.k.asUInt(),
                      inputBitsReg, Regs(p.n - p.k - 1))
+}
+
+class SyndromeCell(val p: RSParams = new RSParams(),
+                   val cellIndex: Int = 0)
+  extends Module {
+  val io = IO(new Bundle {
+    val SIn = Input(UInt(p.symbolWidth.W))
+    val Rx = Input(UInt(p.symbolWidth.W))
+    val passThrough = Input(Bool())
+
+    val SOut = Output(UInt(p.symbolWidth.W))
+  })
+
+  val Reg0 = RegInit(0.U(p.symbolWidth.W))
+  val Reg1 = RegInit(0.U(p.symbolWidth.W))
+  val Reg2 = RegInit(0.U(p.symbolWidth.W))
+
+  Reg0 := io.Rx
+  Reg1 := GMul((Reg0 ^ Reg1), p.Log2Val(cellIndex + 1).asUInt(),
+               p.symbolWidth, p.fConst.asUInt())
+  Reg2 := Mux(io.passThrough, (Reg0 ^ Reg1), io.SIn)
+  io.SOut := Reg2
+}
+
+// This is the first step of RSDecoder
+// Here we want to verify whether the incoming sequence of symbols forms
+// a polynomial in(X) that has roots of a^1, a^2, ..., a^(n - k)
+// i.e., in(a^1) = 0, in(a^2) = 0, ..., in(a^(n - k)) = 0
+// in(X) = in(0) * X^(n - 1) + in(1) * X^(n - 2) + ... + in(n - 1) * X^0
+// We want to use systolic array of (n - k) cells, where each cell computes
+// in(a^i), i = 1..(n - k)
+// The cells chain together like this:
+// cell_(n - k - 1) --> cell_(n - k - 2) --> ... --> cell_1 --> cell_0 --> output
+// like a shift register
+// At each cycle, we broadcast one input symbol to all the cells. Each cell
+// performs individual computation and stores its temporary result into internal
+// registers. Once all the (n) input symbols have been supplied to the cells,
+// the cells should have their final value (which hopefully is zero).
+// Then each cell passes its value to the previous cell in a shift-register
+// fashion. Thus, at the output side, we would expect to receive (n - k) zeroes
+// This is a very simple version of systolic array which cells do not communicate
+// often (only passing data at the end)
+class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
+    val out = new DecoupledIO(UInt(p.symbolWidth.W))
+  })
+
+  val cells = Seq.tabulate(p.n - p.k)(i => Module(new SyndromeCell(p, i)))
+  val sInit :: sCompute :: sDone :: Nil = Enum(3)
+  val state = RegInit(sInit)
+
+  val inCnt = RegInit(0.U(32.W))
+  val outCnt = RegInit(0.U(32.W))
+
+  io.in.ready := (state === sCompute)
+  io.out.valid := (state === sDone)
+  io.out.bits := cells(0).io.SOut
+
+  // Systolic array of SyndromeCells
+  for (i <- p.n - p.k - 1 to 0 by - 1) {
+    cells(i).io.Rx := io.in.bits
+
+    if (i == p.n - p.k - 1) {
+      cells(i).io.SIn := 0.U
+    } else {
+      cells(i).io.SIn := cells(i).io.SOut
+    }
+
+    cells(i).io.passThrough := (state === sCompute)
+  }
+
+  when (state === sInit) {
+    state := sCompute
+    inCnt := 0.U
+    outCnt := 0.U
+  }
+
+  when (state === sCompute) {
+    when (io.in.fire()) {
+      when (inCnt === p.n.asUInt() - 1.U) {
+        state := sDone
+      }
+      .otherwise {
+        inCnt := inCnt + 1.U
+      }
+    }
+  }
+
+  when (state === sDone) {
+    when (io.out.fire()) {
+      when (outCnt === (p.n - p.k).asUInt() - 1.U) {
+        state := sInit
+      }
+      .otherwise {
+        outCnt := outCnt + 1.U
+      }
+    }
+  }
+
 }
 
 // Top-level ECC module that hooks up with the rest of the system
