@@ -28,7 +28,7 @@ class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) exten
     poke(dut.io.key_in, trial.key_in)
     step(1)
 
-    val bigIntOut : BigInt = peek(dut.io.data_out.data)
+    val bigIntOut : BigInt = peek(dut.io.data_out)
     logger info s"Combinational"
     /*
     readOutput(dut.io.stage1out, "stage1out")
