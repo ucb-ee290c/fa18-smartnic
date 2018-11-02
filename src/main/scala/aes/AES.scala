@@ -2,6 +2,7 @@ package aes
 
 import chisel3._
 import chisel3.util._
+import interconnect.{CREECBusParams, CREECReadBus, CREECWriteBus}
 //import freechips.rocketchip.subsystem.BaseSubsystem
 //import freechips.rocketchip.config.{Parameters, Field}
 //import freechips.rocketchip.diplomacy._
@@ -471,4 +472,24 @@ class AES128 extends Module {
     io.running      := running
     io.counter      := counter
     io.peek_stage   := data_reg.asTypeOf(UInt(128.W))
+}
+
+class AES128EncrypterWrapper extends Module {
+    val io = IO(new Bundle {
+        val slave = new CREECWriteBus(new CREECBusParams)
+        val master = Flipped(new CREECWriteBus(new CREECBusParams))
+    })
+    // Hookup AES128 to the slave and master port here
+    io.slave.wrHeader.ready := false.B
+    io.master.wrHeader.valid := false.B
+}
+
+class AES128DecrypterWrapper extends Module {
+    val io = IO(new Bundle {
+        val slave = new CREECReadBus(new CREECBusParams)
+        val master = Flipped(new CREECReadBus(new CREECBusParams))
+    })
+    // Hookup the decrypter
+    io.slave.rdHeader.ready := false.B
+    io.master.rdHeader.valid := false.B
 }
