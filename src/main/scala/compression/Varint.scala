@@ -20,7 +20,6 @@ case class VarintParams(maxBytes: Int = 5) {
   val bytes: Int = maxBytes
 }
 
-
 class VarintDecoder(p: VarintParams = VarintParams()) extends Module {
   val io = IO(new Bundle {
     // TODO fix the bitwidths

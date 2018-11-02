@@ -47,34 +47,13 @@ class TransactionData(val p: BusParams) extends Bundle {
   val id = UInt(p.maxInFlight.W)
 }
 
-/*
-class WriteRequest(val p: BusParams) extends Bundle {
-  val len = UInt(p.beatBits.W)
-  val id = UInt(p.maxInFlight.W)
-}
-
-class WriteData(val p: BusParams) extends Bundle {
-  val id = UInt(p.maxInFlight.W)
-  val data = UInt(p.dataWidth.W)
-}
-
-class ReadRequest(val p: BusParams) extends Bundle {
-  val len = UInt(p.beatBits.W)
-  val id = UInt(p.maxInFlight.W)
-}
-
-class ReadData(val p: BusParams) extends Bundle {
-  val id = UInt(p.maxInFlight.W)
-  val data = UInt(p.dataWidth.W)
-}
-*/
-
-class CREECWriteBus(val p: BusParams) extends Bundle {
+abstract class CREECBus(val p: BusParams) extends Bundle {
   val header = Decoupled(new TransactionHeader(p) with BusAddress with CREECMetadata)
   val data = Decoupled(new TransactionData(p))
 }
 
-class CREECReadBus(val p: BusParams) extends Bundle {
-  val header = Flipped(Decoupled(new TransactionHeader(p) with CREECMetadata))
-  val data = Flipped(Decoupled(new TransactionHeader(p)))
+class CREECWriteBus(val p: BusParams) extends CREECBus(p) {
+}
+
+class CREECReadBus(val p: BusParams) extends CREECBus(p) {
 }

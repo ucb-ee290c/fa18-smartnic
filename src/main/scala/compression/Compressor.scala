@@ -10,36 +10,21 @@ import interconnect._
 case class CoderParams(encode: Boolean = true, p: CREECBusParams = new CREECBusParams) {
 }
 
-class DifferentialBlock() extends Module {
-  val io = IO(new Bundle {
-    val slave = Flipped(new CREECBus(new CREECBusParams))
-    val master = new CREECBus(new CREECBusParams)
-  })
-  //encoder for write path
-  val encoder = Module(new DifferentialCoder(new CoderParams(true)))
-  //decoder for read path
-  val decoder = Module(new DifferentialCoder(new CoderParams(false)))
-
-  //hook up encoder
-  encoder.io.inReq := io.slave.wrReq
-  encoder.io.inData := io.slave.wrData
-  io.master.wrReq := encoder.io.outReq
-  io.master.wrData := encoder.io.outData
-
-  //hook up decoder
-  decoder.io.inReq := io.slave.rdReq
-  decoder.io.inData := io.master.rdData
-  io.master.rdReq := decoder.io.outReq
-  io.slave.rdData := decoder.io.outData
-}
-
 //TODO: deal with CREECMetadata
 class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val inReq = Flipped(Decoupled(new ReadRequest(p.p) with BusAddress))
-    val inData = Flipped(Decoupled(new ReadData(p.p)))
-    val outReq = Decoupled(new WriteRequest(p.p) with BusAddress)
-    val outData = Decoupled(new WriteData(p.p))
+    val in: CREECBus = {
+      if (p.encode)
+        Flipped(new CREECWriteBus(new CREECBusParams))
+      else
+        Flipped(new CREECReadBus(new CREECBusParams))
+    }
+    val out = {
+      if (p.encode)
+        new CREECWriteBus(new CREECBusParams)
+      else
+        new CREECReadBus(new CREECBusParams)
+    }
   })
   //States
   //  AwaitRequest: Waiting for a request to come in.
@@ -50,13 +35,13 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
   val state = RegInit(sAwaitRequest)
 
   //register the request and data inputs once they have been accepted
-  val requestIn = Reg(io.inReq.cloneType)
-  val dataIn = Reg(io.inData.cloneType)
-  val requestOut = Reg(io.outReq.cloneType)
-  val dataOut = Reg(io.outData.cloneType)
+  val requestIn = Reg(io.in.header.bits.cloneType)
+  val dataIn = Reg(io.in.data.bits.cloneType)
+  val requestOut = Reg(io.out.header.cloneType)
+  val dataOut = Reg(io.out.data.bits.cloneType)
 
   //keep track of how many more data beats we need to process
-  val beatsToGo = Reg(io.inReq.bits.len.cloneType)
+  val beatsToGo = Reg(io.in.header.bits.len.cloneType)
   //TODO: beatsToGo can be a vector that is n long, where n is the number of in-flight
   //      requests. When a beat comes in, decrement the beatsToGo entry that corresponds
   //      to its id. For the differential encoder, this means we also have to have n
@@ -85,50 +70,50 @@ class DifferentialCoder(p: CoderParams = new CoderParams) extends Module {
   //in the SendData state, wait to hand off the data. Transition to the AwaitRequest
   //  state when the last one is handed off.
   when(state === sAwaitRequest) {
-    requestIn := io.inReq.deq()
+    requestIn := io.in.header.deq()
     beatsToGo := requestIn.bits.len
     requestOut := {
-      val out = new WriteRequest(p.p) with BusAddress
+      val out = new TransactionHeader(p.p) with BusAddress
       out.addr := requestIn.bits.addr
       out.id := requestIn.bits.id
       out.len := requestIn.bits.len
       out
     }
-    io.inData.nodeq()
-    io.outData.noenq()
-    io.outReq.noenq()
-    when(io.inReq.fire()) {
+    io.in.data.nodeq()
+    io.out.data.noenq()
+    io.out.header.noenq()
+    when(io.in.header.fire()) {
       state := sSendRequest
     }
   }.elsewhen(state === sSendRequest) {
-    io.inData.nodeq()
-    io.inReq.nodeq()
-    io.outData.noenq()
-    io.outReq.enq(requestOut.bits)
-    when(io.outReq.fire()) {
+    io.in.data.nodeq()
+    io.in.header.nodeq()
+    io.out.data.noenq()
+    io.out.header.enq(requestOut.bits)
+    when(io.out.header.fire()) {
       state := sAwaitData
     }
   }.elsewhen(state === sAwaitData) {
-    io.inReq.nodeq()
-    dataIn := io.inData.deq()
+    io.in.header.nodeq()
+    dataIn := io.in.data.deq()
     dataOut := {
-      val out = new WriteData(p.p)
+      val out = new TransactionData(p.p)
       out.data := bytesOut.asUInt()
       out.id := dataIn.bits.id
       out
     }
-    io.outReq.noenq()
-    io.outData.noenq()
-    when(io.inData.fire()) {
+    io.out.header.noenq()
+    io.out.data.noenq()
+    when(io.in.data.fire()) {
       state := sSendData
     }
   }.elsewhen(state === sSendData) {
-    io.inReq.nodeq()
-    io.inData.nodeq()
-    io.outReq.noenq()
-    io.outData.enq(dataOut.bits)
+    io.in.header.nodeq()
+    io.in.data.nodeq()
+    io.out.header.noenq()
+    io.out.data.enq(dataOut.bits)
     lastValue := Mux(p.encode.asBool(), bytesIn.last, bytesOut.last)
-    when(io.outData.fire()) {
+    when(io.out.data.fire()) {
       when(beatsToGo === 1.U) {
         state := sAwaitRequest
       }.otherwise {
