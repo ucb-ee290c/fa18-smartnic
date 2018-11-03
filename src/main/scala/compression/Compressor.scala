@@ -10,12 +10,16 @@ import interconnect._
 case class CoderParams(encode: Boolean = true) {
 }
 
-class DifferentialCoder(numElements: Int, width: Int = 8, encode: Boolean = true) extends Module {
+/*
+ * This module does the actual differential coding. It has no timing.
+ */
+private class DifferentialCoder(numElements: Int, byteWidth: Int = 8, encode: Boolean = true) extends Module {
   val io = IO(new Bundle {
-    val input = Input(Vec(numElements, UInt(width.W)))
-    val output = Output(Vec(numElements, UInt(width.W)))
-    val last = Input(UInt(width.W))
+    val input = Input(Vec(numElements, UInt(byteWidth.W)))
+    val output = Output(Vec(numElements, UInt(byteWidth.W)))
+    val last = Input(UInt(byteWidth.W))
   })
+  //temporary wire
   val out = Wire(io.output.cloneType)
   //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
   for (i <- 0 until io.input.length) {
@@ -27,6 +31,9 @@ class DifferentialCoder(numElements: Int, width: Int = 8, encode: Boolean = true
   io.output := out
 }
 
+/*
+ * This module lives on the CREEC bus and handles accumulation of transactions
+ */
 //TODO: deal with CREECMetadata
 class Coder(p: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
@@ -144,6 +151,9 @@ class SnappyCompressorParams extends CompressorParams {
   val outputSize = 32 + chunkSize * 7 / 6
 }
 
+/*
+ * Top-level module for whole compression scheme. Slots into CREEC bus.
+ */
 class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = {
@@ -151,7 +161,6 @@ class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
         Flipped(new CREECWriteBus(new BlockDeviceIOBusParams))
       else
         Flipped(new CREECReadBus(new BlockDeviceIOBusParams))
-
     }
     val out: CREECBus = {
       if (p.compress)
