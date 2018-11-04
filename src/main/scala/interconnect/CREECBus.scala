@@ -52,8 +52,8 @@ abstract class CREECBus(val p: BusParams) extends Bundle {
   val data = Decoupled(new TransactionData(p))
 }
 
-class CREECWriteBus(val p: BusParams) extends CREECBus(p) {
+class CREECWriteBus(override val p: BusParams) extends CREECBus(p) {
 }
 
-class CREECReadBus(val p: BusParams) extends CREECBus(p) {
+class CREECReadBus(override val p: BusParams) extends CREECBus(p) {
 }
