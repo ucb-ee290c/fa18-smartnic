@@ -2,11 +2,14 @@ package compression
 
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
+/*
+ * Golden model for basic compression.
+ */
 object CompressionUtils {
   private def differential(input: List[Byte], encode: Boolean): List[Byte] = {
     var output = List[Byte]()
     var prev = 0.toByte
-    for (i <- 0 until input.length) {
+    for (i <- input.indices) {
       output = output :+ (if (encode) (input(i) - prev).toByte else (input(i) + prev).toByte)
       prev = if (encode) input(i) else output(i)
     }
@@ -14,11 +17,11 @@ object CompressionUtils {
   }
 
   def differentialEncode(input: List[Byte]): List[Byte] = {
-    differential(input, true)
+    differential(input, encode = true)
   }
 
   def differentialDecode(input: List[Byte]): List[Byte] = {
-    differential(input, false)
+    differential(input, encode = false)
   }
 
   /*TODO all these functions have the form {create output, use 1 state variable,
@@ -29,7 +32,7 @@ object CompressionUtils {
   def runLengthEcode(input: List[Byte]): List[Byte] = {
     var output = List[Byte]()
     var run = 0
-    for (i <- 0 until input.length) {
+    for (i <- input.indices) {
       if (input(i) == 0) {
         if (run == 0) {
           output = output :+ 0.toByte
@@ -51,7 +54,7 @@ object CompressionUtils {
   def runLengthDecode(input: List[Byte]): List[Byte] = {
     var output = List[Byte]()
     var expand = false
-    for (i <- 0 until input.length) {
+    for (i <- input.indices) {
       if (expand) {
         output = output ++ List.fill(input(i) + 1)(0.toByte)
         expand = false
@@ -65,17 +68,52 @@ object CompressionUtils {
   }
 }
 
+/*
+ * Tests byte-steam run-length encoder.
+ */
+class RunLengthEncoderTester(c: RunLengthEncoder) extends PeekPokeTester(c) {
+  var inputs: List[List[Byte]] = List(
+    List(0, 0, 0, 0, 0, 0, 0, 0, 45),
+    List(2, 3, 0, 0, 0, 0, 0, 5, 7, 0, 8, 9, 0, 0, 0, 1),
+    List(9, 9, 8, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0),
+    List(0),
+    List(0, 0, 0, 0),
+    List(0, 5, 0, 5, 0, 5, 0)
+  )
+  for (input <- inputs) {
+    test(input)
+  }
+
+  def test(input: List[Byte]) = {
+    var output: List[Byte] = List[Byte]()
+    val expectedOutput = CompressionUtils.runLengthEcode(input)
+    poke(c.io.out.ready, true)
+    poke(c.io.in.valid, true)
+    var i = 0
+    while (i < input.length || output.length < expectedOutput.length) {
+      if (i < input.length) {
+        if (peek(c.io.in.ready) != BigInt(0)) {
+          poke(c.io.in.valid, true)
+          poke(c.io.in.bits.byte, input(i))
+          poke(c.io.in.bits.flag, i == input.length - 1)
+          i = i + 1
+        }
+      }
+      if (peek(c.io.out.valid) != BigInt(0)) {
+        output = output :+ peek(c.io.out.bits).toByte
+      }
+      step(1)
+      if(i > 50)
+        expect(false, "took too long.")
+    }
+//    println("in: " + input.toString())
+//    println("out: " + output.toString())
+//    println("exp: " + expectedOutput.toString())
+    expect(output == expectedOutput, "actual output did not match expected output.")
+  }
+}
+
 class DifferentialEncoderTester(c: Coder) extends PeekPokeTester(c) {
-  //  var myList = List(5, 6, 7, 6, 6, 6, 6, 6, 6, 6, 7, 6, 7, 5, 6, 7, 7, 6, 5, 6, 5).map{_.toByte}
-  //  println(myList.toString())
-  //  myList = CompressionFunctions.differentialEncode(myList)
-  //  println(myList.toString())
-  //  myList = CompressionFunctions.runLengthEcode(myList)
-  //  println(myList.toString())
-  //  myList = CompressionFunctions.runLengthDecode(myList)
-  //  println(myList.toString())
-  //  myList = CompressionFunctions.differentialDecode(myList)
-  //  println(myList.toString())
   //TODO
 }
 
@@ -83,55 +121,6 @@ class DifferentialDecoderTester(c: Coder) extends PeekPokeTester(c) {
   //TODO
 }
 
-class RunLengthEncoderTester(c: RunLengthEncoder) extends PeekPokeTester(c) {
-  val input = List(2, 3, 0, 0, 0, 0, 0, 5, 7, 0, 8, 9, 0, 0, 0, 1).map {
-    _.toByte
-  }
-  var output = List[BigInt]()
-  poke(c.io.out.ready, true)
-  poke(c.io.in.valid, true)
-  var i = 0
-  while (i < input.length) {
-    poke(c.io.in.bits, input(i))
-    step(1)
-    if (peek(c.io.out.valid) != BigInt(0)) {
-      output = output :+ peek(c.io.out.bits)
-      i = i + 1
-    } else if (peek(c.io.in.ready) != BigInt(0)) {
-      output = output :+ peek(c.io.out.bits)
-      i = i + 1
-    }
-  }
-  println(input.toString())
-  println(output.toString())
-  println(CompressionUtils.runLengthEcode(input).toString())
-
-  //  def oneInput(i: Int) = {
-  //    poke(c.io.in.bits, i)
-  //
-  //    poke(c.io.in.valid, true)
-  //    step(1)
-  //    poke(c.io.in.valid, false)
-  //
-  //    step(4)
-  //
-  //    poke(c.io.out.ready, true)
-  //    step(1)
-  //    poke(c.io.out.ready, false)
-  //
-  //    step(4)
-  //  }
-  //
-  //  oneInput(2)
-  //  oneInput(3)
-  //  oneInput(0)
-  //  oneInput(0)
-  //  oneInput(0)
-  //  oneInput(0)
-  //  oneInput(0)
-  //  oneInput(5)
-  //  oneInput(7)
-}
 
 /**
   * From within sbt use:
@@ -154,18 +143,9 @@ class CompressionTester extends ChiselFlatSpec {
   //    } should be(true)
   //  }
 
-  "RunLengthCoder" should "decode" in {
-    Driver.execute(Array("-fiwv", "--backend-name", "firrtl", "--target-dir", "test_run_dir/creec", "--top-name", "creec"), () => new RunLengthEncoder) {
+  "RunLengthCoder" should "encode" in {
+    Driver.execute(Array("-fiwv", "--backend-name", "treadle", "--tr-write-vcd", "--target-dir", "test_run_dir/creec", "--top-name", "creec"), () => new RunLengthEncoder) {
       c => new RunLengthEncoderTester(c)
     } should be(true)
-    //    Driver(() => new RunLengthEncoder(), "firrtl") {
-    //      c => new RunLengthEncoderTester(c)
-    //    } should be(true)
   }
-
-  //  "running with --fint-write-vcd" should "create a vcd file from your test" in {
-  //    iotesters.Driver.execute(Array("--fint-write-vcd"), () => new Compressor) {
-  //      c => new CompressionUnitTester(c)
-  //    } should be(true)
-  //  }
 }

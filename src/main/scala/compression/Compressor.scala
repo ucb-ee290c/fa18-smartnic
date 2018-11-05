@@ -1,6 +1,7 @@
 package compression
 
 import chisel3._
+import chisel3.core.dontTouch
 import chisel3.util._
 import interconnect._
 
@@ -20,16 +21,16 @@ class DifferentialCoder(numElements: Int, byteWidth: Int = 8, encode: Boolean = 
     val output = Output(Vec(numElements, UInt(byteWidth.W)))
     val last = Input(UInt(byteWidth.W))
   })
-//  //temporary wire
-//  val out = Wire(io.output.cloneType)
-//  //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
-//  for (i <- 0 until io.input.length) {
-//    if (encode)
-//      out(i) = io.input(i) - (if (i == 0) io.last else io.output(i - 1))
-//    else
-//      out(i) = io.input(i) + (if (i == 0) io.last else io.output(i - 1))
-//  }
-//  io.output := out
+    //temporary wire
+    val out = Wire(io.output.cloneType)
+    //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
+    for (i <- 0 until io.input.length) {
+      if (encode)
+        out(i) := io.input(i) - (if (i == 0) io.last else io.output(i - 1))
+      else
+        out(i) := io.input(i) + (if (i == 0) io.last else io.output(i - 1))
+    }
+    io.output := out
 }
 
 /*
@@ -147,14 +148,24 @@ class Coder(p: CoderParams = new CoderParams) extends Module {
 }
 
 /*
+ * A byte with a boolean flag attached.
+ */
+class FlaggedByte extends Bundle {
+  val byte = UInt(8.W)
+  val flag = Bool()
+}
+
+/*
  * This module performs run-length encoding, by looking at a stream of individual bytes.
- * Each byte that comes in is dealt with one at a time.
+ * Each byte that comes in is dealt with one at a time. The flag on the input byte is
+ * used to tell the encoder to finish off runs that are in progress when the input steam
+ * has finished.
  * //TODO: unroll this maybe somehow.
  */
 class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
                        coderParams: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(Input(UInt(8.W))))
+    val in = Flipped(Decoupled(Input(new FlaggedByte)))
     val out = Decoupled(Output(UInt(8.W)))
   })
   //define state machine
@@ -163,7 +174,9 @@ class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
 
   //register the input and output bytes
   val byteIn = RegInit(0.U(8.W))
+  val stop = RegInit(false.B)
   val byteOut = Wire(UInt(8.W))
+  dontTouch(byteOut)
 
   //keep track of how many 0's have been seen
   val run = RegInit(0.U(log2Ceil(creecParams.maxBeats * creecParams.dataWidth).W))
@@ -175,26 +188,27 @@ class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
   //state transitions
   when(state === sAccept) {
     byteOut := 0.U
-    printf("WAITING TO ACCEPT\n")
-    byteIn := io.in.deq()
+    byteIn := io.in.deq().byte
+    stop := io.in.deq().flag
     io.out.noenq()
     when(io.in.fire()) {
-      printf("ACCEPTING  %d\n", io.in.bits)
       state := sSend
     }
   }.elsewhen(state === sSend) {
-    printf("WAITING TO SEND\n")
     io.in.nodeq()
     when(byteIn === 0.U) {
-      byteOut := 0.U
-      stutter := false.B
+      byteOut := run
       run := run + 1.U
-      when(run === 0.U) {
-        io.out.enq(byteOut)
-      }.otherwise {
+      stutter := stop && run === 0.U
+      when(run =/= 0.U && !stop) {
         io.out.noenq()
         state := sAccept
-        byteIn := io.in.bits
+      }.otherwise {
+        stutterByte := run
+        io.out.enq(byteOut)
+        when(stop) {
+          run := 0.U
+        }
       }
     }.otherwise {
       run := 0.U
@@ -210,23 +224,21 @@ class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
       }
     }
     when(io.out.fire()) {
-      printf("SENT\n")
       when(stutter) {
         state := sStutter
       }.otherwise {
         state := sAccept
-        byteIn := io.in.bits
       }
     }
-  }.otherwise {
-    printf("WAITING TO SEND STUTTER\n")
+  }.otherwise /*sStutter*/ {
     io.in.nodeq()
     byteOut := stutterByte
     io.out.enq(byteOut)
+    when(stop) {
+      run := 0.U
+    }
     when(io.out.fire()) {
-      printf("SENT STUTTER\n")
       state := sAccept
-      byteIn := io.in.bits
     }
   }
 }
@@ -294,7 +306,7 @@ class RegisteredCoder(creecParams: CREECBusParams = new CREECBusParams,
     dataIn := io.in.data.deq()
     dataOut := {
       val out = new TransactionData(creecParams)
-//      out.data := bytesOut.asUInt()
+      //      out.data := bytesOut.asUInt()
       out.id := dataIn.bits.id
       out
     }
