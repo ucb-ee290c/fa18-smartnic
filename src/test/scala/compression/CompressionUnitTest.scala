@@ -231,40 +231,35 @@ class CREECDifferentialEncoderTester(c: CREECDifferentialCoder) extends PeekPoke
       expectedDatas = expectedDatas :+ Data(ByteUtils.squish(expectedData.slice(8 * i, 8 * i + 8)))
     }
 
-    println(datas.toString())
-    println(expectedDatas.toString())
-
     poke(c.io.in.header.valid, true)
     poke(c.io.in.data.valid, true)
     poke(c.io.out.header.ready, true)
     poke(c.io.out.data.ready, true)
 
-    var dataIndex = 0
+    var i = 0
     var datasOut: List[Data] = List[Data]()
-    while (dataIndex < datas.length || datasOut.length < expectedDatas.length) {
+    while (i < datas.length || datasOut.length < expectedDatas.length) {
       if (peek(c.io.in.header.ready) != BigInt(0)) {
         pokeHeader(c, header)
       }
-      if (dataIndex < datas.length) {
-        val data = datas(dataIndex)
+      if (i < datas.length) {
+        val data = datas(i)
         if (peek(c.io.in.data.ready) != BigInt(0)) {
           pokeData(c, data)
-          dataIndex = dataIndex + 1
+          i = i + 1
         }
       }
       if (peek(c.io.out.header.valid) != BigInt(0)) {
-        println(peekHeader(c).toString)
+        expect(peekHeader(c) == expectedHeader, "input and output headers did not match.")
       }
       if (peek(c.io.out.data.valid) != BigInt(0)) {
         datasOut = datasOut :+ peekData(c)
-        println("Data: %x".format(peekData(c).data))
       }
 
       step(1)
+      if (i > 200)
+        expect(good = false, "took too long.")
     }
-    println(datasOut.flatMap({ x => ByteUtils.unsquish(x.data)}).toString)
-    println(expectedData.toString)
-    println()
     expect(datasOut.flatMap({ x => ByteUtils.unsquish(x.data)}) == expectedData,
       "actual output did not match expected output.")
   }
@@ -281,19 +276,19 @@ class CREECDifferentialEncoderTester(c: CREECDifferentialCoder) extends PeekPoke
 
   def peekData(c: CREECDifferentialCoder): Data = {
     Data(
-      peek(c.io.out.data.bits.data),
-      peek(c.io.out.data.bits.id).toInt
+      data = peek(c.io.out.data.bits.data),
+      id = peek(c.io.out.data.bits.id).toInt
     )
   }
 
   def peekHeader(c: CREECDifferentialCoder): Header = {
     Header(
-      peek(c.io.out.header.bits.len).toInt,
-      peek(c.io.out.header.bits.id).toInt,
-      peek(c.io.out.header.bits.addr).toInt,
-      peek(c.io.out.header.bits.encrypted) != 0,
-      peek(c.io.out.header.bits.compressed) != 0,
-      peek(c.io.out.header.bits.ecc) != 0
+      len = peek(c.io.out.header.bits.len).toInt,
+      addr = peek(c.io.out.header.bits.addr).toInt,
+      id = peek(c.io.out.header.bits.id).toInt,
+      encrypted = peek(c.io.out.header.bits.encrypted) != 0,
+      compressed = peek(c.io.out.header.bits.compressed) != 0,
+      ecc = peek(c.io.out.header.bits.ecc) != 0
     )
   }
 
