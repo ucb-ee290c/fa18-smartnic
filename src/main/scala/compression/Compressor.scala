@@ -179,7 +179,6 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
 
   //register the header and data inputs once they have been accepted
   val headerIn = Reg(new TransactionHeader with BusAddress with CREECMetadata)
-  val dataIn = Reg(new TransactionData)
   val headerOut = Reg(new TransactionHeader with BusAddress with CREECMetadata)
   val dataOut = Reg(new TransactionData)
 
@@ -212,15 +211,14 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
   //  state when the last one is handed off.
   when(state === sAwaitHeader) {
     headerIn := io.in.header.deq()
-    beatsToGo := headerIn.len
     headerOut := {
       val out = Wire(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
-      out.addr := headerIn.addr
-      out.id := headerIn.id
-      out.len := headerIn.len
-      out.compressed := false.B
-      out.encrypted := false.B
-      out.ecc := false.B
+      out.addr := io.in.header.bits.addr
+      out.id := io.in.header.bits.id
+      out.len := io.in.header.bits.len
+      out.compressed := io.in.header.bits.compressed
+      out.encrypted := io.in.header.bits.encrypted
+      out.ecc := io.in.header.bits.ecc
       out
     }
     io.in.data.nodeq()
@@ -234,16 +232,17 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
     io.in.header.nodeq()
     io.out.data.noenq()
     io.out.header.enq(headerOut)
+    beatsToGo := headerIn.len
     when(io.out.header.fire()) {
       state := sAwaitData
     }
   }.elsewhen(state === sAwaitData) {
     io.in.header.nodeq()
-    dataIn := io.in.data.deq()
+    io.in.data.deq()
     dataOut := {
       val out = Wire(new TransactionData(creecParams))
       out.data := bytesOut.asUInt()
-      out.id := dataIn.id
+      out.id := io.in.data.bits.id
       out
     }
     io.out.header.noenq()
@@ -256,10 +255,14 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
     io.in.data.nodeq()
     io.out.header.noenq()
     io.out.data.enq(dataOut)
-    if (coderParams.encode)
+    when(beatsToGo === 1.U) {
+      lastValue := 0.S
+    }.otherwise {
+      if (coderParams.encode)
       lastValue := bytesIn.last
-    else
+      else
       lastValue := bytesOut.last
+    }
     when(io.out.data.fire()) {
       when(beatsToGo === 1.U) {
         state := sAwaitHeader
