@@ -4,7 +4,7 @@ package ecc
 
 import chisel3._
 import chisel3.util._
-import interconnect._
+//import interconnect._
 
 // References:
 // [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
@@ -70,6 +70,41 @@ object GMul {
   }
 }
 
+object GInv {
+  def shlByOne(a: UInt, dataWidth: Int, fConst: UInt): UInt = {
+    val mask = math.pow(2, dataWidth).toInt - 1
+    val tmp = Wire(UInt((dataWidth + 1).W))
+    tmp := a << 1
+    val result = Mux(tmp(dataWidth), (tmp & mask.asUInt()) ^
+                                     (fConst & mask.asUInt()), tmp)
+    result
+  }
+
+  def apply(a: UInt, dataWidth: Int, fConst: UInt): UInt = {
+    val op = a.asTypeOf(UInt(dataWidth.W))
+    val numVals = math.pow(2, dataWidth).toInt
+
+    val rootsFromOp = Seq.fill(numVals)(Wire(UInt(dataWidth.W))).scan(op)( 
+      (prev: UInt, next: UInt) => {
+      next := shlByOne(prev, dataWidth, fConst)
+      next
+    })
+
+    val rootsFromOne = Seq.fill(numVals)(Wire(UInt(dataWidth.W))).scan(1.U)( 
+      (prev: UInt, next: UInt) => {
+      next := shlByOne(prev, dataWidth, fConst)
+      next
+    })
+
+    val rootChecks = rootsFromOp.zip(rootsFromOne).map{
+      case(rootFromOp: UInt, rootFromOne: UInt) =>
+        Mux(rootFromOp === 1.U, rootFromOne, 0.U) }
+
+    val result = rootChecks.reduce(_ ^ _)
+    result
+  }
+}
+
 // This module will accept k symbols (io.in.fire() === true.B until received k symbols)
 // It will emit n symbols (io.out.fire() === true.B until sent n symbols)
 // Each symbol has a width of *symbolWidth*
@@ -129,25 +164,28 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
                      inputBitsReg, Regs(p.n - p.k - 1))
 }
 
-class SyndromeCell(val p: RSParams = new RSParams(),
-                   val cellIndex: Int = 0)
+class PolyCell(val dataWidth: Int, val fConst: Int, cellIndex: Int)
   extends Module {
   val io = IO(new Bundle {
-    val SIn = Input(UInt(p.symbolWidth.W))
-    val Rx = Input(UInt(p.symbolWidth.W))
-    val passThrough = Input(Bool())
+    val running = Input(Bool())
+    val SIn = Input(UInt(dataWidth.W))
+    val coeff = Input(UInt(dataWidth.W))
+    val Rx = Input(UInt(dataWidth.W))
 
-    val SOut = Output(UInt(p.symbolWidth.W))
+    val SOut = Output(UInt(dataWidth.W))
   })
 
-  val Reg0 = RegInit(0.U(p.symbolWidth.W))
-  val Reg1 = RegInit(0.U(p.symbolWidth.W))
-  val Reg2 = RegInit(0.U(p.symbolWidth.W))
+  val Reg0 = RegInit(0.U(dataWidth.W))
+  val Reg1 = RegInit(0.U(dataWidth.W))
+  val Reg2 = RegInit(0.U(dataWidth.W))
 
-  Reg0 := io.Rx
-  Reg1 := GMul((Reg0 ^ Reg1), p.Log2Val(cellIndex + 1).asUInt(),
-               p.symbolWidth, p.fConst.asUInt())
-  Reg2 := Mux(io.passThrough, (Reg0 ^ Reg1), io.SIn)
+  when (io.running) {
+    Reg0 := io.Rx
+    Reg1 := GMul((Reg0 ^ Reg1), io.coeff,
+                 dataWidth, fConst.asUInt())
+  }
+  Reg2 := Mux(io.running, (Reg0 ^ Reg1), io.SIn)
+
   io.SOut := Reg2
 }
 
@@ -167,48 +205,56 @@ class SyndromeCell(val p: RSParams = new RSParams(),
 // the cells should have their final value (which hopefully is zero).
 // Then each cell passes its value to the previous cell in a shift-register
 // fashion. Thus, at the output side, we would expect to receive (n - k) zeroes
+// in (n - k) successive cycles
 // This is a very simple version of systolic array which cells do not communicate
 // often (only passing data at the end)
-class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
+// This implementation is based on Horner's method
+class PolyCompute(val dataWidth: Int,
+                  val numCells: Int,
+                  val numInputs: Int,
+                  val coeffs: Seq[Int],
+                  val fConst: Int)
+  extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
-    val out = new DecoupledIO(UInt(p.symbolWidth.W))
+    val coeff = Input(UInt(dataWidth.W))
+    val in = Flipped(new DecoupledIO(UInt(dataWidth.W)))
+    val out = new DecoupledIO(UInt(dataWidth.W))
   })
 
-  val cells = Seq.tabulate(p.n - p.k)(i => Module(new SyndromeCell(p, i)))
-  val sInit :: sCompute :: sDone :: Nil = Enum(3)
-  val state = RegInit(sInit)
+  val cells = Seq.tabulate(numCells)(i => Module(new PolyCell(dataWidth, fConst, i)))
+  val sIn :: sCompute :: sOut :: Nil = Enum(3)
+  val state = RegInit(sIn)
 
   val inCnt = RegInit(0.U(32.W))
   val outCnt = RegInit(0.U(32.W))
 
-  io.in.ready := (state === sCompute)
-  io.out.valid := (state === sDone)
+  io.in.ready := (state === sIn)
+  io.out.valid := (state === sOut)
   io.out.bits := cells(0).io.SOut
 
-  // Systolic array of SyndromeCells
-  for (i <- p.n - p.k - 1 to 0 by - 1) {
+  // Systolic array of PolyCells
+  for (i <- numCells - 1 to 0 by - 1) {
+    cells(i).io.running := (state === sIn && io.in.fire()) || (state === sCompute)
     cells(i).io.Rx := io.in.bits
-
-    if (i == p.n - p.k - 1) {
-      cells(i).io.SIn := 0.U
-    } else {
-      cells(i).io.SIn := cells(i).io.SOut
+    if (numCells == 1) {
+      cells(i).io.coeff := io.coeff
+    }
+    else {
+      cells(i).io.coeff := coeffs(i).asUInt()
     }
 
-    cells(i).io.passThrough := (state === sCompute)
+    if (i == numCells - 1) {
+      cells(i).io.SIn := 0.U
+    } else {
+      cells(i).io.SIn := cells(i + 1).io.SOut
+    }
   }
 
-  when (state === sInit) {
-    state := sCompute
-    inCnt := 0.U
-    outCnt := 0.U
-  }
-
-  when (state === sCompute) {
+  when (state === sIn) {
     when (io.in.fire()) {
-      when (inCnt === p.n.asUInt() - 1.U) {
-        state := sDone
+      when (inCnt === numInputs.asUInt() - 1.U) {
+        state := sCompute
+        inCnt := 0.U
       }
       .otherwise {
         inCnt := inCnt + 1.U
@@ -216,17 +262,200 @@ class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
     }
   }
 
-  when (state === sDone) {
+  // Have an extra cycle to make sure the computation finishes
+  when (state === sCompute) {
+    state := sOut
+  }
+
+  when (state === sOut) {
     when (io.out.fire()) {
-      when (outCnt === (p.n - p.k).asUInt() - 1.U) {
-        state := sInit
+      when (outCnt === numCells.asUInt() - 1.U) {
+        state := sIn
+        outCnt := 0.U
       }
       .otherwise {
         outCnt := outCnt + 1.U
       }
     }
   }
+}
 
+class GFInversion(val p: RSParams = new RSParams()) extends Module {
+  val io = IO(new Bundle {
+    val in = Input(UInt(p.symbolWidth.W))
+    val out = Output(UInt(p.symbolWidth.W))
+  })
+
+  val inputReg = RegNext(io.in)
+  val numVals = math.pow(2, p.symbolWidth).toInt
+
+  inputReg := io.in
+
+  val tmp = GInv(inputReg, p.symbolWidth, p.fConst.asUInt())
+  val outputReg = RegNext(tmp)
+  printf("TEST %d %d\n", inputReg, outputReg)
+  io.out := outputReg
+}
+
+class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
+    val out = new DecoupledIO(UInt(p.symbolWidth.W))
+  })
+
+  val syndCmp = Module(new PolyCompute(p.symbolWidth, p.n - p.k, p.n,
+                                       p.Log2Val, p.fConst))
+
+  val numRoots = math.pow(2, p.symbolWidth).toInt
+  val chienCmp = Module(new PolyCompute(p.symbolWidth, numRoots,
+                                        p.n - p.k + 1,
+                                        p.Log2Val, p.fConst))
+
+  val sInit :: sErrorPolyGen :: sChienCmp :: sErrorMagCmp0 :: sErrorMagCmp1 :: sDone :: Nil = Enum(6)
+  val state = RegInit(sInit)
+
+  val syndCmpOutCnt = RegInit(0.U(32.W))
+  val cmpCnt = RegInit(0.U(32.W))
+
+  // Registers for Error evaluator polynomial
+  val OARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  val OBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+
+  // Registers for Error locator polynomial
+  val TARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  val TBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+
+  io.in.ready := (state === sInit)
+  io.out.valid := (state === sDone)
+
+  syndCmp.io.coeff := 0.U
+  syndCmp.io.in <> io.in
+  syndCmp.io.out.ready := (state === sInit)
+
+  when (state === sInit) {
+    OARegs(p.n - p.k) := 1.U
+    TBRegs(0) := 1.U
+
+    when (syndCmp.io.out.fire()) {
+      syndCmpOutCnt := syndCmpOutCnt + 1.U
+      OBRegs(p.n - p.k - 1) := syndCmp.io.out.bits
+      for (i <- p.n - p.k - 1 to 1 by - 1) {
+        OBRegs(i - 1) := OBRegs(i)
+      }
+    }
+
+    when (syndCmpOutCnt === (p.n - p.k - 1).asUInt()) {
+      state := sErrorPolyGen
+    }
+  }
+
+  when (state === sErrorPolyGen) {
+    when (cmpCnt === (p.n - p.k).asUInt()) {
+      state := sChienCmp
+    }
+    .otherwise {
+      cmpCnt := cmpCnt + 1.U
+      for (i <- 0 to p.n - p.k) {
+        val theta = OBRegs(p.n - p.k - 1)
+        val gamma = OARegs(p.n - p.k)
+
+        if (i == 0) {
+          OBRegs(i) := GMul(theta, OARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
+                       GMul(gamma, 0.U, p.symbolWidth, p.fConst.asUInt())
+          TBRegs(i) := GMul(theta, TARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
+                       GMul(gamma, 0.U, p.symbolWidth, p.fConst.asUInt())
+        } else {
+          OBRegs(i) := GMul(theta, OARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
+                       GMul(gamma, OBRegs(i - 1), p.symbolWidth, p.fConst.asUInt())
+          TBRegs(i) := GMul(theta, TARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
+                       GMul(gamma, TBRegs(i - 1), p.symbolWidth, p.fConst.asUInt())
+          OARegs(i) := OBRegs(i - 1)
+          TARegs(i) := TBRegs(i - 1)
+        }
+      }
+    }
+  }
+
+  chienCmp.io.coeff := 0.U
+  chienCmp.io.in.valid := (state === sChienCmp)
+  chienCmp.io.in.bits := Mux(state === sChienCmp, TBRegs(p.n - p.k), 0.U)
+  chienCmp.io.out.ready := (state === sChienCmp)
+  val chienOut = RegNext(chienCmp.io.out.bits)
+  val chienCmpOutCnt = RegInit(0.U(32.W))
+
+  // This queue stores the roots of the error location polynomial
+  // formed by TBRegs
+  val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), 1))// p.n - p.k))
+
+  chienQueue.io.enq.bits := chienCmpOutCnt
+  chienQueue.io.enq.valid := (chienCmp.io.out.bits === 0.U) &&
+                             (state === sChienCmp) &&
+                             (chienCmp.io.out.fire())
+  chienQueue.io.deq.ready := (state === sErrorMagCmp0)
+
+  when (state === sChienCmp) {
+    when (chienCmp.io.in.fire()) {
+      for (i <- 0 until p.n - p.k) {
+        TBRegs(i + 1) := TBRegs(i)
+      }
+    }
+
+    when (chienCmp.io.out.fire()) {
+      chienCmpOutCnt := chienCmpOutCnt + 1.U
+    }
+
+    when (chienCmpOutCnt === numRoots.asUInt() - 1.U) {
+      state := sErrorMagCmp0
+    }
+  }
+
+  val rootIndex = RegInit(0.U(32.W))
+  val oResult = RegInit(0.U(p.symbolWidth.W))
+  val coeffs = VecInit(p.Log2Val.map(_.U))
+
+  val oCmp = Module(new PolyCompute(p.symbolWidth, 1, p.n - p.k + 1,
+                                    p.Log2Val, p.fConst))
+  val tDerivCmp = Module(new PolyCompute(p.symbolWidth, 1, p.n - p.k + 1,
+                                         p.Log2Val, p.fConst))
+
+  oCmp.io.coeff := rootIndex
+  oCmp.io.in.valid := (state === sErrorMagCmp1)
+  oCmp.io.in.bits := OBRegs(p.n - p.k)
+  oCmp.io.out.ready := (state === sErrorMagCmp1)
+
+  tDerivCmp.io.coeff := rootIndex
+  tDerivCmp.io.in.valid := (state === sErrorMagCmp1)
+  tDerivCmp.io.in.bits := TBRegs(p.n - p.k)
+  tDerivCmp.io.out.ready := (state === sErrorMagCmp1)
+
+  when (state === sErrorMagCmp0) {
+    when (chienQueue.io.deq.fire()) {
+      rootIndex := coeffs(chienQueue.io.deq.bits)
+      state := sErrorMagCmp1
+    }
+  }
+
+  when (state === sErrorMagCmp1) {
+    when (oCmp.io.in.fire() && tDerivCmp.io.in.fire()) {
+      for (i <- 0 until p.n - p.k) {
+        OBRegs(i + 1) := OBRegs(i)
+      }
+    }
+
+    when (oCmp.io.out.fire()) {
+      oResult := oCmp.io.out.bits
+      state := sErrorMagCmp0
+    }
+  }
+
+//  printf("TEST state=%d chienIn=%d, chienOut=%d chienCmpOutCnt=%d, rootIndex=%d, oResult=%d\n",
+//    state, TBRegs(p.n - p.k), chienOut, chienCmpOutCnt, rootIndex, oResult)
+
+//  printf("TEST state=%d OBRegs(0)=%d, OBRegs(1)=%d, OBRegs(2)=%d, OBRegs(3)=%d, OBRegs(4)=%d, TBRegs(0)=%d, TBRegs(1)=%d, TBRegs(2)=%d, TBRegs(3)=%d, TBRegs(4)=%d\n",
+//    state, OBRegs(0), OBRegs(1), OBRegs(2), OBRegs(3), OBRegs(4),
+//           TBRegs(0), TBRegs(1), TBRegs(2), TBRegs(3), TBRegs(4))
+
+  io.out.bits := 0.U
 }
 
 // Top-level ECC module that hooks up with the rest of the system
@@ -240,43 +469,27 @@ class SyndromeCompute(val p: RSParams = new RSParams()) extends Module {
 //   + Receive read response from downstream block (master)
 //   + Send read response to upstream block (slave)
 // TODO: Make it generic (parameterized) to different ECC algorithms
-class ECC(val rsParams: RSParams = new RSParams(),
+class ECCEncoderWrapper(val rsParams: RSParams = new RSParams(),
           val busParams: CREECBusParams = new CREECBusParams()
   ) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new CREECBus(busParams))
-    val master = new CREECBus(busParams)
+    val slave = Flipped(new CREECWriteBus(busParams))
+    val master = new CREECWriteBus(busParams)
   })
 
-  io.master.wrReq.bits.compressed := false.B
-  io.master.wrReq.bits.ecc := true.B
-  io.master.wrReq.bits.encrypted := false.B
+  io.master.header.bits.compressed := false.B
+  io.master.header.bits.ecc := true.B
+  io.master.header.bits.encrypted := false.B
 
-  io.slave.rdData.bits.compressed := io.master.rdData.bits.compressed
-  io.slave.rdData.bits.ecc := io.master.rdData.bits.ecc
-  io.slave.rdData.bits.encrypted := io.master.rdData.bits.encrypted
+//  io.slave.rdData.bits.compressed := io.master.rdData.bits.compressed
+//  io.slave.rdData.bits.ecc := io.master.rdData.bits.ecc
+//  io.slave.rdData.bits.encrypted := io.master.rdData.bits.encrypted
 
-  io.master.wrReq.bits.addr := io.slave.wrReq.bits.addr
-  io.master.wrReq.bits.len := io.slave.wrReq.bits.len
-  io.master.wrReq.bits.id := io.slave.wrReq.bits.id
+  io.master.header.bits.addr := io.slave.header.bits.addr
+  io.master.header.bits.len := io.slave.header.bits.len
+  io.master.header.bits.id := io.slave.header.bits.id
 
-  io.master.wrData.bits.id := io.slave.wrData.bits.id
-
-  // TODO: handle read request
-  // Before even doing that, I need to implement the RSDecoder
-  io.slave.rdReq.ready := false.B
-
-  io.master.rdReq.bits.addr := io.slave.rdReq.bits.addr
-  io.master.rdReq.bits.len := io.slave.rdReq.bits.len
-  io.master.rdReq.bits.id := io.slave.rdReq.bits.id
-
-  io.master.rdReq.valid := false.B
-
-  io.slave.rdData.bits.id := io.master.rdData.bits.id
-  io.slave.rdData.bits.data := 0.U
-  io.slave.rdData.valid := false.B
-
-  io.master.rdData.ready := false.B
+  io.master.data.bits.id := io.slave.data.bits.id
 
   val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
   val sInit :: sCompute :: sDone :: Nil = Enum(3)
@@ -287,11 +500,11 @@ class ECC(val rsParams: RSParams = new RSParams(),
   val dataInReg = RegInit(0.U(busParams.dataWidth.W))
   val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
 
-  io.slave.wrReq.ready := state === sInit
-  io.slave.wrData.ready :=  state === sInit
-  io.master.wrReq.valid := state === sDone
-  io.master.wrData.valid := state === sDone
-  io.master.wrData.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
+  io.slave.header.ready := state === sInit
+  io.slave.data.ready :=  state === sInit
+  io.master.header.valid := state === sDone
+  io.master.data.valid := state === sDone
+  io.master.data.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
 
   val encInCnt = RegInit(0.U(32.W))
   val encOutCnt = RegInit(0.U(32.W))
@@ -306,9 +519,9 @@ class ECC(val rsParams: RSParams = new RSParams(),
     encOutCnt := 0.U
     itemCnt := 0.U
 
-    when (io.slave.wrReq.fire() && io.slave.wrData.fire()) {
+    when (io.slave.header.fire() && io.slave.data.fire()) {
       state := sCompute
-      dataInReg := io.slave.wrData.bits.data
+      dataInReg := io.slave.data.bits.data
     }
   }
 
@@ -330,7 +543,7 @@ class ECC(val rsParams: RSParams = new RSParams(),
   }
 
   when (state === sDone) {
-    when (io.master.wrReq.fire() && io.master.wrData.fire()) {
+    when (io.master.header.fire() && io.master.data.fire()) {
       dataOutReg := (dataOutReg >> busParams.dataWidth)
       when (itemCnt === numItems.asUInt() - 1.U) {
         state := sInit
