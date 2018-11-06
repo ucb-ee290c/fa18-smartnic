@@ -16,15 +16,20 @@ class FlaggedByte(width: Int = 8) extends Bundle {
 }
 
 /*
- * superclass for RunLengthDecoder and RunLengthEncoder.
+ * wrapper class for testing RunLengthDecoder and RunLengthEncoder.
  * //TODO: get rid of this when the two get combined.
  */
 class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
-                     byteWidth: Int = 8) extends Module {
+                     byteWidth: Int = 8, encode: Boolean) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
     val out = Decoupled(Output(UInt(byteWidth.W)))
   })
+  val coder = if (encode)
+    Module(new RunLengthEncoder)
+  else
+    Module(new RunLengthDecoder)
+  io <> coder.io
 }
 
 /*
@@ -35,7 +40,11 @@ class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
  * //TODO: unroll this maybe somehow.
  */
 class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
-                       byteWidth: Int = 8) extends RunLengthCoder {
+                       byteWidth: Int = 8) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
+    val out = Decoupled(Output(UInt(byteWidth.W)))
+  })
   //define state machine
   val sAccept :: sSend :: sStutter :: Nil = Enum(3)
   val state = RegInit(sAccept)
@@ -117,7 +126,11 @@ class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
  * //TODO: combine this with the encoder module
  */
 class RunLengthDecoder(creecParams: CREECBusParams = new CREECBusParams,
-                       byteWidth: Int = 8) extends RunLengthCoder {
+                       byteWidth: Int = 8) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
+    val out = Decoupled(Output(UInt(byteWidth.W)))
+  })
   //define states
   val sAccept :: sSend :: sStutter :: Nil = Enum(3)
   val state = RegInit(sAccept)

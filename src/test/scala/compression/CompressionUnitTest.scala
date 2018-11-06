@@ -343,13 +343,13 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "RunLengthEncoder" should "encode" in {
-    Driver.execute(testerArgs :+ "run_length_encoder", () => new RunLengthEncoder) {
+    Driver.execute(testerArgs :+ "run_length_encoder", () => new RunLengthCoder(encode = true)) {
       c => new RunLengthCoderTester(c, true)
     } should be(true)
   }
 
   "RunLengthDecoder" should "decode" in {
-    Driver.execute(testerArgs :+ "run_length_decoder", () => new RunLengthDecoder) {
+    Driver.execute(testerArgs :+ "run_length_decoder", () => new RunLengthCoder(encode = false)) {
       c => new RunLengthCoderTester(c, false)
     } should be(true)
   }
