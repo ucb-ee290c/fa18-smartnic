@@ -3,20 +3,12 @@ package aes
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
 
-/**
- * Case class holding information needed to run an individual test
- */
-case class AESTrial(
-    data_in  : BigInt, // UInt(128.W)
-    key_in   : BigInt, // UInt(128.W)
-    ref_out  : BigInt,
-)
 
 /**
- * DspTester for AES128Combinational
+ * DspTester for InvAES128Combinational
  * Does not work with FIRRTL emulator because of size
  */
-class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) extends PeekPokeTester(dut) {
+class InvAES128CombinationalTester(dut: InvAES128Combinational, trial: AESTrial) extends PeekPokeTester(dut) {
     def readOutput(signal: Bits, name : String): Unit = {
       val bigIntOut : BigInt = peek(signal)
       val hex0 : Long = (bigIntOut << 64 >> 64).toLong
@@ -30,7 +22,7 @@ class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) exten
 
     val bigIntOut : BigInt = peek(dut.io.data_out)
     logger info s"Combinational"
-    /*
+
     readOutput(dut.io.stage1out, "stage1out")
     readOutput(dut.io.stage2key, "stage2key")
     readOutput(dut.io.stage2out, "stage2out")
@@ -43,7 +35,7 @@ class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) exten
     readOutput(dut.io.stage7out, "stage7out")
     readOutput(dut.io.stage8out, "stage8out")
     readOutput(dut.io.stage9out, "stage9out")
-    */
+
 
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
     val hex1 : Long = (bigIntOut >> 64).toLong
@@ -55,20 +47,20 @@ class AES128CombinationalTester(dut: AES128Combinational, trial: AESTrial) exten
 /**
  * Convenience function for running tests
  */
-object AES128CombinationalTester {
+object InvAES128CombinationalTester {
   def apply(trial: AESTrial): Boolean = {
-    chisel3.iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () => new AES128Combinational()) {
-      c => new AES128CombinationalTester(c, trial)
+    chisel3.iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () => new InvAES128Combinational()) {
+      c => new InvAES128CombinationalTester(c, trial)
     }
   }
 }
-
+/*
 /**
   * DspTester for AES128
   * Currently runs 1 trial
   */
 class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
-    logger info s"Time-interleaved AES128"
+    logger info s"Pipelined AES128"
     val maxCyclesWait = 12
     var cyclesWaiting = 0
 
@@ -118,4 +110,4 @@ object AES128Tester {
       c => new AES128Tester(c, trial)
     }
   }
-}
+}*/
