@@ -20,25 +20,28 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
                      val nBuffers: Int = 8,
                      val nBlockDeviceTrackers: Int = 1) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new CREECBus(new CREECBusParams))
-    val master = new CREECBus(new BlockDeviceIOBusParams)
+    val wrSlave = new CREECWriteBus(new CREECBusParams)
+    val wrMaster = new CREECWriteBus(new BlockDeviceIOBusParams)
+
+    val rdSlave = new CREECReadBus(new BlockDeviceIOBusParams)
+    val rdMaster = new CREECReadBus(new CREECBusParams)
   })
 
-  class DataBuffer extends Module {
-    val mem = SyncReadMem(maxBlockLength * sectorSize, )
-    val buffers: Seq[SyncReadMem[UInt]] = Seq.fill(nBuffers)(SyncReadMem(maxBlockLength*sectorSize*8 / io.slave.p.dataWidth, UInt(io.slave.p.dataWidth.W)))
-  }
+  //class DataBuffer extends Module {
+    //val mem = SyncReadMem(maxBlockLength * sectorSize, )
+    //val buffers: Seq[SyncReadMem[UInt]] = Seq.fill(nBuffers)(SyncReadMem(maxBlockLength*sectorSize*8 / io.slave.p.dataWidth, UInt(io.slave.p.dataWidth.W)))
+  //}
 
   // Parameterization requirements
   require(isPow2(maxSectors))
   require(isPow2(sectorSize))
 
   // Staic assertions
-  when (io.slave.wrReq.fire()) {
+  when (io.wrSlave.header.fire()) {
     //assert((io.slave.wrReq.bits.addr % sectorSize.U) === 0.U)
     // TODO: assert that beats per write transaction don't exceed maxBlockLength that can be stored per sector
   }
-  when (io.master.wrReq.fire()) {
+  when (io.rdSlave.header.fire()) {
     //assert((io.master.wrReq.bits.addr % sectorSize.U) === 0.U)
   }
 
@@ -80,7 +83,7 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
 
   // Data Buffers (to hold write data for each sector before the data are packed)
   // TODO: support different data widths from CREECBus and to BlockDeviceIOBus (width converter required)
-  val buffers: Seq[SyncReadMem[UInt]] = Seq.fill(nBuffers)(SyncReadMem(maxBlockLength*sectorSize*8 / io.slave.p.dataWidth, UInt(io.slave.p.dataWidth.W)))
+  //val buffers: Seq[SyncReadMem[UInt]] = Seq.fill(nBuffers)(SyncReadMem(maxBlockLength*sectorSize*8 / io.slave.p.dataWidth, UInt(io.slave.p.dataWidth.W)))
 
   // Global FSM
   /** First figure out how to handle writes
@@ -94,28 +97,28 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
   val sIdle :: sFetchCacheReq :: sFetchCacheFilling :: sSendToBuffer :: Nil = Enum(4)
   val state = RegInit(sIdle)
 
-  val workingWrite = Reg(new WriteRequest(io.master.p) with BusAddress)
+  val workingWrite = Reg(new TransactionHeader(io.wrSlave.p) with BusAddress)
 
-  io.slave.wrReq.ready := state === sIdle
-  io.slave.wrData.ready := state === sSendToBuffer
+  io.wrSlave.header.ready := state === sIdle
+  io.wrSlave.data.ready := state === sSendToBuffer
 
-  io.master.rdReq.bits.addr := workingWrite.addr
-  io.master.rdReq.bits.id := 0.U // TODO: threaded reads from BlockDevice
-  io.master.rdReq.bits.len := 64.U
-  io.master.rdReq.valid := state === sFetchCacheReq
-  val cacheFetchCounter = Reg(UInt(log2Ceil(io.slave.p.maxBeats).W))
+  io.rdMaster.header.bits.addr := workingWrite.addr
+  io.rdMaster.header.bits.id := 0.U // TODO: threaded reads from BlockDevice
+  io.rdMaster.header.bits.len := 64.U
+  io.rdMaster.header.valid := state === sFetchCacheReq
+  val cacheFetchCounter = Reg(UInt(log2Ceil(io.wrSlave.p.maxBeats).W))
 
   switch (state) {
     is (sIdle) {
       // TODO: don't always fetch cache
-      when (io.slave.wrReq.fire()) {
-        workingWrite := io.slave.wrReq
+      when (io.wrSlave.header.fire()) {
+        workingWrite := io.wrSlave.header
         //when (tableValid && tableOffset === io.slave.wrReq.bits.addr)
         state := sFetchCacheReq
       }
     }
     is (sFetchCacheReq) {
-      when (io.master.rdReq.fire()) {
+      when (io.rdMaster.header.fire()) {
         cacheFetchCounter := 63.U
         state := sFetchCacheFilling
       }.otherwise {
@@ -123,12 +126,12 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
       }
     }
     is (sFetchCacheFilling) {
-      when (io.slave.rdData.fire()) {
+      when (io.rdMaster.data.fire()) {
         cacheFetchCounter := cacheFetchCounter - 1.U
         when (cacheFetchCounter === 0.U) {
           state := sSendToBuffer
         }
-        table(63.U - cacheFetchCounter) := io.slave.rdData.bits.data.asTypeOf(new TableEntry)
+        table(63.U - cacheFetchCounter) := io.rdMaster.data.bits.data.asTypeOf(new TableEntry)
       }
     }
     is (sSendToBuffer) {

@@ -247,9 +247,9 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
   val state = RegInit(sAwaitHeader)
 
   //register the header and data inputs once they have been accepted
-  val headerIn = Reg(new TransactionHeader with BusAddress with CREECMetadata)
-  val headerOut = Reg(new TransactionHeader with BusAddress with CREECMetadata)
-  val dataOut = Reg(new TransactionData)
+  val headerIn = Reg(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+  val headerOut = Reg(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+  val dataOut = Reg(new TransactionData(creecParams))
 
   //keep track of how many more data beats we need to process
   val beatsToGo = Reg(io.in.header.bits.len.cloneType)

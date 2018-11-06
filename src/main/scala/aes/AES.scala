@@ -591,8 +591,8 @@ class AES128EncrypterWrapper extends Module {
         val master = Flipped(new CREECWriteBus(new CREECBusParams))
     })
     // Hookup AES128 to the slave and master port here
-    io.slave.wrHeader.ready := false.B
-    io.master.wrHeader.valid := false.B
+    io.slave.header.ready := false.B
+    io.master.header.valid := false.B
 }
 
 class AES128DecrypterWrapper extends Module {
@@ -601,6 +601,6 @@ class AES128DecrypterWrapper extends Module {
         val master = Flipped(new CREECReadBus(new CREECBusParams))
     })
     // Hookup the decrypter
-    io.slave.rdHeader.ready := false.B
-    io.master.rdHeader.valid := false.B
+    io.slave.header.ready := false.B
+    io.master.header.valid := false.B
 }
