@@ -94,9 +94,9 @@ object ByteUtils {
 }
 
 /*
- * Tests non-timed differential coder block in the encode mode.
+ * Tests non-timed differential coder block.
  */
-class DifferentialEncoderTester(c: DifferentialCoder) extends PeekPokeTester(c) {
+class DifferentialCoderTester(c: DifferentialCoder, encode: Boolean) extends PeekPokeTester(c) {
   val inputs: List[List[Byte]] = List(
     List(3, 4, 5, 6, 7, 8, 9, 9),
     List(0, 0, 0, 0, 0, 0, 0, 0),
@@ -104,26 +104,8 @@ class DifferentialEncoderTester(c: DifferentialCoder) extends PeekPokeTester(c) 
     List(1, 56, 97, 0, 100, 23, 5, 5),
     List(1, 1, 2, 2, 3, 3, 4, 4),
     List(4, 4, 3, 3, 2, 2, 1, 1),
-    List(5, 4, 5, 6, 5, 4, 5, 6)
-  )
-  val expectedOutput: List[Byte] = CompressionUtils.differentialEncode(inputs.flatten)
-  var last: Byte = 0
-  for (i <- inputs.indices) {
-    for (j <- 0 until 8)
-      poke(c.io.input(j), inputs(i)(j))
-    poke(c.io.last, last)
-    step(1)
-    last = inputs(i).last
-    expect(peek(c.io.output).map({ x => x.toByte }).toList == expectedOutput.slice(8 * i, 8 * (i + 1)),
-      "actual output did not match expected output.")
-  }
-}
+    List(5, 4, 5, 6, 5, 4, 5, 6),
 
-/*
- * Tests non-timed differential coder block in the decode mode.
- */
-class DifferentialDecoderTester(c: DifferentialCoder) extends PeekPokeTester(c) {
-  val inputs: List[List[Byte]] = List(
     List(3, 1, 1, 1, 1, 1, 1, 0),
     List(-9, 0, 0, 0, 0, 0, 0, 0),
     List(1, 0, 0, 0, 0, 0, 0, 0),
@@ -132,14 +114,20 @@ class DifferentialDecoderTester(c: DifferentialCoder) extends PeekPokeTester(c) 
     List(0, 0, -1, 0, -1, 0, -1, 0),
     List(4, -1, 1, 1, -1, -1, 1, 1)
   )
-  val expectedOutput: List[Byte] = CompressionUtils.differentialDecode(inputs.flatten)
+  val expectedOutput: List[Byte] = if (encode)
+    CompressionUtils.differentialEncode(inputs.flatten)
+  else
+    CompressionUtils.differentialDecode(inputs.flatten)
   var last: Byte = 0
   for (i <- inputs.indices) {
     for (j <- 0 until 8)
       poke(c.io.input(j), inputs(i)(j))
     poke(c.io.last, last)
     step(1)
-    last = peek(c.io.output).last.toByte
+    last = if (encode)
+      inputs(i).last
+    else
+      peek(c.io.output).last.toByte
     expect(peek(c.io.output).map({ x => x.toByte }).toList == expectedOutput.slice(8 * i, 8 * (i + 1)),
       "actual output did not match expected output.")
   }
@@ -192,9 +180,9 @@ class RunLengthDecoderTester(c: RunLengthDecoder) extends PeekPokeTester(c) {
 }
 
 /*
- * Full CREEC-level test of differential encoding.
+ * Full CREEC-level test of differential coding.
  */
-class CREECDifferentialEncoderTester(c: CREECDifferentialCoder) extends PeekPokeTester(c) {
+class CREECDifferentialCoderTester(c: CREECDifferentialCoder, encode: Boolean) extends PeekPokeTester(c) {
   val allTestAddrs = List(611, 612, 613)
   val allTestLens = List(5, 1, 2)
   val allTestDatas = List(
@@ -214,12 +202,15 @@ class CREECDifferentialEncoderTester(c: CREECDifferentialCoder) extends PeekPoke
     )
   )
 
-  for(i <- allTestAddrs.indices) {
+  for (i <- allTestAddrs.indices) {
     test(allTestAddrs(i), allTestLens(i), allTestDatas(i))
   }
 
   def test(addr: Int, len: Int, data: List[Byte]): Unit = {
-    val expectedData = CompressionUtils.differentialEncode(data)
+    val expectedData = if (encode)
+      CompressionUtils.differentialEncode(data)
+    else
+      CompressionUtils.differentialDecode(data)
     var header = Header(len, addr)
     var expectedHeader = Header(len, addr)
     var datas: List[Data] = List[Data]()
@@ -260,7 +251,7 @@ class CREECDifferentialEncoderTester(c: CREECDifferentialCoder) extends PeekPoke
       if (i > 200)
         expect(good = false, "took too long.")
     }
-    expect(datasOut.flatMap({ x => ByteUtils.unsquish(x.data)}) == expectedData,
+    expect(datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }) == expectedData,
       "actual output did not match expected output.")
   }
 
@@ -307,11 +298,6 @@ class CREECDifferentialEncoderTester(c: CREECDifferentialCoder) extends PeekPoke
   }
 }
 
-class CREECDifferentialDecoderTester(c: CREECDifferentialCoder) extends PeekPokeTester(c) {
-  //TODO
-}
-
-
 /**
   * From within sbt use:
   * testOnly example.test.CompressionTester
@@ -328,14 +314,14 @@ class CompressionTester extends ChiselFlatSpec {
 
   "DifferentialCoderTester" should "encode" in {
     Driver.execute(testerArgs :+ "differential_encoder", () => new DifferentialCoder) {
-      c => new DifferentialEncoderTester(c)
+      c => new DifferentialCoderTester(c, true)
     } should be(true)
   }
 
   "DifferentialCoderTester" should "decode" in {
     Driver.execute(testerArgs :+ "differential_decoder", () => new DifferentialCoder(
       p = CoderParams(encode = false))) {
-      c => new DifferentialDecoderTester(c)
+      c => new DifferentialCoderTester(c, false)
     } should be(true)
   }
 
@@ -353,14 +339,14 @@ class CompressionTester extends ChiselFlatSpec {
 
   "CREECDifferentialCoder" should "encode" in {
     Driver.execute(testerArgs :+ "creec_differential_encoder", () => new CREECDifferentialCoder) {
-      c => new CREECDifferentialEncoderTester(c)
+      c => new CREECDifferentialCoderTester(c, true)
     } should be(true)
   }
 
   "CREECDifferentialCoder" should "decode" in {
     Driver.execute(testerArgs :+ "creec_differential_decoder", () => new CREECDifferentialCoder(
       coderParams = CoderParams(encode = false))) {
-      c => new CREECDifferentialDecoderTester(c)
+      c => new CREECDifferentialCoderTester(c, false)
     } should be(true)
   }
 }

@@ -133,22 +133,6 @@ class DifferentialCoder(numElements: Int = 8, byteWidth: Int = 8, p: CoderParams
   io.output := out
 }
 
-//TODO ===========================================================================================
-//TODO ===========================================================================================
-//TODO ===========================================================================================
-
-class RunLengthDecoder(creecParams: CREECBusParams = new CREECBusParams,
-                       byteWidth: Int = 8) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(Input(UInt(byteWidth.W))))
-    val out = Decoupled(Output(UInt(byteWidth.W)))
-  })
-  //TODO
-  io.out.valid := false.B
-  io.in.ready := false.B
-  io.out.bits := DontCare
-}
-
 /*
  * This module lives on the CREEC bus and handles accumulation of transactions.
  */
@@ -259,9 +243,9 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
       lastValue := 0.S
     }.otherwise {
       if (coderParams.encode)
-      lastValue := bytesIn.last
+        lastValue := bytesIn.last
       else
-      lastValue := bytesOut.last
+        lastValue := bytesOut.last
     }
     when(io.out.data.fire()) {
       when(beatsToGo === 1.U) {
@@ -272,6 +256,22 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
       }
     }
   }
+}
+
+//TODO ===========================================================================================
+//TODO ===========================================================================================
+//TODO ===========================================================================================
+
+class RunLengthDecoder(creecParams: CREECBusParams = new CREECBusParams,
+                       byteWidth: Int = 8) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(Input(UInt(byteWidth.W))))
+    val out = Decoupled(Output(UInt(byteWidth.W)))
+  })
+  //TODO
+  io.out.valid := false.B
+  io.in.ready := false.B
+  io.out.bits := DontCare
 }
 
 /*
