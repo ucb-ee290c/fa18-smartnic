@@ -16,27 +16,35 @@ class FlaggedByte(width: Int = 8) extends Bundle {
 }
 
 /*
- * This module performs run-length encoding, by looking at a stream of individual bytes.
+ * superclass for RunLengthDecoder and RunLengthEncoder.
+ * //TODO: get rid of this when the two get combined.
+ */
+class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
+                     byteWidth: Int = 8) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
+    val out = Decoupled(Output(UInt(byteWidth.W)))
+  })
+}
+
+/*
+ * This module performs run-length encoding by looking at a stream of individual bytes.
  * Each byte that comes in is dealt with one at a time. The flag on the input byte is
  * used to tell the encoder to finish off runs that are in progress when the input steam
  * has finished.
  * //TODO: unroll this maybe somehow.
  */
 class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
-                       byteWidth: Int = 8) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
-    val out = Decoupled(Output(UInt(byteWidth.W)))
-  })
+                       byteWidth: Int = 8) extends RunLengthCoder {
   //define state machine
   val sAccept :: sSend :: sStutter :: Nil = Enum(3)
   val state = RegInit(sAccept)
 
   //register the input and output bytes
   val byteIn = RegInit(0.U(byteWidth.W))
-  val stop = RegInit(false.B)
   val byteOut = Wire(UInt(byteWidth.W))
   dontTouch(byteOut)
+  val stop = RegInit(false.B)
 
   //keep track of how many 0's have been seen
   val run = RegInit(0.U(log2Ceil(creecParams.maxBeats * creecParams.dataWidth).W))
@@ -99,6 +107,70 @@ class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
     }
     when(io.out.fire()) {
       state := sAccept
+    }
+  }
+}
+
+/*
+ * This module performs run-length decoding by looking at a stream of individual bytes.
+ * Each byte that comes in is dealt with one at a time.
+ * //TODO: combine this with the encoder module
+ */
+class RunLengthDecoder(creecParams: CREECBusParams = new CREECBusParams,
+                       byteWidth: Int = 8) extends RunLengthCoder {
+  //define states
+  val sAccept :: sSend :: sStutter :: Nil = Enum(3)
+  val state = RegInit(sAccept)
+
+  //how many zeros need to be sent in the stutter state
+  val zeros = RegInit(0.U(log2Ceil(creecParams.maxBeats * creecParams.dataWidth).W))
+  val goToStutter = RegInit(false.B)
+
+  //register input and output bytes
+  val byteIn = RegInit(0.U(byteWidth.W))
+  val byteOut = Wire(UInt(byteWidth.W))
+  dontTouch(byteOut)
+
+  //state machine
+  when(state === sAccept) {
+    byteOut := 0.U
+    io.out.noenq()
+    byteIn := io.in.deq().byte
+    when(io.in.fire()) {
+      state := sSend
+    }
+  }.elsewhen(state === sSend) {
+    io.in.nodeq()
+    byteOut := byteIn
+    when(goToStutter) {
+      io.out.noenq()
+      when(byteIn === 0.U) {
+        state := sAccept
+      }.otherwise {
+        state := sStutter
+      }
+      goToStutter := false.B
+      zeros := byteIn - 1.U
+    }.otherwise {
+      io.out.enq(byteOut)
+      when(byteIn === 0.U) {
+        goToStutter := true.B
+      }
+    }
+    when(io.out.fire()) {
+      state := sAccept
+    }
+  }.otherwise /*sStutter*/ {
+    io.in.nodeq()
+    byteOut := 0.U
+    io.out.enq(byteOut)
+    when(io.out.fire()) {
+      zeros := zeros - 1.U
+      when(zeros === 0.U) {
+        state := sAccept
+      }.otherwise {
+        state := sStutter
+      }
     }
   }
 }
@@ -262,17 +334,6 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
 //TODO ===========================================================================================
 //TODO ===========================================================================================
 
-class RunLengthDecoder(creecParams: CREECBusParams = new CREECBusParams,
-                       byteWidth: Int = 8) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(Input(UInt(byteWidth.W))))
-    val out = Decoupled(Output(UInt(byteWidth.W)))
-  })
-  //TODO
-  io.out.valid := false.B
-  io.in.ready := false.B
-  io.out.bits := DontCare
-}
 
 /*
  * This module builds a coder, but keeps all the input and output in a buffer.

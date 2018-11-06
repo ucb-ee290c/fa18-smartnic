@@ -134,33 +134,48 @@ class DifferentialCoderTester(c: DifferentialCoder, encode: Boolean) extends Pee
 }
 
 /*
- * Tests byte-steam run-length encoder.
+ * Tests byte-steam run-length coder.
  */
-class RunLengthEncoderTester(c: RunLengthEncoder) extends PeekPokeTester(c) {
-  val inputs: List[List[Byte]] = List(
-    List(0, 0, 0, 0, 0, 0, 0, 0, 45),
-    List(2, 3, 0, 0, 0, 0, 0, 5, 7, 0, 8, 9, 0, 0, 0, 1),
-    List(9, 9, 8, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0),
-    List(0),
-    List(0, 0, 0, 0),
-    List(0, 5, 0, 5, 0, 5, 0)
-  )
+class RunLengthCoderTester(c: RunLengthCoder, encode: Boolean) extends PeekPokeTester(c) {
+  val inputs: List[List[Byte]] = if (encode)
+    List(
+      List(0, 0, 0, 0, 0, 0, 0, 0, 45),
+      List(2, 3, 0, 0, 0, 0, 0, 5, 7, 0, 8, 9, 0, 0, 0, 1),
+      List(9, 9, 8, 7, 8, 9, 0, 0, 0, 0, 0, 0, 0),
+      List(0),
+      List(0, 0, 0, 0),
+      List(0, 5, 0, 5, 0, 5, 0)
+    )
+  else
+    List(
+      List(0, 7, 45),
+      List(2, 3, 0, 4, 5, 7, 0, 0, 8, 9, 0, 2, 1),
+      List(9, 9, 8, 7, 8, 9, 0, 6),
+      List(0, 0),
+      List(0, 3),
+      List(0, 0, 5, 0, 0, 5, 0, 0, 5, 0, 0)
+    )
   for (input <- inputs) {
     test(input)
   }
 
   def test(input: List[Byte]): Boolean = {
     var output: List[Byte] = List[Byte]()
-    val expectedOutput = CompressionUtils.runLengthEcode(input)
+    val expectedOutput = if (encode)
+      CompressionUtils.runLengthEcode(input)
+    else
+      CompressionUtils.runLengthDecode(input)
     poke(c.io.out.ready, true)
     poke(c.io.in.valid, true)
     var i = 0
+    var timeout = 0
     while (i < input.length || output.length < expectedOutput.length) {
       if (i < input.length) {
         if (peek(c.io.in.ready) != BigInt(0)) {
           poke(c.io.in.valid, true)
+          if (encode)
+            poke(c.io.in.bits.flag, i == input.length - 1)
           poke(c.io.in.bits.byte, input(i))
-          poke(c.io.in.bits.flag, i == input.length - 1)
           i = i + 1
         }
       }
@@ -168,15 +183,17 @@ class RunLengthEncoderTester(c: RunLengthEncoder) extends PeekPokeTester(c) {
         output = output :+ peek(c.io.out.bits).toByte
       }
       step(1)
-      if (i > 50)
+      timeout += 1
+      if (timeout > 50) {
         expect(good = false, "took too long.")
+        return false
+      }
     }
+    println ("in: " + input.toString () )
+    println ("out: " + output.toString () )
+    println ("exp: " + expectedOutput.toString () )
     expect(output == expectedOutput, "actual output did not match expected output.")
   }
-}
-
-class RunLengthDecoderTester(c: RunLengthDecoder) extends PeekPokeTester(c) {
-  //TODO
 }
 
 /*
@@ -312,13 +329,13 @@ class CompressionTester extends ChiselFlatSpec {
     "--target-dir", "test_run_dir/creec",
     "--top-name")
 
-  "DifferentialCoderTester" should "encode" in {
+  "DifferentialCoder" should "encode" in {
     Driver.execute(testerArgs :+ "differential_encoder", () => new DifferentialCoder) {
       c => new DifferentialCoderTester(c, true)
     } should be(true)
   }
 
-  "DifferentialCoderTester" should "decode" in {
+  "DifferentialCoder" should "decode" in {
     Driver.execute(testerArgs :+ "differential_decoder", () => new DifferentialCoder(
       p = CoderParams(encode = false))) {
       c => new DifferentialCoderTester(c, false)
@@ -327,13 +344,13 @@ class CompressionTester extends ChiselFlatSpec {
 
   "RunLengthEncoder" should "encode" in {
     Driver.execute(testerArgs :+ "run_length_encoder", () => new RunLengthEncoder) {
-      c => new RunLengthEncoderTester(c)
+      c => new RunLengthCoderTester(c, true)
     } should be(true)
   }
 
   "RunLengthDecoder" should "decode" in {
     Driver.execute(testerArgs :+ "run_length_decoder", () => new RunLengthDecoder) {
-      c => new RunLengthDecoderTester(c)
+      c => new RunLengthCoderTester(c, false)
     } should be(true)
   }
 
