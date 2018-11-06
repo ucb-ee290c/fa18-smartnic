@@ -290,6 +290,7 @@ class CipherTopWrapper extends Bundle {
   val subbytetop = Output(UInt(128.W))
   val shiftrowstop = Output(UInt(128.W))
   val mixcolumnstop = Output(UInt(128.W))
+  val addroundkey = Output(UInt(128.W))
 }
 
 class SubCipherWrapper extends Module {
@@ -303,6 +304,7 @@ class SubCipherWrapper extends Module {
   io.subbytetop :=  dut.io.subbyteout
   io.shiftrowstop :=  dut.io.shiftrowsout
   io.mixcolumnstop :=  dut.io.mixcolsout
+  io.addroundkey := dut.io.addroundkey
 }
 
 /**

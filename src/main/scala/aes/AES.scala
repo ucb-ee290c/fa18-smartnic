@@ -93,6 +93,8 @@ class MMDataBundle extends Bundle {
     val data_out = Output(Vec(4, UInt(8.W)))
 }
 //TODO: Resolve
+//Bitwise XOR and composition are valid
+//Critical path is 3 gmul2 blocks plus 3-way XOR
 trait MixColumnsFunctions {
     def gmul2(a : UInt): UInt = {
         Mux((a & 0x80.U(8.W)).orR, (a << 1) ^ 0x1b.U(8.W), a << 1)
@@ -100,6 +102,29 @@ trait MixColumnsFunctions {
 
     def gmul3(a : UInt): UInt = {
         Mux((a & 0x80.U(8.W)).orR, (a << 1) ^ a ^ 0x1b.U(8.W), (a << 1) ^ a)
+    }
+
+    def gmul4(a: UInt): UInt = {
+        gmul2(gmul2(a))
+    }
+    def gmul8(a: UInt): UInt = {
+        gmul2(gmul2(gmul2(a)))
+    }
+
+    def gmul9(a : UInt): UInt = {
+        a ^ gmul8(a)
+    }
+
+    def gmul11(a : UInt): UInt = {
+        a ^ gmul2(a) ^ gmul8(a)
+    }
+
+    def gmul13(a : UInt): UInt = {
+        a ^ gmul4(a) ^ gmul8(a)
+    }
+
+    def gmul14(a : UInt): UInt = {
+        gmul2(a) ^ gmul4(a) ^ gmul8(a)
     }
 }
 
@@ -139,6 +164,23 @@ class MixColumns extends Module {
     d_out(3) := MM3.io.data_out
 }
 
+
+class RCONBundle extends Bundle{
+    val last_rcon = Input(UInt(8.W))
+    val next_rcon = Output(UInt(8.W))
+}
+
+class RCON extends Module {
+    val io = IO(new RCONBundle)
+
+    when ((io.last_rcon & 0x80.U(8.W)).orR) {
+        io.next_rcon := (io.last_rcon << 1) ^ 0x1B.U(8.W) // TODO: make intellij resolve the XOR
+    } .otherwise {
+        io.next_rcon := io.last_rcon << 1
+    }
+
+}
+
 class KeyExpansionBundle extends Bundle {
     val key_in  = Input(Vec(16, UInt(8.W))) //Key for this stage
     val key_out = Output(Vec(16, UInt(8.W))) // calculate the next stage
@@ -163,10 +205,90 @@ class KeyExpansion extends Module with hasSubByte {
 
 }
 
+//Calculates the entire schedule
+class KeyScheduleBundle extends Bundle {
+    val key_in  = Input(Vec(16, UInt(8.W)))
+    val key_schedule = Output(Vec(10, (Vec(16, UInt(8.W)))))
+}
+
+trait keyConnect {
+    def connectRCON(prev: RCON, next: RCON) = {
+        next.io.last_rcon := prev.io.next_rcon
+    }
+
+    def connectKeyStage(prev: KeyExpansion, next: KeyExpansion, rcon: RCON) = {
+        next.io.key_in := prev.io.key_out
+        next.io.rcon := rcon.io.next_rcon
+    }
+}
+
+//TODO: investigate time-interleaved implementation
+//TODO: Investigate parallel generation imeplementation
+class KeySchedule extends Module with keyConnect{
+    val io = IO(new KeyScheduleBundle())
+
+    val r2 = Module( new RCON())
+    val r3 = Module( new RCON())
+    val r4 = Module( new RCON())
+    val r5 = Module( new RCON())
+    val r6 = Module( new RCON())
+    val r7 = Module( new RCON())
+    val r8 = Module( new RCON())
+    val r9 = Module( new RCON())
+    val r10 = Module( new RCON())
+
+    r2.io.last_rcon := 1.U(8.W)
+    connectRCON(r2, r3)
+    connectRCON(r3, r4)
+    connectRCON(r4, r5)
+    connectRCON(r5, r6)
+    connectRCON(r6, r7)
+    connectRCON(r7, r8)
+    connectRCON(r8, r9)
+    connectRCON(r9, r10)
+
+    val k1 = Module( new KeyExpansion())
+    val k2 = Module( new KeyExpansion())
+    val k3 = Module( new KeyExpansion())
+    val k4 = Module( new KeyExpansion())
+    val k5 = Module( new KeyExpansion())
+    val k6 = Module( new KeyExpansion())
+    val k7 = Module( new KeyExpansion())
+    val k8 = Module( new KeyExpansion())
+    val k9 = Module( new KeyExpansion())
+    val k10 = Module( new KeyExpansion())
+
+    k1.io.rcon := 1.U(8.W)
+    k1.io.key_in := io.key_in
+
+    connectKeyStage(k1, k2, r2)
+    connectKeyStage(k2, k3, r3)
+    connectKeyStage(k3, k4, r4)
+    connectKeyStage(k4, k5, r5)
+    connectKeyStage(k5, k6, r6)
+    connectKeyStage(k6, k7, r7)
+    connectKeyStage(k7, k8, r8)
+    connectKeyStage(k8, k9, r9)
+    connectKeyStage(k9, k10, r10)
+
+    io.key_schedule(0) := k1.io.key_out
+    io.key_schedule(1) := k2.io.key_out
+    io.key_schedule(2) := k3.io.key_out
+    io.key_schedule(3) := k4.io.key_out
+    io.key_schedule(4) := k5.io.key_out
+    io.key_schedule(5) := k6.io.key_out
+    io.key_schedule(6) := k7.io.key_out
+    io.key_schedule(7) := k8.io.key_out
+    io.key_schedule(8) := k9.io.key_out
+    io.key_schedule(9) := k10.io.key_out
+}
+
+
 class DataBundleWithKeyInDebug extends DataBundleWithKeyIn {
     val subbyteout = Output(UInt(128.W))
     val shiftrowsout  = Output(UInt(128.W))
     val mixcolsout = Output(UInt(128.W))
+    val addroundkey = Output(UInt(128.W))
 }
 
 class AESCipherStage extends Module {
@@ -190,6 +312,7 @@ class AESCipherStage extends Module {
     io.subbyteout := sub_byte.io.data_out.asTypeOf(UInt(128.W))
     io.shiftrowsout := shift_rows.io.data_out.asTypeOf(UInt(128.W))
     io.mixcolsout := mix_columns.io.data_out.asTypeOf(UInt(128.W))
+    io.addroundkey := add_round_key.io.data_out.asTypeOf(UInt(128.W))
 }
 
 class AESCipherEndStage extends Module {
@@ -206,23 +329,6 @@ class AESCipherEndStage extends Module {
     shift_rows.io.data_in := sub_byte.io.data_out
     add_round_key.io.data_in := shift_rows.io.data_out
     io.data_out := add_round_key.io.data_out
-}
-
-
-class RCONBundle extends Bundle{
-    val last_rcon = Input(UInt(8.W))
-    val next_rcon = Output(UInt(8.W))
-}
-
-class RCON extends Module {
-    val io = IO(new RCONBundle)
-
-    when ((io.last_rcon & 0x80.U(8.W)).orR) {
-        io.next_rcon := (io.last_rcon << 1) ^ 0x1B.U(8.W) // TODO: make intellij resolve the XOR
-    } .otherwise {
-        io.next_rcon := io.last_rcon << 1
-    }
-
 }
 
 class AES128CompleteStageIO extends Bundle{
@@ -256,10 +362,15 @@ class AES128CompleteStage extends Module {
 
 //abuts the previous stage to the next one
 trait connectsStages {
-    def connectStages(prev : AES128CompleteStage, next: AES128CompleteStage): Unit = {
+    def connectStages(prev : AES128CompleteStage, next: AES128CompleteStage) = {
         next.io.data_in     := prev.io.data_out
         next.io.key_in      := prev.io.key_out
         next.io.last_rcon   := prev.io.next_rcon
+    }
+
+    def connectInvStages(prev: InvAESCipherStage, next: InvAESCipherStage, key: Vec[UInt] ) = {
+        next.io.data_in := prev.io.data_out
+        next.io.key_in  := key
     }
 }
 class DataBundleTop extends Bundle {
