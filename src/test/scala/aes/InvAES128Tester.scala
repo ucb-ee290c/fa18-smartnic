@@ -22,7 +22,7 @@ class InvAES128CombinationalTester(dut: InvAES128Combinational, trial: AESTrial)
 
     val bigIntOut : BigInt = peek(dut.io.data_out)
     logger info s"Combinational"
-
+    /*
     readOutput(dut.io.stage1out, "stage1out")
     readOutput(dut.io.stage2key, "stage2key")
     readOutput(dut.io.stage2out, "stage2out")
@@ -35,6 +35,7 @@ class InvAES128CombinationalTester(dut: InvAES128Combinational, trial: AESTrial)
     readOutput(dut.io.stage7out, "stage7out")
     readOutput(dut.io.stage8out, "stage8out")
     readOutput(dut.io.stage9out, "stage9out")
+    */
 
 
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
