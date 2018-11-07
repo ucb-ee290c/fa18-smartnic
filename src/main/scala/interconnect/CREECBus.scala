@@ -19,12 +19,6 @@ class BlockDeviceIOBusParams extends BusParams(64, 1, 64)
 // Used internally to connect (compression -> parity/ECC -> encryption -> mapping/MMU unit)
 class CREECBusParams extends BusParams(128, 1, 64)
 
-// TODO: traits can't take parameters in Scala
-trait BusAddress {
-  // Sector (512B) address (2TB addressable)
-  val addr = UInt(32.W)
-}
-
 /**
   * This CREECMetadata struct will be written in the sector mapping table
   */
@@ -33,6 +27,12 @@ trait CREECMetadata {
   val compressed = Bool()
   val encrypted = Bool()
   val ecc = Bool()
+}
+
+// TODO: traits can't take parameters in Scala
+trait BusAddress {
+  // Sector (512B) address (2TB addressable)
+  val addr = UInt(32.W)
 }
 
 class CREECMetadataBundle extends Bundle with CREECMetadata
@@ -52,8 +52,6 @@ abstract class CREECBus(val p: BusParams) extends Bundle {
   val data = Decoupled(new TransactionData(p))
 }
 
-class CREECWriteBus(override val p: BusParams) extends CREECBus(p) {
-}
+class CREECWriteBus(override val p: BusParams) extends CREECBus(p)
 
-class CREECReadBus(override val p: BusParams) extends CREECBus(p) {
-}
+class CREECReadBus(override val p: BusParams) extends CREECBus(p)
