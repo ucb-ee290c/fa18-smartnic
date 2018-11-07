@@ -497,6 +497,113 @@ class DataBundleTopDecoupledDebug extends DataBundleTopDecoupled {
     val counter     = Output(UInt(4.W))
 }
 
+class DataBundleKeyScheduleDecoupled extends Bundle {
+    val data_in      = Flipped(Decoupled(UInt(128.W)))
+    val data_out     = Decoupled(UInt(128.W))
+    val key_in       = Input(UInt(128.W))
+    val key_schedule = Input(Vec(10, Vec(16, UInt(8.W))))
+    val key_ready    = Input(Bool())
+}
+
+class DataBundleKeyScheduleDecoupledDebug extends DataBundleKeyScheduleDecoupled {
+    val running     = Output(Bool())
+    val peek_stage  = Output(UInt(128.W))
+    val counter     = Output(UInt(4.W))
+}
+
+class AES128TimeInterleaveCompute extends Module {
+    val io = IO (new DataBundleKeyScheduleDecoupledDebug)
+
+    val data_in_top = io.data_in.bits.asTypeOf(Vec(16, UInt(8.W)))
+    val key_in_top  = io.key_in.asTypeOf(Vec(16, UInt(8.W)))
+    val key_schedule = io.key_schedule
+
+    //State Machine ---------------------------------------
+    val numStages = 10 //for AES128
+
+    val start = io.data_in.fire && io.data_out.fire && io.key_ready
+    val counter = RegInit(0.U(4.W))
+    val running = counter > 0.U
+
+    counter := Mux(running, counter-1.U,
+        Mux(start, numStages.U, counter))
+
+    val mux_select_stage1 = counter === numStages.U
+
+    // Ready Valid
+    io.data_in.ready  := !running
+    io.data_out.valid := !running
+
+    //Computations -----------------------------------------
+    //Initial round
+    val stage0_addRoundKey = Module(new AddRoundKey())
+    stage0_addRoundKey.io.key_in := key_in_top
+    stage0_addRoundKey.io.data_in := data_in_top
+    val stage0_data_out = stage0_addRoundKey.io.data_out
+
+    // Round 1
+    val stage1_cipher = Module(new AESCipherStage)
+    stage1_cipher.io.data_in := stage0_data_out
+    stage1_cipher.io.key_in := key_schedule(0)
+    val stage1_data_out = stage1_cipher.io.data_out
+
+    //stages 2-9
+    val data_reg    = Reg(Vec(16, UInt(8.W)))
+
+    val AESStage = Module( new AESCipherStage)
+    AESStage.io.data_in     := data_reg
+    AESStage.io.key_in     := io.key_schedule(10.U - counter)
+
+    val data_next   = AESStage.io.data_out
+    data_reg    := Mux(mux_select_stage1, stage1_data_out, data_next)
+
+    // output round
+    val stage10 = Module( new AESCipherEndStage )
+    stage10.io.data_in := data_reg
+    stage10.io.key_in := key_schedule(9)
+
+    val data_out_top = stage10.io.data_out.asTypeOf(UInt(128.W))
+    io.data_out.bits    := RegEnable(data_out_top, running)
+
+    //Debug
+    io.running      := running
+    io.counter      := counter
+    io.peek_stage   := data_reg.asTypeOf(UInt(128.W))
+}
+
+/*
+ * Time-interleaved AES module without iterative key generation
+ * 10 stages plus initial stage
+ * Initial and first stage are combined, making for 10 periods to complete
+ * Separately initializes keygen from compute. Expects keygen to be ready
+ * //TODO explore time-interleaved key_gen
+ */
+class AES128TimeInterleave extends Module {
+    val io = IO (new DataBundleTopDecoupledDebug)
+
+    val keygen = Module(new KeySchedule)
+    val key_in_top  = io.key_in.asTypeOf(Vec(16, UInt(8.W)))
+    keygen.io.key_in := key_in_top
+
+    val cipher = Module(new AES128TimeInterleaveCompute)
+    cipher.io.data_in.bits := io.data_in.bits
+    cipher.io.data_in.valid := io.data_in.valid
+    io.data_in.ready := cipher.io.data_in.ready
+
+    cipher.io.key_in := io.key_in
+    cipher.io.key_schedule := keygen.io.key_schedule
+    cipher.io.key_ready := true.B
+
+    io.data_out.bits := cipher.io.data_out.bits
+    io.data_out.valid := cipher.io.data_out.valid
+    cipher.io.data_out.ready := io.data_out.ready
+
+    //Debug
+    io.running      := cipher.io.running
+    io.counter      := cipher.io.counter
+    io.peek_stage   := cipher.io.peek_stage
+}
+
 /*
  * Pipelined AES module
  * 10 stages plus initial stage

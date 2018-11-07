@@ -56,6 +56,7 @@ object AESApp extends App {
   // Run the Chisel driver to generate a cordic
 //  Driver.execute(chiselArgs.toArray, () => new FixedIterativeCordic(params))
   Driver.execute(Array("None"), () => new AES128Combinational())
+  Driver.execute(Array("None"), () => new AES128TimeInterleave())
   Driver.execute(Array("None"), () => new AES128())
   Driver.execute(Array("None"), () => new InvAES128Combinational())
   Driver.execute(Array("None"), () => new InvAES128())

@@ -223,22 +223,8 @@ class InvAES128Combinational extends Module with connectsStages {
     io.stage3rcon := 4.U //TODO: deprecate
 }
 
-class DataBundleInvDecoupled extends Bundle {
-    val data_in      = Flipped(Decoupled(UInt(128.W)))
-    val data_out     = Decoupled(UInt(128.W))
-    val key_in       = Input(UInt(128.W))
-    val key_schedule = Input(Vec(10, Vec(16, UInt(8.W))))
-    val key_ready    = Input(Bool())
-}
-
-class DataBundleInvDecoupledDebug extends DataBundleInvDecoupled {
-    val running     = Output(Bool())
-    val peek_stage  = Output(UInt(128.W))
-    val counter     = Output(UInt(4.W))
-}
-
 class InvAES128TimeInterleaveCompute extends Module {
-    val io = IO (new DataBundleInvDecoupledDebug)
+    val io = IO (new DataBundleKeyScheduleDecoupledDebug)
 
     val data_in_top = io.data_in.bits.asTypeOf(Vec(16, UInt(8.W)))
     val key_in_top  = io.key_in.asTypeOf(Vec(16, UInt(8.W)))
@@ -272,7 +258,7 @@ class InvAES128TimeInterleaveCompute extends Module {
 
     val InvAESStage = Module(new InvAESCipherStage)
     InvAESStage.io.data_in     := data_reg
-    InvAESStage.io.key_in      := io.key_schedule(counter - 1.U)
+    InvAESStage.io.key_in      := key_schedule(counter - 1.U)
 
     val data_next   = InvAESStage.io.data_out
     data_reg    := Mux(mux_select_stage0, stage0_data_out, data_next)

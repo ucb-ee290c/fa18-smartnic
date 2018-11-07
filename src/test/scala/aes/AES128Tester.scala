@@ -101,7 +101,6 @@ class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
     }
 
     val bigIntOut : BigInt = peek(dut.io.data_out.bits)
-    logger info s" Output as dec: $bigIntOut"
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
     val hex1 : Long = (bigIntOut >> 64).toLong
     logger info s" Output as hex: ${hex1.toHexString} ${hex0.toHexString}"
@@ -109,9 +108,61 @@ class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
     expect(dut.io.data_out.bits, trial.ref_out, "Output did not match!")
 }
 
+//TODO: Use generic tester
+class AES128TimeInterleaveTester(dut: AES128TimeInterleave, trial: AESTrial) extends PeekPokeTester(dut) {
+  logger info s"Time-interleaved with key gen AES128"
+  val maxCyclesWait = 12
+  var cyclesWaiting = 0
+
+  //    logger info s"counter: ${peek(dut.io.counter)}"
+  //    logger info s"in ready? : ${peek(dut.io.data_in.ready) == 1}"
+  logger info s"Start!"
+
+  poke(dut.io.data_in.bits, trial.data_in)
+  poke(dut.io.key_in, trial.key_in)
+  poke(dut.io.data_out.ready, 1)
+  poke(dut.io.data_in.valid, 1)
+  step(1)
+
+  poke(dut.io.data_out.ready, 0)
+  poke(dut.io.data_in.valid, 0)
+  while ((peek(dut.io.data_out.valid) == 0) && cyclesWaiting < maxCyclesWait) {
+    cyclesWaiting += 1
+    logger info s"waited: $cyclesWaiting cycles"
+    logger info s"counter: ${peek(dut.io.counter)}"
+    //        logger info s"running? : ${peek(dut.io.running) == 1}"
+    //        var peekstage = peek(dut.io.peek_stage)
+    //        logger info s"peek stage? : ${(peekstage >> 64).toLong.toHexString} ${(peekstage << 64 >> 64).toLong.toHexString}"
+    //        logger info s"in ready? : ${peek(dut.io.data_in.ready) == 1}"
+    //        logger info s""
+    step(1)
+  }
+
+  if (cyclesWaiting >= maxCyclesWait) {
+    expect(false, "Waited too long")
+  }
+
+  val bigIntOut : BigInt = peek(dut.io.data_out.bits)
+  val hex0 : Long = (bigIntOut << 64 >> 64).toLong
+  val hex1 : Long = (bigIntOut >> 64).toLong
+  logger info s" Output as hex: ${hex1.toHexString} ${hex0.toHexString}"
+  logger info s" Expect as hex: ${(trial.ref_out >> 64).toLong.toHexString} ${(trial.ref_out << 64 >> 64).toLong.toHexString}"
+  expect(dut.io.data_out.bits, trial.ref_out, "Output did not match!")
+}
+
+
 /**
   * Convenience function for running tests
+  * Instatiates the module, then runs the tester
   */
+object AES128TimeInterleaveTester {
+  def apply(trial: AESTrial): Boolean = {
+    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AES128TimeInterleave()) {
+      c => new AES128TimeInterleaveTester(c, trial)
+    }
+  }
+}
+
 object AES128Tester {
   def apply(trial: AESTrial): Boolean = {
     chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AES128()) {
