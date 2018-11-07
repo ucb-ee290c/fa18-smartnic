@@ -223,31 +223,38 @@ class InvAES128Combinational extends Module with connectsStages {
     io.stage3rcon := 4.U //TODO: deprecate
 }
 
+class DataBundleInvDecoupled extends Bundle {
+    val data_in      = Flipped(Decoupled(UInt(128.W)))
+    val data_out     = Decoupled(UInt(128.W))
+    val key_in       = Input(UInt(128.W))
+    val key_schedule = Input(Vec(10, Vec(16, UInt(8.W))))
+    val key_ready    = Input(Bool())
+}
 
-/*
+class DataBundleInvDecoupledDebug extends DataBundleInvDecoupled {
+    val running     = Output(Bool())
+    val peek_stage  = Output(UInt(128.W))
+    val counter     = Output(UInt(4.W))
+}
 
-/*
- * Time-interleaved AES module
- * 10 stages plus initial stage
- * Initial and first stage are combined, making for 10 periods to complete
- */
-class InvAES128 extends Module {
-    val io = IO (new DataBundleTopDecoupledDebug)
+class InvAES128TimeInterleaveCompute extends Module {
+    val io = IO (new DataBundleInvDecoupledDebug)
 
     val data_in_top = io.data_in.bits.asTypeOf(Vec(16, UInt(8.W)))
     val key_in_top  = io.key_in.asTypeOf(Vec(16, UInt(8.W)))
+    val key_schedule = io.key_schedule
 
     //State Machine ---------------------------------------
     val numStages = 10 //for AES128
 
-    val start = io.data_in.fire && io.data_out.fire
+    val start = io.data_in.fire && io.data_out.fire && io.key_ready
     val counter = RegInit(0.U(4.W))
     val running = counter > 0.U
 
     counter := Mux(running, counter-1.U,
-            Mux(start, numStages.U, counter))
+        Mux(start, numStages.U, counter))
 
-    val mux_select_stage1 = counter === numStages.U
+    val mux_select_stage0 = counter === numStages.U
 
     // Ready Valid
     io.data_in.ready  := !running
@@ -255,64 +262,73 @@ class InvAES128 extends Module {
 
     //Computations -----------------------------------------
     //Initial round
-    val stage0_addRoundKey = Module(new AddRoundKey())
-    stage0_addRoundKey.io.key_in := key_in_top
-    stage0_addRoundKey.io.data_in := data_in_top
-    val stage0_data_out = stage0_addRoundKey.io.data_out
+    val stage0 = Module(new InvAESCipherInitStage())
+    stage0.io.key_in := key_schedule(9)
+    stage0.io.data_in := data_in_top
+    val stage0_data_out = stage0.io.data_out
 
-    // Round 1
-    val stage1_rcon = 1.U(8.W) // Initial
-
-    val stage1_roundkey = Module(new KeyExpansion)
-    stage1_roundkey.io.key_in := key_in_top
-    stage1_roundkey.io.rcon := stage1_rcon
-    val stage1_key = stage1_roundkey.io.key_out
-
-    val stage1_cipher = Module(new AESCipherStage)
-    stage1_cipher.io.data_in := stage0_data_out
-    stage1_cipher.io.key_in := stage1_key
-    val stage1_data_out = stage1_cipher.io.data_out
-
-    //stages 2-9
+    //stages 1-8
     val data_reg    = Reg(Vec(16, UInt(8.W)))
-    val key_reg     = Reg(Vec(16, UInt(8.W)))
-    val rcon_reg    = Reg(UInt(8.W))
 
-    val AESStage = Module( new AES128CompleteStage)
-    AESStage.io.data_in     := data_reg
-    AESStage.io.key_in      := key_reg
-    AESStage.io.last_rcon   := rcon_reg
+    val InvAESStage = Module(new InvAESCipherStage)
+    InvAESStage.io.data_in     := data_reg
+    InvAESStage.io.key_in      := io.key_schedule(counter - 1.U)
 
-    val data_next   = AESStage.io.data_out
-    val key_next    = AESStage.io.key_out
-    val rcon_next   = AESStage.io.next_rcon
-
-    data_reg    := Mux(mux_select_stage1, stage1_data_out, data_next)
-    key_reg     := Mux(mux_select_stage1, stage1_key, key_next)
-    rcon_reg    := Mux(mux_select_stage1, stage1_rcon, rcon_next)
+    val data_next   = InvAESStage.io.data_out
+    data_reg    := Mux(mux_select_stage0, stage0_data_out, data_next)
 
     // output round
-    val stage10_rcon_gen = Module(new RCON())
-    stage10_rcon_gen.io.last_rcon := rcon_reg
-    val stage10_rcon = stage10_rcon_gen.io.next_rcon
+    val stage9 = Module( new InvAESCipherStage)
+    stage9.io.data_in := data_reg
+    stage9.io.key_in := key_schedule(0)
 
-    val stage10_roundkey = Module(new KeyExpansion)
-    stage10_roundkey.io.key_in := key_reg
-    stage10_roundkey.io.rcon := stage10_rcon
-    val stage10_key = stage10_roundkey.io.key_out
+    val stage10 = Module(new AddRoundKey())
+    stage10.io.key_in := key_in_top
+    stage10.io.data_in := stage9.io.data_out
+    val stage10_data_out = stage10.io.data_out
 
-    val stage10_cipher = Module( new AESCipherEndStage )
-    stage10_cipher.io.data_in := data_reg
-    stage10_cipher.io.key_in := stage10_key
-
-    val data_out_top = stage10_cipher.io.data_out.asTypeOf(UInt(128.W))
+    val data_out_top = stage10.io.data_out.asTypeOf(UInt(128.W))
     io.data_out.bits    := RegEnable(data_out_top, running)
 
     //Debug
     io.running      := running
     io.counter      := counter
     io.peek_stage   := data_reg.asTypeOf(UInt(128.W))
-}*/
+}
+
+/*
+ * Time-interleaved AES module
+ * 10 stages plus initial stage
+ * Initial and first stage are combined, making for 10 periods to complete
+ * Separately initializes keygen from compute. Expects keygen to be ready
+ * //TODO explore time-interleaved key_gen
+ */
+class InvAES128 extends Module {
+    val io = IO (new DataBundleTopDecoupledDebug)
+
+    val keygen = Module(new KeySchedule)
+    val key_in_top  = io.key_in.asTypeOf(Vec(16, UInt(8.W)))
+    keygen.io.key_in := key_in_top
+
+    val cipher = Module(new InvAES128TimeInterleaveCompute)
+    cipher.io.data_in.bits := io.data_in.bits
+    cipher.io.data_in.valid := io.data_in.valid
+    io.data_in.ready := cipher.io.data_in.ready
+
+    cipher.io.key_in := io.key_in
+    cipher.io.key_schedule := keygen.io.key_schedule
+    cipher.io.key_ready := true.B
+
+    io.data_out.bits := cipher.io.data_out.bits
+    io.data_out.valid := cipher.io.data_out.valid
+    cipher.io.data_out.ready := io.data_out.ready
+
+    //Debug
+    io.running      := cipher.io.running
+    io.counter      := cipher.io.counter
+    io.peek_stage   := cipher.io.peek_stage
+}
+
 /*
 class AES128EncrypterWrapper extends Module {
     val io = IO(new Bundle {

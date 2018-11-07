@@ -12,6 +12,6 @@ class InvAES128Spec extends FlatSpec with Matchers {
     val data = (BigInt(0x3c5cd4828515ad38L) << 64) + (BigInt(0xe12659ceL) << 32) + BigInt(0xd16b2314L)
     val trial = AESTrial(data_in=data, key_in=ref_out, ref_out=ref_out)
     InvAES128CombinationalTester(trial) should be (true)
-//    InvAES128Tester(trial) should be (true)
+    InvAES128Tester(trial) should be (true)
   }
 }

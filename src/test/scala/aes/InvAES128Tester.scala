@@ -54,28 +54,29 @@ object InvAES128CombinationalTester {
     }
   }
 }
-/*
+
 /**
-  * DspTester for AES128
+  * DspTester for InvAES128
   * Currently runs 1 trial
   */
-class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
-    logger info s"Pipelined AES128"
-    val maxCyclesWait = 12
+class InvAES128Tester(dut: InvAES128, trial: AESTrial) extends PeekPokeTester(dut) {
+    logger info s"Time Interleaved InvAES128"
+    val maxCyclesWait = 14
     var cyclesWaiting = 0
 
-//    logger info s"counter: ${peek(dut.io.counter)}"
-//    logger info s"in ready? : ${peek(dut.io.data_in.ready) == 1}"
     logger info s"Start!"
+    //Setup key
+    poke(dut.io.key_in, trial.key_in)
+    step(1)
 
     poke(dut.io.data_in.bits, trial.data_in)
-    poke(dut.io.key_in, trial.key_in)
     poke(dut.io.data_out.ready, 1)
     poke(dut.io.data_in.valid, 1)
     step(1)
 
     poke(dut.io.data_out.ready, 0)
     poke(dut.io.data_in.valid, 0)
+
     while ((peek(dut.io.data_out.valid) == 0) && cyclesWaiting < maxCyclesWait) {
         cyclesWaiting += 1
         logger info s"waited: $cyclesWaiting cycles"
@@ -93,7 +94,6 @@ class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
     }
 
     val bigIntOut : BigInt = peek(dut.io.data_out.bits)
-    logger info s" Output as dec: $bigIntOut"
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
     val hex1 : Long = (bigIntOut >> 64).toLong
     logger info s" Output as hex: ${hex1.toHexString} ${hex0.toHexString}"
@@ -104,10 +104,10 @@ class AES128Tester(dut: AES128, trial: AESTrial) extends PeekPokeTester(dut) {
 /**
   * Convenience function for running tests
   */
-object AES128Tester {
+object InvAES128Tester {
   def apply(trial: AESTrial): Boolean = {
-    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AES128()) {
-      c => new AES128Tester(c, trial)
+    chisel3.iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () => new InvAES128()) {
+      c => new InvAES128Tester(c, trial)
     }
   }
-}*/
+}

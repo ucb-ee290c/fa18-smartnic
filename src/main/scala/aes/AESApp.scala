@@ -57,4 +57,6 @@ object AESApp extends App {
 //  Driver.execute(chiselArgs.toArray, () => new FixedIterativeCordic(params))
   Driver.execute(Array("None"), () => new AES128Combinational())
   Driver.execute(Array("None"), () => new AES128())
+  Driver.execute(Array("None"), () => new InvAES128Combinational())
+  Driver.execute(Array("None"), () => new InvAES128())
 }
