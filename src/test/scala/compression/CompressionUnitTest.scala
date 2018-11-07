@@ -189,9 +189,6 @@ class RunLengthCoderTester(c: RunLengthCoder, encode: Boolean) extends PeekPokeT
         return false
       }
     }
-    println ("in: " + input.toString () )
-    println ("out: " + output.toString () )
-    println ("exp: " + expectedOutput.toString () )
     expect(output == expectedOutput, "actual output did not match expected output.")
   }
 }
