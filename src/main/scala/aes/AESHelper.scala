@@ -187,6 +187,57 @@ class KeySchedule extends Module with keyConnect{
     io.key_schedule(9) := k10.io.key_out
 }
 
+class KeyScheduleBundleDecoupled extends Bundle {
+    val key_in       = Flipped(Decoupled(Vec(16, UInt(8.W))))
+    val key_schedule = Output(Vec(10, (Vec(16, UInt(8.W)))))
+    val key_valid    = Output(Bool())
+}
+
+class KeyScheduleTimeInterleave extends Module {
+    val io = IO(new KeyScheduleBundleDecoupled)
+
+    //State Machine ---------------------------------------
+    val numStages = 10 //for AES128
+
+    val start = io.key_in.fire
+    val counter = RegInit(0.U(4.W))
+    val running = counter < numStages.U
+
+    counter := Mux(running, counter+1.U,
+        Mux(start, 0.U, counter))
+
+    val mux_select = start
+
+    // Ready Valid
+    io.key_in.ready   := !running
+    io.key_valid      := !running
+
+    //Compute ----------------------------------------------
+    val rcon_reg    = Reg(UInt(8.W))
+    val key_reg     = Reg(Vec(16, UInt(8.W)))
+
+    val rcon_gen = Module(new RCON)
+    rcon_gen.io.last_rcon := rcon_reg
+
+    val roundkey_gen = Module(new KeyExpansion)
+    roundkey_gen.io.rcon :=  rcon_reg
+    roundkey_gen.io.key_in := key_reg
+
+    val rcon_next   = rcon_gen.io.next_rcon
+    val key_next    = roundkey_gen.io.key_out
+
+    key_reg     := Mux(mux_select, io.key_in.bits, key_next)
+    rcon_reg    := Mux(mux_select, 1.U, rcon_next)
+
+    //Output ----------------------------------------------
+    val key_schedule_reg = Reg(Vec(10, Vec(16,UInt(8.W))))
+
+    for (i <- 0 until 10) {
+        key_schedule_reg(i) := Mux(counter === i.U, key_next, key_schedule_reg(i))
+        io.key_schedule(i)  := key_schedule_reg(i)
+    }
+}
+
 
 class DataBundleWithKeyInDebug extends DataBundleWithKeyIn {
     val subbyteout = Output(UInt(128.W))
@@ -251,7 +302,7 @@ class DataBundleKeyScheduleDecoupled extends Bundle {
     val data_out     = Decoupled(UInt(128.W))
     val key_in       = Input(UInt(128.W))
     val key_schedule = Input(Vec(10, Vec(16, UInt(8.W))))
-    val key_ready    = Input(Bool())
+    val key_valid    = Input(Bool())
 }
 
 class DataBundleKeyScheduleDecoupledDebug extends DataBundleKeyScheduleDecoupled {

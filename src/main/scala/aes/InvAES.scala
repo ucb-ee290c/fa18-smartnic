@@ -233,7 +233,7 @@ class InvAES128TimeInterleaveCompute extends Module {
     //State Machine ---------------------------------------
     val numStages = 10 //for AES128
 
-    val start = io.data_in.fire && io.data_out.fire && io.key_ready
+    val start = io.data_in.fire && io.data_out.fire && io.key_valid
     val counter = RegInit(0.U(4.W))
     val running = counter > 0.U
 
@@ -303,7 +303,7 @@ class InvAES128 extends Module {
 
     cipher.io.key_in := io.key_in
     cipher.io.key_schedule := keygen.io.key_schedule
-    cipher.io.key_ready := true.B
+    cipher.io.key_valid := true.B
 
     io.data_out.bits := cipher.io.data_out.bits
     io.data_out.valid := cipher.io.data_out.valid
