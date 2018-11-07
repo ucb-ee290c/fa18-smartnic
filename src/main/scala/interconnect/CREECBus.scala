@@ -37,12 +37,12 @@ trait CREECMetadata {
 
 class CREECMetadataBundle extends Bundle with CREECMetadata
 
-class TransactionHeader(val p: BusParams) extends Bundle {
+class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   val len = UInt(p.beatBits.W)
   val id = UInt(p.maxInFlight.W)
 }
 
-class TransactionData(val p: BusParams) extends Bundle {
+class TransactionData(val p: BusParams = new CREECBusParams) extends Bundle {
   val data = UInt(p.dataWidth.W)
   val id = UInt(p.maxInFlight.W)
 }

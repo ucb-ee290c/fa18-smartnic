@@ -25,7 +25,7 @@ class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
     val out = Decoupled(Output(UInt(byteWidth.W)))
   })
-  val coder = if (encode)
+  val coder: Module = if (encode)
     Module(new RunLengthEncoder)
   else
     Module(new RunLengthDecoder)
@@ -347,14 +347,43 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
 //TODO ===========================================================================================
 //TODO ===========================================================================================
 
+/*
+ * max.
+ * TODO:
+ */
+class SnappyCompressorParams {
+  val outputSize: Int = 32 + 512 * 7 / 6
+}
 
 /*
- * This module builds a coder, but keeps all the input and output in a buffer.
- * It decides once the buffer is full or the input is all consumed whether to
- * send on the input or the output.
+ * Top-level module for whole compression scheme. Slots into CREEC bus.
  */
-class RegisteredCoder(creecParams: CREECBusParams = new CREECBusParams,
-                      coderParams: CoderParams = new CoderParams) extends Module {
+class Compressor(creecParams: CREECBusParams = new CREECBusParams,
+                 blockDeviceParams: BlockDeviceIOBusParams,
+                 compress: Boolean) extends Module {
+  val io = IO(new Bundle {
+    val in: CREECBus = {
+      if (compress)
+        Flipped(new CREECWriteBus(blockDeviceParams))
+      else
+        Flipped(new CREECReadBus(blockDeviceParams))
+    }
+    val out: CREECBus = {
+      if (compress)
+        new CREECWriteBus(creecParams)
+      else
+        new CREECReadBus(creecParams)
+    }
+  })
+  //TODO:
+}
+
+/*
+ * CREEC-level block for run-length encoding.
+ * //TODO: combine this module with CREECDifferentialCoder
+ */
+class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
+                          coderParams: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = {
       if (coderParams.encode)
@@ -373,84 +402,20 @@ class RegisteredCoder(creecParams: CREECBusParams = new CREECBusParams,
   val sAwaitHeader :: sAwaitData :: sSendHeader :: sSendData :: Nil = Enum(4)
   val state = RegInit(sAwaitHeader)
 
-  //header and data inputs that have been accepted
-  val headerIn = Reg(io.in.header.cloneType)
+
+  //register the header and data inputs once they have been accepted
+  val headerIn = Reg(new TransactionHeader with BusAddress with CREECMetadata)
+  val headerOut = Reg(new TransactionHeader with BusAddress with CREECMetadata)
+  val dataOut = Reg(new TransactionData)
   val dataIn = Reg(io.in.data.cloneType)
-  //header and data outputs that will be sent
-  val headerOut = Reg(io.out.header.cloneType)
-  val dataOut = Reg(io.out.data.cloneType)
-
-  //hold the original input in a buffer
-  val bufferedInput = Queue(dataIn.cloneType, creecParams.maxBeats)
-  //hold the encoded output in a buffer
-  val bufferedOutput = Queue(dataIn.cloneType, creecParams.maxBeats)
-
-  //how many more beats need to be accepted
-  val beatsToRead = Reg(io.in.header.bits.len.cloneType)
-  //how many more beats need to be sent
-  val beatsToWrite = Reg(beatsToRead.cloneType)
 
   when(state === sAwaitHeader) {
-    headerIn := io.in.header.deq()
-    beatsToRead := headerIn.bits.len
-    headerOut := {
-      val out = new TransactionHeader(creecParams) with BusAddress
-      out.addr := headerIn.bits.addr
-      out.id := headerIn.bits.id
-      out.len := headerIn.bits.len
-      out
-    }
-    io.in.data.nodeq()
-    io.out.data.noenq()
-    io.out.header.noenq()
-    when(io.in.header.fire()) {
-      state := sAwaitData
-    }
+
   }.elsewhen(state === sAwaitData) {
-    io.in.header.nodeq()
-    dataIn := io.in.data.deq()
-    dataOut := {
-      val out = new TransactionData(creecParams)
-      //      out.data := bytesOut.asUInt()
-      out.id := dataIn.bits.id
-      out
-    }
-    io.out.header.noenq()
-    io.out.data.noenq()
-    when(io.in.data.fire()) {
-      state := sSendData //TODO
-    }
+
   }.elsewhen(state === sSendHeader) {
 
   }.elsewhen(state === sSendData) {
 
   }
-}
-
-case class CompressorParams(busWidth: Int = 8, chunkSize: Int = 512, compress: Boolean = true) {
-}
-
-class SnappyCompressorParams extends CompressorParams {
-  val outputSize: Int = 32 + chunkSize * 7 / 6
-}
-
-/*
- * Top-level module for whole compression scheme. Slots into CREEC bus.
- */
-class Compressor(p: CompressorParams = new CompressorParams()) extends Module {
-  val io = IO(new Bundle {
-    val in: CREECBus = {
-      if (p.compress)
-        Flipped(new CREECWriteBus(new BlockDeviceIOBusParams))
-      else
-        Flipped(new CREECReadBus(new BlockDeviceIOBusParams))
-    }
-    val out: CREECBus = {
-      if (p.compress)
-        new CREECWriteBus(new CREECBusParams)
-      else
-        new CREECReadBus(new CREECBusParams)
-    }
-  })
-  //TODO:
 }
