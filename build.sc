@@ -51,14 +51,14 @@ trait CommonModule extends CrossUnRootedSbtModule with PublishModule {
   def publishVersion = "0.0.1-SNAPSHOT"
 
   override def scalacOptions = scalacOptionsVersion(crossScalaVersion) ++ Seq(
-  "-deprecation",
-  "-explaintypes",
-  "-feature", "-language:reflectiveCalls",
-  "-unchecked",
-  "-Xcheckinit",
-  "-Xlint:infer-any",
-  "-Xlint:missing-interpolator"
-)
+    "-deprecation",
+    "-explaintypes",
+    "-feature", "-language:reflectiveCalls",
+    "-unchecked",
+    "-Xcheckinit",
+    "-Xlint:infer-any",
+    "-Xlint:missing-interpolator"
+  )
 
   def pomSettings = PomSettings(
     description = artifactName(),
