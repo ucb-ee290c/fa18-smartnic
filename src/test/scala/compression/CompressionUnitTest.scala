@@ -312,6 +312,13 @@ class CREECDifferentialCoderTester(c: CREECDifferentialCoder, encode: Boolean) e
   }
 }
 
+/*
+ * Test of creec-level run-length encoding
+ */
+class CREECRunLengthCoderTester(c: CREECRunLengthCoder) extends PeekPokeTester(c) {
+  //TODO
+}
+
 /**
   * From within sbt use:
   * testOnly example.test.CompressionTester
@@ -361,6 +368,19 @@ class CompressionTester extends ChiselFlatSpec {
     Driver.execute(testerArgs :+ "creec_differential_decoder", () => new CREECDifferentialCoder(
       coderParams = CoderParams(encode = false))) {
       c => new CREECDifferentialCoderTester(c, false)
+    } should be(true)
+  }
+
+  "CREECRunLengthCoder" should "encode" in {
+    Driver.execute(testerArgs :+ "creec_run_length_encoder", () => new CREECRunLengthCoder) {
+      c => new CREECRunLengthCoderTester(c)
+    } should be(true)
+  }
+
+  "CREECRunLengthCoder" should "decode" in {
+    Driver.execute(testerArgs :+ "creec_run_length_decoder", () => new CREECRunLengthCoder(
+      coderParams = new CoderParams(encode = false))) {
+      c => new CREECRunLengthCoderTester(c)
     } should be(true)
   }
 }
