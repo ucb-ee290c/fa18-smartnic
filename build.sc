@@ -113,12 +113,14 @@ class CREECModule(val crossScalaVersion: String) extends CommonModule {
     ivy"org.typelevel::squants:1.3.0"
   )
 
+  // uTest works great with mill!
+  // The issue with scalatest is you can't only run a single test suite or test from the mill command line
+  // You have to use an ugly REPL hack, and this is the fault of scalatest's main runner API and its tight SBT integration
   object test extends Tests {
     override def ivyDeps = Agg(
-      ivy"org.scalatest::scalatest:3.0.1",
-      ivy"org.scalacheck::scalacheck:1.13.4"
+      ivy"com.lihaoyi::utest:0.6.5"
     )
-    def testFrameworks = Seq("org.scalatest.tools.Framework")
+    def testFrameworks = Seq("utest.runner.Framework")
   }
   override def mainClass = Some("chisel3.Driver")
 }
