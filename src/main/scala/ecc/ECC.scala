@@ -109,9 +109,6 @@ object GInv {
 // This module will accept k symbols (io.in.fire() === true.B until received k symbols)
 // It will emit n symbols (io.out.fire() === true.B until sent n symbols)
 // Each symbol has a width of *symbolWidth*
-// FIXME: the incoming data is likely to be a multiple of symbol width
-// TODO:
-//   + Incorporate CREECBus
 class RSEncoder(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
@@ -184,7 +181,11 @@ class PolyCell(val dataWidth: Int, val fConst: Int, cellIndex: Int)
     Reg0 := io.Rx
     Reg1 := GMul((Reg0 ^ Reg1), io.coeff,
                  dataWidth, fConst.asUInt())
+  } .otherwise {
+    Reg0 := 0.U
+    Reg1 := 0.U
   }
+
   Reg2 := Mux(io.running, (Reg0 ^ Reg1), io.SIn)
 
   io.SOut := Reg2
@@ -281,23 +282,6 @@ class PolyCompute(val dataWidth: Int,
   }
 }
 
-class GFInversion(val p: RSParams = new RSParams()) extends Module {
-  val io = IO(new Bundle {
-    val in = Input(UInt(p.symbolWidth.W))
-    val out = Output(UInt(p.symbolWidth.W))
-  })
-
-  val inputReg = RegNext(io.in)
-  val numVals = math.pow(2, p.symbolWidth).toInt
-
-  inputReg := io.in
-
-  val tmp = GInv(inputReg, p.symbolWidth, p.fConst.asUInt())
-  val outputReg = RegNext(tmp)
-  printf("TEST %d %d\n", inputReg, outputReg)
-  io.out := outputReg
-}
-
 class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
@@ -312,7 +296,7 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
                                         p.n - p.k + 1,
                                         p.Log2Val, p.fConst))
 
-  val sInit :: sErrorPolyGen :: sChienCmp :: sErrorMagCmp0 :: sErrorMagCmp1 :: sDone :: Nil = Enum(6)
+  val sInit :: sErrorPolyGen :: sChienCmp :: sErrorMagCmp0 :: sErrorMagCmp1 :: sErrorMagCmp2 :: sCorrect :: sDone :: Nil = Enum(8)
   val state = RegInit(sInit)
 
   val syndCmpOutCnt = RegInit(0.U(32.W))
@@ -325,6 +309,11 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
   // Registers for Error locator polynomial
   val TARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
   val TBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  val TBDerivRegs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
+
+  // Buffer input data for later correction
+  val inputQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n))
+  inputQueue.io.enq <> io.in
 
   io.in.ready := (state === sInit)
   io.out.valid := (state === sDone)
@@ -353,6 +342,14 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
   when (state === sErrorPolyGen) {
     when (cmpCnt === (p.n - p.k).asUInt()) {
       state := sChienCmp
+      for (i <- 0 until p.n - p.k) {
+        if (i % 2 == 1) {
+          TBDerivRegs(i) := 0.U
+        }
+        else {
+          TBDerivRegs(i) := TBRegs(i + 1)
+        }
+      }
     }
     .otherwise {
       cmpCnt := cmpCnt + 1.U
@@ -386,18 +383,19 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
 
   // This queue stores the roots of the error location polynomial
   // formed by TBRegs
-  val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), 1))// p.n - p.k))
-
+  val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n - p.k))
   chienQueue.io.enq.bits := chienCmpOutCnt
   chienQueue.io.enq.valid := (chienCmp.io.out.bits === 0.U) &&
                              (state === sChienCmp) &&
                              (chienCmp.io.out.fire())
-  chienQueue.io.deq.ready := (state === sErrorMagCmp0)
 
   when (state === sChienCmp) {
     when (chienCmp.io.in.fire()) {
       for (i <- 0 until p.n - p.k) {
         TBRegs(i + 1) := TBRegs(i)
+        if (i == 0) {
+          TBRegs(0) := TBRegs(p.n - p.k)
+        }
       }
     }
 
@@ -412,51 +410,109 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
 
   val rootIndex = RegInit(0.U(32.W))
   val oResult = RegInit(0.U(p.symbolWidth.W))
-  val coeffs = VecInit(p.Log2Val.map(_.U))
+  val tDerivResult = RegInit(0.U(p.symbolWidth.W))
+  val oResultFired = RegInit(false.B)
+  val tDerivResultFired = RegInit(false.B)
+  val oInCnt = RegInit(0.U(32.W))
+  val tDerivInCnt = RegInit(0.U(32.W))
 
+  val coeffs = VecInit(p.Log2Val.map(_.U))
   val oCmp = Module(new PolyCompute(p.symbolWidth, 1, p.n - p.k + 1,
                                     p.Log2Val, p.fConst))
-  val tDerivCmp = Module(new PolyCompute(p.symbolWidth, 1, p.n - p.k + 1,
+  val tDerivCmp = Module(new PolyCompute(p.symbolWidth, 1, p.n - p.k,
                                          p.Log2Val, p.fConst))
 
-  oCmp.io.coeff := rootIndex
-  oCmp.io.in.valid := (state === sErrorMagCmp1)
-  oCmp.io.in.bits := OBRegs(p.n - p.k)
-  oCmp.io.out.ready := (state === sErrorMagCmp1)
+  val errorMagReg = RegNext(GMul(oResult,
+                                 GInv(GMul(tDerivResult, coeffs(rootIndex),
+                                           p.symbolWidth, p.fConst.asUInt()),
+                                      p.symbolWidth, p.fConst.asUInt()),
+                                 p.symbolWidth, p.fConst.asUInt()))
 
-  tDerivCmp.io.coeff := rootIndex
-  tDerivCmp.io.in.valid := (state === sErrorMagCmp1)
-  tDerivCmp.io.in.bits := TBRegs(p.n - p.k)
-  tDerivCmp.io.out.ready := (state === sErrorMagCmp1)
+  oCmp.io.coeff := coeffs(rootIndex)
+  oCmp.io.in.valid := (state === sErrorMagCmp2 &&
+                       oInCnt <= (p.n - p.k).asUInt())
+  oCmp.io.in.bits := OBRegs(p.n - p.k)
+  oCmp.io.out.ready := (state === sErrorMagCmp2)
+
+  tDerivCmp.io.coeff := coeffs(rootIndex)
+  tDerivCmp.io.in.valid := (state === sErrorMagCmp2 &&
+                            tDerivInCnt <= (p.n - p.k - 1).asUInt())
+  tDerivCmp.io.in.bits := TBDerivRegs(p.n - p.k - 1)
+  tDerivCmp.io.out.ready := (state === sErrorMagCmp2)
+
+  val outCnt = RegInit(0.U(32.W))
+  val outValidReg = RegInit(false.B)
+  val outBitsReg = RegInit(0.U)
+  val correctCnd = (state === sErrorMagCmp0) &&
+                   (oResultFired && tDerivResultFired)
+  inputQueue.io.deq.ready := state === sErrorMagCmp1
+  io.out.valid := correctCnd || outValidReg
+  io.out.bits := outBitsReg ^ errorMagReg
+
+  chienQueue.io.deq.ready := (state === sErrorMagCmp0)
 
   when (state === sErrorMagCmp0) {
+    oResultFired := false.B
+    tDerivResultFired := false.B
+    oInCnt := 0.U
+    tDerivInCnt := 0.U
+
     when (chienQueue.io.deq.fire()) {
-      rootIndex := coeffs(chienQueue.io.deq.bits)
-      state := sErrorMagCmp1
+      rootIndex := chienQueue.io.deq.bits
     }
+    state := sErrorMagCmp1
   }
 
   when (state === sErrorMagCmp1) {
-    when (oCmp.io.in.fire() && tDerivCmp.io.in.fire()) {
+    errorMagReg := 0.U
+    when (outCnt === p.n.asUInt()) {
+      outCnt := 0.U
+      state := sInit
+      outValidReg := false.B
+    }
+    .elsewhen (outCnt === rootIndex - 1.U) {
+      state := sErrorMagCmp2
+      outCnt := outCnt + 1.U
+      outValidReg := false.B
+    }
+    .otherwise {
+      outCnt := outCnt + 1.U
+      outValidReg := true.B
+    }
+    outBitsReg := inputQueue.io.deq.bits
+  }
+
+  when (state === sErrorMagCmp2) {
+    when (oCmp.io.in.fire()) {
+      oInCnt := oInCnt + 1.U
       for (i <- 0 until p.n - p.k) {
         OBRegs(i + 1) := OBRegs(i)
       }
+      OBRegs(0) := OBRegs(p.n - p.k)
+    }
+
+    when (tDerivCmp.io.in.fire()) {
+      tDerivInCnt := tDerivInCnt + 1.U
+      for (i <- 0 until p.n - p.k - 1) {
+        TBDerivRegs(i + 1) := TBDerivRegs(i)
+      }
+      TBDerivRegs(0) := TBDerivRegs(p.n - p.k - 1)
     }
 
     when (oCmp.io.out.fire()) {
       oResult := oCmp.io.out.bits
+      oResultFired := true.B
+    }
+
+    when (tDerivCmp.io.out.fire()) {
+      tDerivResult := tDerivCmp.io.out.bits
+      tDerivResultFired := true.B
+    }
+
+    when (oResultFired && tDerivResultFired) {
       state := sErrorMagCmp0
     }
   }
-
-//  printf("TEST state=%d chienIn=%d, chienOut=%d chienCmpOutCnt=%d, rootIndex=%d, oResult=%d\n",
-//    state, TBRegs(p.n - p.k), chienOut, chienCmpOutCnt, rootIndex, oResult)
-
-//  printf("TEST state=%d OBRegs(0)=%d, OBRegs(1)=%d, OBRegs(2)=%d, OBRegs(3)=%d, OBRegs(4)=%d, TBRegs(0)=%d, TBRegs(1)=%d, TBRegs(2)=%d, TBRegs(3)=%d, TBRegs(4)=%d\n",
-//    state, OBRegs(0), OBRegs(1), OBRegs(2), OBRegs(3), OBRegs(4),
-//           TBRegs(0), TBRegs(1), TBRegs(2), TBRegs(3), TBRegs(4))
-
-  io.out.bits := 0.U
 }
 
 // Top-level ECC module that hooks up with the rest of the system
