@@ -247,9 +247,9 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
   val state = RegInit(sAwaitHeader)
 
   //register the header and data inputs once they have been accepted
-  val headerIn = Reg(new TransactionHeader with BusAddress with CREECMetadata)
-  val headerOut = Reg(new TransactionHeader with BusAddress with CREECMetadata)
-  val dataOut = Reg(new TransactionData)
+  val headerIn = Reg(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+  val headerOut = Reg(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+  val dataOut = Reg(new TransactionData(creecParams))
 
   //keep track of how many more data beats we need to process
   val beatsToGo = Reg(io.in.header.bits.len.cloneType)
@@ -399,23 +399,59 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     }
   })
   //create state machine definitions
-  val sAwaitHeader :: sAwaitData :: sSendHeader :: sSendData :: Nil = Enum(4)
+  val sAwaitHeader :: sSendHeader :: sAwaitData :: sProcessData :: sSendData :: Nil = Enum(5)
   val state = RegInit(sAwaitHeader)
 
+  //keep track of how many more data beats we need to process
+  val beatsToGo = Reg(io.in.header.bits.len.cloneType)
 
   //register the header and data inputs once they have been accepted
   val headerIn = Reg(new TransactionHeader with BusAddress with CREECMetadata)
   val headerOut = Reg(new TransactionHeader with BusAddress with CREECMetadata)
   val dataOut = Reg(new TransactionData)
-  val dataIn = Reg(io.in.data.cloneType)
+  val dataIn = Reg(new TransactionData)
 
   when(state === sAwaitHeader) {
-
-  }.elsewhen(state === sAwaitData) {
-
+    headerIn := io.in.header.deq()
+    headerOut := {
+      val out = Wire(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+      out.addr := io.in.header.bits.addr
+      out.id := io.in.header.bits.id
+      out.len := io.in.header.bits.len
+      out.compressed := io.in.header.bits.compressed
+      out.encrypted := io.in.header.bits.encrypted
+      out.ecc := io.in.header.bits.ecc
+      out
+    }
+    io.in.data.nodeq()
+    io.out.data.noenq()
+    io.out.header.noenq()
+    when(io.in.header.fire()) {
+      state := sSendHeader
+    }
   }.elsewhen(state === sSendHeader) {
-
-  }.elsewhen(state === sSendData) {
+    io.in.data.nodeq()
+    io.in.header.nodeq()
+    io.out.data.noenq()
+    io.out.header.enq(headerOut)
+    beatsToGo := headerIn.len
+    when(io.out.header.fire()) {
+      state := sAwaitData
+    }
+  }.elsewhen(state === sAwaitData) {
+    io.in.header.nodeq()
+    io.in.data.deq()
+    dataIn := io.in.data.bits
+    io.out.header.noenq()
+    io.out.data.noenq()
+    when(io.in.data.fire()) {
+      state := sProcessData
+    }
+  }.elsewhen(state === sProcessData) {
+    when(true.B) { //TODO: this is when the data is done being processed.
+      state := sSendData
+    }
+  }.otherwise /*sSendData*/ {
 
   }
 }
