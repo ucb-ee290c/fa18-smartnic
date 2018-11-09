@@ -174,7 +174,8 @@ class PolyCell(val p: RSParams = new RSParams()) extends Module {
   when (io.running) {
     Reg0 := io.Rx
     Reg1 := p.GFOp.mul((Reg0 ^ Reg1), io.coeff)
-  } .otherwise {
+  }
+  .otherwise {
     Reg0 := 0.U
     Reg1 := 0.U
   }
@@ -275,14 +276,15 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val syndCmpOutCnt = RegInit(0.U(32.W))
   val cmpCnt = RegInit(0.U(32.W))
 
-  // Registers for Error evaluator polynomial
-  val OARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
-  val OBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  // Registers for the Error evaluator polynomial's coefficients
+  val evalARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  val evalBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
 
-  // Registers for Error locator polynomial
-  val TARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
-  val TBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
-  val TBDerivRegs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
+  // Registers for the Error locator polynomial's coefficients
+  val locARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  val locBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  // Registers for the derivative of Error locator polynomial's coefficients
+  val locDerivRegs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
 
   // Buffer input data for later correction
   val inputQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n))
@@ -295,14 +297,14 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   syndCmp.io.out.ready := (state === sInit)
 
   when (state === sInit) {
-    OARegs(p.n - p.k) := 1.U
-    TBRegs(0) := 1.U
+    evalARegs(p.n - p.k) := 1.U
+    locBRegs(0) := 1.U
 
     when (syndCmp.io.out.fire()) {
       syndCmpOutCnt := syndCmpOutCnt + 1.U
-      OBRegs(p.n - p.k - 1) := syndCmp.io.out.bits
+      evalBRegs(p.n - p.k - 1) := syndCmp.io.out.bits
       for (i <- p.n - p.k - 1 to 1 by - 1) {
-        OBRegs(i - 1) := OBRegs(i)
+        evalBRegs(i - 1) := evalBRegs(i)
       }
     }
 
@@ -316,27 +318,27 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       state := sChienSearch
       for (i <- 0 until p.n - p.k) {
         if (i % 2 == 1) {
-          TBDerivRegs(i) := 0.U
+          locDerivRegs(i) := 0.U
         }
         else {
-          TBDerivRegs(i) := TBRegs(i + 1)
+          locDerivRegs(i) := locBRegs(i + 1)
         }
       }
     }
     .otherwise {
       cmpCnt := cmpCnt + 1.U
       for (i <- 0 to p.n - p.k) {
-        val theta = OBRegs(p.n - p.k - 1)
-        val gamma = OARegs(p.n - p.k)
+        val theta = evalBRegs(p.n - p.k - 1)
+        val gamma = evalARegs(p.n - p.k)
 
         if (i == 0) {
-          OBRegs(i) := p.GFOp.mul(theta, OARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
-          TBRegs(i) := p.GFOp.mul(theta, TARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
+          evalBRegs(i) := p.GFOp.mul(theta, evalARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
+          locBRegs(i) := p.GFOp.mul(theta, locARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
         } else {
-          OBRegs(i) := p.GFOp.mul(theta, OARegs(i)) ^ p.GFOp.mul(gamma, OBRegs(i - 1))
-          TBRegs(i) := p.GFOp.mul(theta, TARegs(i)) ^ p.GFOp.mul(gamma, TBRegs(i - 1))
-          OARegs(i) := OBRegs(i - 1)
-          TARegs(i) := TBRegs(i - 1)
+          evalBRegs(i) := p.GFOp.mul(theta, evalARegs(i)) ^ p.GFOp.mul(gamma, evalBRegs(i - 1))
+          locBRegs(i) := p.GFOp.mul(theta, locARegs(i)) ^ p.GFOp.mul(gamma, locBRegs(i - 1))
+          evalARegs(i) := evalBRegs(i - 1)
+          locARegs(i) := locBRegs(i - 1)
         }
       }
     }
@@ -344,13 +346,13 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
   chienSearch.io.coeff := 0.U
   chienSearch.io.in.valid := (state === sChienSearch)
-  chienSearch.io.in.bits := Mux(state === sChienSearch, TBRegs(p.n - p.k), 0.U)
+  chienSearch.io.in.bits := Mux(state === sChienSearch, locBRegs(p.n - p.k), 0.U)
   chienSearch.io.out.ready := (state === sChienSearch)
   val chienOut = RegNext(chienSearch.io.out.bits)
   val chienSearchOutCnt = RegInit(0.U(32.W))
 
   // This queue stores the roots of the error location polynomial
-  // formed by TBRegs
+  // formed by locBRegs
   val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n - p.k))
   chienQueue.io.enq.bits := chienSearchOutCnt
   chienQueue.io.enq.valid := (chienSearch.io.out.bits === 0.U) &&
@@ -360,9 +362,9 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   when (state === sChienSearch) {
     when (chienSearch.io.in.fire()) {
       for (i <- 0 until p.n - p.k) {
-        TBRegs(i + 1) := TBRegs(i)
+        locBRegs(i + 1) := locBRegs(i)
         if (i == 0) {
-          TBRegs(0) := TBRegs(p.n - p.k)
+          locBRegs(0) := locBRegs(p.n - p.k)
         }
       }
     }
@@ -376,37 +378,37 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
     }
   }
 
-  val rootIndex = RegInit(0.U(32.W))
-  val oResult = RegInit(0.U(p.symbolWidth.W))
-  val tDerivResult = RegInit(0.U(p.symbolWidth.W))
-  val oResultFired = RegInit(false.B)
-  val tDerivResultFired = RegInit(false.B)
-  val oInCnt = RegInit(0.U(32.W))
-  val tDerivInCnt = RegInit(0.U(32.W))
+  val locRootIdx = RegInit(0.U(32.W))
+  val evalResult = RegInit(0.U(p.symbolWidth.W))
+  val locDerivResult = RegInit(0.U(p.symbolWidth.W))
+  val evalResultFired = RegInit(false.B)
+  val locDerivResultFired = RegInit(false.B)
+  val evalInCnt = RegInit(0.U(32.W))
+  val locDerivInCnt = RegInit(0.U(32.W))
 
-  val coeffs = VecInit(p.Log2Val.map(_.U))
-  val oCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
-  val tDerivCmp = Module(new PolyCompute(p, 1, p.n - p.k))
+  val rootVals = VecInit(p.Log2Val.map(_.U))
+  val evalPolyCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
+  val locDerivCmp = Module(new PolyCompute(p, 1, p.n - p.k))
 
-  val errorMagReg = RegNext(p.GFOp.mul(oResult, p.GFOp.inv(p.GFOp.mul(tDerivResult, coeffs(rootIndex)))))
+  val errorMagReg = RegNext(p.GFOp.mul(evalResult, p.GFOp.inv(p.GFOp.mul(locDerivResult, rootVals(locRootIdx)))))
 
-  oCmp.io.coeff := coeffs(rootIndex)
-  oCmp.io.in.valid := (state === sErrorCorrection2 &&
-                       oInCnt <= (p.n - p.k).asUInt())
-  oCmp.io.in.bits := OBRegs(p.n - p.k)
-  oCmp.io.out.ready := (state === sErrorCorrection2)
+  evalPolyCmp.io.coeff := rootVals(locRootIdx)
+  evalPolyCmp.io.in.valid := (state === sErrorCorrection2 &&
+                       evalInCnt <= (p.n - p.k).asUInt())
+  evalPolyCmp.io.in.bits := evalBRegs(p.n - p.k)
+  evalPolyCmp.io.out.ready := (state === sErrorCorrection2)
 
-  tDerivCmp.io.coeff := coeffs(rootIndex)
-  tDerivCmp.io.in.valid := (state === sErrorCorrection2 &&
-                            tDerivInCnt <= (p.n - p.k - 1).asUInt())
-  tDerivCmp.io.in.bits := TBDerivRegs(p.n - p.k - 1)
-  tDerivCmp.io.out.ready := (state === sErrorCorrection2)
+  locDerivCmp.io.coeff := rootVals(locRootIdx)
+  locDerivCmp.io.in.valid := (state === sErrorCorrection2 &&
+                            locDerivInCnt <= (p.n - p.k - 1).asUInt())
+  locDerivCmp.io.in.bits := locDerivRegs(p.n - p.k - 1)
+  locDerivCmp.io.out.ready := (state === sErrorCorrection2)
 
   val outCnt = RegInit(0.U(32.W))
   val outValidReg = RegInit(false.B)
   val outBitsReg = RegInit(0.U)
   val correctCnd = (state === sErrorCorrection0) &&
-                   (oResultFired && tDerivResultFired)
+                   (evalResultFired && locDerivResultFired)
   inputQueue.io.deq.ready := state === sErrorCorrection1
   io.out.valid := correctCnd || outValidReg
   io.out.bits := outBitsReg ^ errorMagReg
@@ -414,13 +416,13 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   chienQueue.io.deq.ready := (state === sErrorCorrection0)
 
   when (state === sErrorCorrection0) {
-    oResultFired := false.B
-    tDerivResultFired := false.B
-    oInCnt := 0.U
-    tDerivInCnt := 0.U
+    evalResultFired := false.B
+    locDerivResultFired := false.B
+    evalInCnt := 0.U
+    locDerivInCnt := 0.U
 
     when (chienQueue.io.deq.fire()) {
-      rootIndex := chienQueue.io.deq.bits
+      locRootIdx := chienQueue.io.deq.bits
     }
     state := sErrorCorrection1
   }
@@ -432,7 +434,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       state := sInit
       outValidReg := false.B
     }
-    .elsewhen (outCnt === rootIndex - 1.U) {
+    .elsewhen (outCnt === locRootIdx - 1.U) {
       state := sErrorCorrection2
       outCnt := outCnt + 1.U
       outValidReg := false.B
@@ -445,33 +447,33 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   }
 
   when (state === sErrorCorrection2) {
-    when (oCmp.io.in.fire()) {
-      oInCnt := oInCnt + 1.U
+    when (evalPolyCmp.io.in.fire()) {
+      evalInCnt := evalInCnt + 1.U
       for (i <- 0 until p.n - p.k) {
-        OBRegs(i + 1) := OBRegs(i)
+        evalBRegs(i + 1) := evalBRegs(i)
       }
-      OBRegs(0) := OBRegs(p.n - p.k)
+      evalBRegs(0) := evalBRegs(p.n - p.k)
     }
 
-    when (tDerivCmp.io.in.fire()) {
-      tDerivInCnt := tDerivInCnt + 1.U
+    when (locDerivCmp.io.in.fire()) {
+      locDerivInCnt := locDerivInCnt + 1.U
       for (i <- 0 until p.n - p.k - 1) {
-        TBDerivRegs(i + 1) := TBDerivRegs(i)
+        locDerivRegs(i + 1) := locDerivRegs(i)
       }
-      TBDerivRegs(0) := TBDerivRegs(p.n - p.k - 1)
+      locDerivRegs(0) := locDerivRegs(p.n - p.k - 1)
     }
 
-    when (oCmp.io.out.fire()) {
-      oResult := oCmp.io.out.bits
-      oResultFired := true.B
+    when (evalPolyCmp.io.out.fire()) {
+      evalResult := evalPolyCmp.io.out.bits
+      evalResultFired := true.B
     }
 
-    when (tDerivCmp.io.out.fire()) {
-      tDerivResult := tDerivCmp.io.out.bits
-      tDerivResultFired := true.B
+    when (locDerivCmp.io.out.fire()) {
+      locDerivResult := locDerivCmp.io.out.bits
+      locDerivResultFired := true.B
     }
 
-    when (oResultFired && tDerivResultFired) {
+    when (evalResultFired && locDerivResultFired) {
       state := sErrorCorrection0
     }
   }
