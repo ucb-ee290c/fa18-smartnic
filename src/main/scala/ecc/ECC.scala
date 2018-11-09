@@ -42,67 +42,64 @@ case class RSParams(
   val fConst: Int = 11,
   val Log2Val: Seq[Int] = Seq(1, 2, 4, 3, 6, 7, 5, 1),
   val Val2Log: Seq[Int] = Seq(0, 7, 1, 3, 2, 6, 4, 5)
-)
+) {
 
-// TODO: Evaluate the effectiveness of this combinational circuit
-// of doing Galois multiplication versus the simpler approach of using
-// a Lookup Table
-object GMul {
-  def apply(a: UInt, b: UInt, dataWidth: Int, fConst: UInt): UInt = {
-    val op1 = a.asTypeOf(UInt(dataWidth.W))
-    val op2 = b.asTypeOf(UInt(dataWidth.W))
-    val tmp = Wire(Vec(dataWidth, UInt((2 * dataWidth - 1).W)))
-    for (i <- dataWidth - 1 to 0 by - 1) {
-      val tmp0 = if (i == dataWidth - 1) {
-                 Mux(op2(i), op1 << i, 0.U)
-               } else {
-                 tmp(i + 1) ^ Mux(op2(i), op1 << i, 0.U)
-               }
+  // GF Arithmetic operations
+  object GFOp {
+    def mul(a: UInt, b: UInt): UInt = {
+      val op1 = a.asTypeOf(UInt(symbolWidth.W))
+      val op2 = b.asTypeOf(UInt(symbolWidth.W))
+      val tmp = Wire(Vec(symbolWidth, UInt((2 * symbolWidth - 1).W)))
+      for (i <- symbolWidth - 1 to 0 by - 1) {
+        val tmp0 = if (i == symbolWidth - 1) {
+                     Mux(op2(i), op1 << i, 0.U)
+                   } else {
+                     tmp(i + 1) ^ Mux(op2(i), op1 << i, 0.U)
+                   }
 
-      val tmp1 = if (i == 0) {
-                tmp0
-              } else {
-                Mux(tmp0(i + dataWidth - 1), tmp0 ^ fConst << (i - 1), tmp0)
-              }
-
-      tmp(i) := tmp1
+        val tmp1 = if (i == 0) {
+                     tmp0
+                   } else {
+                     Mux(tmp0(i + symbolWidth - 1),
+                         tmp0 ^ (fConst.asUInt() << (i - 1)), tmp0)
+                   }
+        tmp(i) := tmp1
+      }
+      tmp(0)
     }
-    tmp(0)
-  }
-}
 
-object GInv {
-  def shlByOne(a: UInt, dataWidth: Int, fConst: UInt): UInt = {
-    val mask = math.pow(2, dataWidth).toInt - 1
-    val tmp = Wire(UInt((dataWidth + 1).W))
-    tmp := a << 1
-    val result = Mux(tmp(dataWidth), (tmp & mask.asUInt()) ^
-                                     (fConst & mask.asUInt()), tmp)
-    result
-  }
+    def shlByOne(a: UInt): UInt = {
+      val mask = math.pow(2, symbolWidth).toInt - 1
+      val tmp = Wire(UInt((symbolWidth + 1).W))
+      tmp := a << 1
+      val result = Mux(tmp(symbolWidth),
+        (tmp & mask.asUInt()) ^ (fConst.asUInt() & mask.asUInt()), tmp)
+      result
+    }
 
-  def apply(a: UInt, dataWidth: Int, fConst: UInt): UInt = {
-    val op = a.asTypeOf(UInt(dataWidth.W))
-    val numVals = math.pow(2, dataWidth).toInt
+    def inv(a: UInt): UInt = {
+      val op = a.asTypeOf(UInt(symbolWidth.W))
+      val numVals = math.pow(2, symbolWidth).toInt
 
-    val rootsFromOp = Seq.fill(numVals)(Wire(UInt(dataWidth.W))).scan(op)( 
-      (prev: UInt, next: UInt) => {
-      next := shlByOne(prev, dataWidth, fConst)
-      next
-    })
+      val rootsFromOp = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(op)(
+        (prev: UInt, next: UInt) => {
+        next := shlByOne(prev)
+        next
+      })
 
-    val rootsFromOne = Seq.fill(numVals)(Wire(UInt(dataWidth.W))).scan(1.U)( 
-      (prev: UInt, next: UInt) => {
-      next := shlByOne(prev, dataWidth, fConst)
-      next
-    })
+      val rootsFromOne = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(1.U)(
+        (prev: UInt, next: UInt) => {
+        next := shlByOne(prev)
+        next
+      })
 
-    val rootChecks = rootsFromOp.zip(rootsFromOne).map{
-      case(rootFromOp: UInt, rootFromOne: UInt) =>
-        Mux(rootFromOp === 1.U, rootFromOne, 0.U) }
+      val rootChecks = rootsFromOp.zip(rootsFromOne).map{
+        case(rootFromOp: UInt, rootFromOne: UInt) =>
+          Mux(rootFromOp === 1.U, rootFromOne, 0.U) }
 
-    val result = rootChecks.reduce(_ ^ _)
-    result
+      val result = rootChecks.reduce(_ ^ _)
+      result
+    }
   }
 }
 
@@ -150,11 +147,9 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
                      inputBitsReg ^ Regs(p.n - p.k - 1), 0.U)
   for (i <- 0 until p.n - p.k) {
     if (i == 0) {
-      Regs(0) := GMul(feedback, p.gCoeffs(0).asUInt(),
-                      p.symbolWidth, p.fConst.asUInt())
+      Regs(0) := p.GFOp.mul(feedback, p.gCoeffs(0).asUInt())
     } else {
-      Regs(i) := Regs(i - 1) ^ GMul(feedback, p.gCoeffs(i).asUInt(),
-                                    p.symbolWidth, p.fConst.asUInt())
+      Regs(i) := Regs(i - 1) ^ p.GFOp.mul(feedback, p.gCoeffs(i).asUInt())
     }
   }
 
@@ -162,25 +157,23 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
                      inputBitsReg, Regs(p.n - p.k - 1))
 }
 
-class PolyCell(val dataWidth: Int, val fConst: Int, cellIndex: Int)
-  extends Module {
+class PolyCell(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val running = Input(Bool())
-    val SIn = Input(UInt(dataWidth.W))
-    val coeff = Input(UInt(dataWidth.W))
-    val Rx = Input(UInt(dataWidth.W))
+    val SIn = Input(UInt(p.symbolWidth.W))
+    val coeff = Input(UInt(p.symbolWidth.W))
+    val Rx = Input(UInt(p.symbolWidth.W))
 
-    val SOut = Output(UInt(dataWidth.W))
+    val SOut = Output(UInt(p.symbolWidth.W))
   })
 
-  val Reg0 = RegInit(0.U(dataWidth.W))
-  val Reg1 = RegInit(0.U(dataWidth.W))
-  val Reg2 = RegInit(0.U(dataWidth.W))
+  val Reg0 = RegInit(0.U(p.symbolWidth.W))
+  val Reg1 = RegInit(0.U(p.symbolWidth.W))
+  val Reg2 = RegInit(0.U(p.symbolWidth.W))
 
   when (io.running) {
     Reg0 := io.Rx
-    Reg1 := GMul((Reg0 ^ Reg1), io.coeff,
-                 dataWidth, fConst.asUInt())
+    Reg1 := p.GFOp.mul((Reg0 ^ Reg1), io.coeff)
   } .otherwise {
     Reg0 := 0.U
     Reg1 := 0.U
@@ -211,19 +204,17 @@ class PolyCell(val dataWidth: Int, val fConst: Int, cellIndex: Int)
 // This is a very simple version of systolic array which cells do not communicate
 // often (only passing data at the end)
 // This implementation is based on Horner's method
-class PolyCompute(val dataWidth: Int,
+class PolyCompute(val p: RSParams = new RSParams(),
                   val numCells: Int,
-                  val numInputs: Int,
-                  val coeffs: Seq[Int],
-                  val fConst: Int)
+                  val numInputs: Int)
   extends Module {
   val io = IO(new Bundle {
-    val coeff = Input(UInt(dataWidth.W))
-    val in = Flipped(new DecoupledIO(UInt(dataWidth.W)))
-    val out = new DecoupledIO(UInt(dataWidth.W))
+    val coeff = Input(UInt(p.symbolWidth.W))
+    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
+    val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
 
-  val cells = Seq.tabulate(numCells)(i => Module(new PolyCell(dataWidth, fConst, i)))
+  val cells = Seq.tabulate(numCells)(i => Module(new PolyCell(p)))
   val sIn :: sCompute :: sOut :: Nil = Enum(3)
   val state = RegInit(sIn)
 
@@ -242,7 +233,7 @@ class PolyCompute(val dataWidth: Int,
       cells(i).io.coeff := io.coeff
     }
     else {
-      cells(i).io.coeff := coeffs(i).asUInt()
+      cells(i).io.coeff := p.Log2Val(i).asUInt()
     }
 
     if (i == numCells - 1) {
@@ -288,13 +279,9 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
 
-  val syndCmp = Module(new PolyCompute(p.symbolWidth, p.n - p.k, p.n,
-                                       p.Log2Val, p.fConst))
-
+  val syndCmp = Module(new PolyCompute(p, p.n - p.k, p.n))
   val numRoots = math.pow(2, p.symbolWidth).toInt
-  val chienCmp = Module(new PolyCompute(p.symbolWidth, numRoots,
-                                        p.n - p.k + 1,
-                                        p.Log2Val, p.fConst))
+  val chienCmp = Module(new PolyCompute(p, numRoots, p.n - p.k + 1))
 
   val sInit :: sErrorPolyGen :: sChienCmp :: sErrorMagCmp0 :: sErrorMagCmp1 :: sErrorMagCmp2 :: sCorrect :: sDone :: Nil = Enum(8)
   val state = RegInit(sInit)
@@ -358,15 +345,11 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
         val gamma = OARegs(p.n - p.k)
 
         if (i == 0) {
-          OBRegs(i) := GMul(theta, OARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
-                       GMul(gamma, 0.U, p.symbolWidth, p.fConst.asUInt())
-          TBRegs(i) := GMul(theta, TARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
-                       GMul(gamma, 0.U, p.symbolWidth, p.fConst.asUInt())
+          OBRegs(i) := p.GFOp.mul(theta, OARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
+          TBRegs(i) := p.GFOp.mul(theta, TARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
         } else {
-          OBRegs(i) := GMul(theta, OARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
-                       GMul(gamma, OBRegs(i - 1), p.symbolWidth, p.fConst.asUInt())
-          TBRegs(i) := GMul(theta, TARegs(i), p.symbolWidth, p.fConst.asUInt()) ^
-                       GMul(gamma, TBRegs(i - 1), p.symbolWidth, p.fConst.asUInt())
+          OBRegs(i) := p.GFOp.mul(theta, OARegs(i)) ^ p.GFOp.mul(gamma, OBRegs(i - 1))
+          TBRegs(i) := p.GFOp.mul(theta, TARegs(i)) ^ p.GFOp.mul(gamma, TBRegs(i - 1))
           OARegs(i) := OBRegs(i - 1)
           TARegs(i) := TBRegs(i - 1)
         }
@@ -417,16 +400,10 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
   val tDerivInCnt = RegInit(0.U(32.W))
 
   val coeffs = VecInit(p.Log2Val.map(_.U))
-  val oCmp = Module(new PolyCompute(p.symbolWidth, 1, p.n - p.k + 1,
-                                    p.Log2Val, p.fConst))
-  val tDerivCmp = Module(new PolyCompute(p.symbolWidth, 1, p.n - p.k,
-                                         p.Log2Val, p.fConst))
+  val oCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
+  val tDerivCmp = Module(new PolyCompute(p, 1, p.n - p.k))
 
-  val errorMagReg = RegNext(GMul(oResult,
-                                 GInv(GMul(tDerivResult, coeffs(rootIndex),
-                                           p.symbolWidth, p.fConst.asUInt()),
-                                      p.symbolWidth, p.fConst.asUInt()),
-                                 p.symbolWidth, p.fConst.asUInt()))
+  val errorMagReg = RegNext(p.GFOp.mul(oResult, p.GFOp.inv(p.GFOp.mul(tDerivResult, coeffs(rootIndex)))))
 
   oCmp.io.coeff := coeffs(rootIndex)
   oCmp.io.in.valid := (state === sErrorMagCmp2 &&

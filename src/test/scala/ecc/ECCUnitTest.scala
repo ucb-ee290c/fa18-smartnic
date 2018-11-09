@@ -396,8 +396,7 @@ class ECCTester extends ChiselFlatSpec {
 
   "PolyCompute" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new PolyCompute(symbolWidth, numSymbols - msgs.size,
-                    numSymbols, rs.Log2Val, fConst)) {
+    new PolyCompute(params, numSymbols - msgs.size, numSymbols)) {
       c => new PolyComputeUnitTester(c, swSyms)
     } should be(true)
   }
