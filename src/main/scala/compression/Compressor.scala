@@ -16,31 +16,15 @@ class FlaggedByte(width: Int = 8) extends Bundle {
 }
 
 /*
- * wrapper class for testing RunLengthDecoder and RunLengthEncoder.
- * //TODO: get rid of this when the two get combined.
- */
-class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
-                     byteWidth: Int = 8, encode: Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
-    val out = Decoupled(Output(UInt(byteWidth.W)))
-  })
-  val coder: Module = if (encode)
-    Module(new RunLengthEncoder)
-  else
-    Module(new RunLengthDecoder)
-  io <> coder.io
-}
-
-/*
  * This module performs run-length encoding by looking at a stream of individual bytes.
  * Each byte that comes in is dealt with one at a time. The flag on the input byte is
  * used to tell the encoder to finish off runs that are in progress when the input steam
  * has finished.
  * //TODO: unroll this maybe somehow.
  */
-class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
-                       byteWidth: Int = 8) extends Module {
+class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
+                     coderParams: CoderParams = new CoderParams,
+                     byteWidth: Int = 8) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
     val out = Decoupled(Output(UInt(byteWidth.W)))
@@ -53,53 +37,64 @@ class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
   val byteIn = RegInit(0.U(byteWidth.W))
   val byteOut = Wire(UInt(byteWidth.W))
   dontTouch(byteOut)
-  val stop = RegInit(false.B)
 
-  //keep track of how many 0's have been seen
+  //keep track of how many 0's have been seen for encoder, or how many zeros
+  //    need to be sent for decoder.
   val run = RegInit(0.U(log2Ceil(creecParams.maxBeats * creecParams.dataWidth).W))
 
-  //tell whether or not we need to go to the stutter state.
+  /*
+   * encoder
+   */
+  val stop = RegInit(false.B)
   val stutter = WireInit(false.B)
   val stutterByte = RegInit(0.U(byteWidth.W))
+
+  /*
+   * decoder
+   */
+  val goToStutter = RegInit(false.B)
 
   //state transitions
   when(state === sAccept) {
     byteOut := 0.U
     byteIn := io.in.deq().byte
-    stop := io.in.deq().flag
+    if (coderParams.encode)
+      stop := io.in.deq().flag
     io.out.noenq()
     when(io.in.fire()) {
       state := sSend
     }
   }.elsewhen(state === sSend) {
     io.in.nodeq()
-    when(byteIn === 0.U) {
-      byteOut := run
-      run := run + 1.U
-      stutter := stop && run === 0.U
-      when(run =/= 0.U && !stop) {
+
+    if (coderParams.encode) {
+      byteOut := Mux(byteIn === 0.U, run, Mux(run === 0.U, byteIn, run - 1.U))
+      run := Mux(byteIn =/= 0.U || stop, 0.U, run + 1.U)
+      stutter := Mux(byteIn === 0.U, stop && run === 0.U, run =/= 0.U)
+      state := Mux(byteIn === 0.U && run =/= 0.U && !stop, sAccept, state)
+      stutterByte := Mux(byteIn === 0.U,
+        Mux(run === 0.U || stop, run, stutterByte),
+        Mux(run =/= 0.U, byteIn, stutterByte))
+      when(byteIn === 0.U && run =/= 0.U && !stop) {
         io.out.noenq()
-        state := sAccept
       }.otherwise {
-        stutterByte := run
         io.out.enq(byteOut)
-        when(stop) {
-          run := 0.U
-        }
-      }
-    }.otherwise {
-      run := 0.U
-      when(run === 0.U) {
-        stutter := false.B
-        byteOut := byteIn
-        io.out.enq(byteOut)
-      }.otherwise {
-        stutter := true.B
-        byteOut := run - 1.U
-        io.out.enq(byteOut)
-        stutterByte := byteIn
       }
     }
+    else {
+      byteOut := byteIn
+      run := byteIn - 1.U
+      goToStutter := Mux(goToStutter,
+        false.B,
+        Mux(byteIn === 0.U, true.B, goToStutter))
+      state := Mux(goToStutter, Mux(byteIn === 0.U, sAccept, sStutter), state)
+      when(goToStutter) {
+        io.out.noenq()
+      }.otherwise {
+        io.out.enq(byteOut)
+      }
+    }
+
     when(io.out.fire()) {
       when(stutter) {
         state := sStutter
@@ -109,80 +104,25 @@ class RunLengthEncoder(creecParams: CREECBusParams = new CREECBusParams,
     }
   }.otherwise /*sStutter*/ {
     io.in.nodeq()
-    byteOut := stutterByte
     io.out.enq(byteOut)
+    if (coderParams.encode)
+      byteOut := stutterByte
+    else
+      byteOut := 0.U
     when(stop) {
       run := 0.U
     }
     when(io.out.fire()) {
-      state := sAccept
-    }
-  }
-}
-
-/*
- * This module performs run-length decoding by looking at a stream of individual bytes.
- * Each byte that comes in is dealt with one at a time.
- * //TODO: combine this with the encoder module
- */
-class RunLengthDecoder(creecParams: CREECBusParams = new CREECBusParams,
-                       byteWidth: Int = 8) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
-    val out = Decoupled(Output(UInt(byteWidth.W)))
-  })
-  //define states
-  val sAccept :: sSend :: sStutter :: Nil = Enum(3)
-  val state = RegInit(sAccept)
-
-  //how many zeros need to be sent in the stutter state
-  val zeros = RegInit(0.U(log2Ceil(creecParams.maxBeats * creecParams.dataWidth).W))
-  val goToStutter = RegInit(false.B)
-
-  //register input and output bytes
-  val byteIn = RegInit(0.U(byteWidth.W))
-  val byteOut = Wire(UInt(byteWidth.W))
-  dontTouch(byteOut)
-
-  //state machine
-  when(state === sAccept) {
-    byteOut := 0.U
-    io.out.noenq()
-    byteIn := io.in.deq().byte
-    when(io.in.fire()) {
-      state := sSend
-    }
-  }.elsewhen(state === sSend) {
-    io.in.nodeq()
-    byteOut := byteIn
-    when(goToStutter) {
-      io.out.noenq()
-      when(byteIn === 0.U) {
+      if (coderParams.encode) {
         state := sAccept
-      }.otherwise {
-        state := sStutter
       }
-      goToStutter := false.B
-      zeros := byteIn - 1.U
-    }.otherwise {
-      io.out.enq(byteOut)
-      when(byteIn === 0.U) {
-        goToStutter := true.B
-      }
-    }
-    when(io.out.fire()) {
-      state := sAccept
-    }
-  }.otherwise /*sStutter*/ {
-    io.in.nodeq()
-    byteOut := 0.U
-    io.out.enq(byteOut)
-    when(io.out.fire()) {
-      zeros := zeros - 1.U
-      when(zeros === 0.U) {
-        state := sAccept
-      }.otherwise {
-        state := sStutter
+      else {
+        run := run - 1.U
+        when(run === 0.U) {
+          state := sAccept
+        }.otherwise {
+          state := sStutter
+        }
       }
     }
   }
