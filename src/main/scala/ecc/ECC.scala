@@ -260,6 +260,11 @@ class PolyCompute(val p: RSParams = new RSParams(),
   }
 }
 
+// TODO:
+//  - Bypass this module if the input symbol sequence does not contain
+//  - Improve performance by eliminating redundant cycles due to zeroes coefficients
+//  - Support unrolling if it makes sense
+// any error (syndromes are all zeroes)
 class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
