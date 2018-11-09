@@ -259,7 +259,7 @@ class PolyCompute(val p: RSParams = new RSParams(),
   }
 }
 
-class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
+class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
@@ -267,9 +267,9 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
 
   val syndCmp = Module(new PolyCompute(p, p.n - p.k, p.n))
   val numRoots = math.pow(2, p.symbolWidth).toInt
-  val chienCmp = Module(new PolyCompute(p, numRoots, p.n - p.k + 1))
+  val chienSearch = Module(new PolyCompute(p, numRoots, p.n - p.k + 1))
 
-  val sInit :: sErrorPolyGen :: sChienCmp :: sErrorMagCmp0 :: sErrorMagCmp1 :: sErrorMagCmp2 :: sCorrect :: Nil = Enum(7)
+  val sInit :: sKeyEquationSolver :: sChienSearch :: sErrorCorrection0 :: sErrorCorrection1 :: sErrorCorrection2 :: Nil = Enum(6)
   val state = RegInit(sInit)
 
   val syndCmpOutCnt = RegInit(0.U(32.W))
@@ -307,13 +307,13 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
     }
 
     when (syndCmpOutCnt === (p.n - p.k - 1).asUInt()) {
-      state := sErrorPolyGen
+      state := sKeyEquationSolver
     }
   }
 
-  when (state === sErrorPolyGen) {
+  when (state === sKeyEquationSolver) {
     when (cmpCnt === (p.n - p.k).asUInt()) {
-      state := sChienCmp
+      state := sChienSearch
       for (i <- 0 until p.n - p.k) {
         if (i % 2 == 1) {
           TBDerivRegs(i) := 0.U
@@ -342,23 +342,23 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
     }
   }
 
-  chienCmp.io.coeff := 0.U
-  chienCmp.io.in.valid := (state === sChienCmp)
-  chienCmp.io.in.bits := Mux(state === sChienCmp, TBRegs(p.n - p.k), 0.U)
-  chienCmp.io.out.ready := (state === sChienCmp)
-  val chienOut = RegNext(chienCmp.io.out.bits)
-  val chienCmpOutCnt = RegInit(0.U(32.W))
+  chienSearch.io.coeff := 0.U
+  chienSearch.io.in.valid := (state === sChienSearch)
+  chienSearch.io.in.bits := Mux(state === sChienSearch, TBRegs(p.n - p.k), 0.U)
+  chienSearch.io.out.ready := (state === sChienSearch)
+  val chienOut = RegNext(chienSearch.io.out.bits)
+  val chienSearchOutCnt = RegInit(0.U(32.W))
 
   // This queue stores the roots of the error location polynomial
   // formed by TBRegs
   val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n - p.k))
-  chienQueue.io.enq.bits := chienCmpOutCnt
-  chienQueue.io.enq.valid := (chienCmp.io.out.bits === 0.U) &&
-                             (state === sChienCmp) &&
-                             (chienCmp.io.out.fire())
+  chienQueue.io.enq.bits := chienSearchOutCnt
+  chienQueue.io.enq.valid := (chienSearch.io.out.bits === 0.U) &&
+                             (state === sChienSearch) &&
+                             (chienSearch.io.out.fire())
 
-  when (state === sChienCmp) {
-    when (chienCmp.io.in.fire()) {
+  when (state === sChienSearch) {
+    when (chienSearch.io.in.fire()) {
       for (i <- 0 until p.n - p.k) {
         TBRegs(i + 1) := TBRegs(i)
         if (i == 0) {
@@ -367,12 +367,12 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
       }
     }
 
-    when (chienCmp.io.out.fire()) {
-      chienCmpOutCnt := chienCmpOutCnt + 1.U
+    when (chienSearch.io.out.fire()) {
+      chienSearchOutCnt := chienSearchOutCnt + 1.U
     }
 
-    when (chienCmpOutCnt === numRoots.asUInt() - 1.U) {
-      state := sErrorMagCmp0
+    when (chienSearchOutCnt === numRoots.asUInt() - 1.U) {
+      state := sErrorCorrection0
     }
   }
 
@@ -391,29 +391,29 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
   val errorMagReg = RegNext(p.GFOp.mul(oResult, p.GFOp.inv(p.GFOp.mul(tDerivResult, coeffs(rootIndex)))))
 
   oCmp.io.coeff := coeffs(rootIndex)
-  oCmp.io.in.valid := (state === sErrorMagCmp2 &&
+  oCmp.io.in.valid := (state === sErrorCorrection2 &&
                        oInCnt <= (p.n - p.k).asUInt())
   oCmp.io.in.bits := OBRegs(p.n - p.k)
-  oCmp.io.out.ready := (state === sErrorMagCmp2)
+  oCmp.io.out.ready := (state === sErrorCorrection2)
 
   tDerivCmp.io.coeff := coeffs(rootIndex)
-  tDerivCmp.io.in.valid := (state === sErrorMagCmp2 &&
+  tDerivCmp.io.in.valid := (state === sErrorCorrection2 &&
                             tDerivInCnt <= (p.n - p.k - 1).asUInt())
   tDerivCmp.io.in.bits := TBDerivRegs(p.n - p.k - 1)
-  tDerivCmp.io.out.ready := (state === sErrorMagCmp2)
+  tDerivCmp.io.out.ready := (state === sErrorCorrection2)
 
   val outCnt = RegInit(0.U(32.W))
   val outValidReg = RegInit(false.B)
   val outBitsReg = RegInit(0.U)
-  val correctCnd = (state === sErrorMagCmp0) &&
+  val correctCnd = (state === sErrorCorrection0) &&
                    (oResultFired && tDerivResultFired)
-  inputQueue.io.deq.ready := state === sErrorMagCmp1
+  inputQueue.io.deq.ready := state === sErrorCorrection1
   io.out.valid := correctCnd || outValidReg
   io.out.bits := outBitsReg ^ errorMagReg
 
-  chienQueue.io.deq.ready := (state === sErrorMagCmp0)
+  chienQueue.io.deq.ready := (state === sErrorCorrection0)
 
-  when (state === sErrorMagCmp0) {
+  when (state === sErrorCorrection0) {
     oResultFired := false.B
     tDerivResultFired := false.B
     oInCnt := 0.U
@@ -422,10 +422,10 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
     when (chienQueue.io.deq.fire()) {
       rootIndex := chienQueue.io.deq.bits
     }
-    state := sErrorMagCmp1
+    state := sErrorCorrection1
   }
 
-  when (state === sErrorMagCmp1) {
+  when (state === sErrorCorrection1) {
     errorMagReg := 0.U
     when (outCnt === p.n.asUInt()) {
       outCnt := 0.U
@@ -433,7 +433,7 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
       outValidReg := false.B
     }
     .elsewhen (outCnt === rootIndex - 1.U) {
-      state := sErrorMagCmp2
+      state := sErrorCorrection2
       outCnt := outCnt + 1.U
       outValidReg := false.B
     }
@@ -444,7 +444,7 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
     outBitsReg := inputQueue.io.deq.bits
   }
 
-  when (state === sErrorMagCmp2) {
+  when (state === sErrorCorrection2) {
     when (oCmp.io.in.fire()) {
       oInCnt := oInCnt + 1.U
       for (i <- 0 until p.n - p.k) {
@@ -472,7 +472,7 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
     }
 
     when (oResultFired && tDerivResultFired) {
-      state := sErrorMagCmp0
+      state := sErrorCorrection0
     }
   }
 }

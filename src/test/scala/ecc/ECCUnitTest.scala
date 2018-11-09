@@ -231,8 +231,8 @@ class PolyComputeUnitTester(c: PolyCompute, swSyms: Seq[Int]) extends PeekPokeTe
   }
 }
 
-class ErrorPolyGenUnitTester(c: ErrorPolyGen, inSyms: Seq[Int],
-                             swCorrectedSyms: Seq[Int])
+class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
+                          swCorrectedSyms: Seq[Int])
   extends PeekPokeTester(c) {
   var hwCorrectedSyms = List[Int]()
 
@@ -358,11 +358,9 @@ class ECCTester extends ChiselFlatSpec {
   val numSymbols = 15
   val numMsgs = 11
   val symbolWidth = 4
-//  var msgs = Seq.fill(numMsgs) {
-//    scala.util.Random.nextInt(BigInt(2).pow(symbolWidth).toInt - 1)
-//  }
-
-  val msgs = Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)
+  var msgs = Seq.fill(numMsgs) {
+    scala.util.Random.nextInt(BigInt(2).pow(symbolWidth).toInt - 1)
+  }
 
   val rs = new RSCode(numSymbols, symbolWidth, msgs)
 
@@ -413,10 +411,10 @@ class ECCTester extends ChiselFlatSpec {
   // This is the correct symbol sequence
   val swCorrectedSyms = Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 3, 3, 12, 12)
 
-  "ErrorPolyGen" should "work" in {
+  "RSDecoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ErrorPolyGen(params)) {
-      c => new ErrorPolyGenUnitTester(c, inSyms, swCorrectedSyms)
+    new RSDecoder(params)) {
+      c => new RSDecoderUnitTester(c, inSyms, swCorrectedSyms)
     } should be(true)
   }
 
