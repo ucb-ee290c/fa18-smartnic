@@ -70,10 +70,10 @@ case class RSParams(
 
     def shlByOne(a: UInt): UInt = {
       val mask = math.pow(2, symbolWidth).toInt - 1
-      val tmp = Wire(UInt((symbolWidth + 1).W))
-      tmp := a << 1
-      val result = Mux(tmp(symbolWidth),
-        (tmp & mask.asUInt()) ^ (fConst.asUInt() & mask.asUInt()), tmp)
+      val aShifted = a.asTypeOf(UInt((symbolWidth + 1).W)) << 1
+      val result = Mux(aShifted(symbolWidth),
+        (aShifted & mask.asUInt()) ^ (fConst.asUInt() & mask.asUInt()),
+        aShifted)
       result
     }
 
@@ -81,23 +81,26 @@ case class RSParams(
       val op = a.asTypeOf(UInt(symbolWidth.W))
       val numVals = math.pow(2, symbolWidth).toInt
 
-      val rootsFromOp = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(op)(
-        (prev: UInt, next: UInt) => {
-        next := shlByOne(prev)
-        next
-      })
+      val rootsFromOp = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(op) {
+        (prevWire, nextWire) => {
+          nextWire := shlByOne(prevWire)
+          nextWire
+        }
+      }
 
-      val rootsFromOne = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(1.U)(
-        (prev: UInt, next: UInt) => {
-        next := shlByOne(prev)
-        next
-      })
+      val rootsFromOne = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(1.U) {
+        (prevWire, nextWire) => {
+          nextWire := shlByOne(prevWire)
+          nextWire
+        }
+      }
 
-      val rootChecks = rootsFromOp.zip(rootsFromOne).map{
-        case(rootFromOp: UInt, rootFromOne: UInt) =>
-          Mux(rootFromOp === 1.U, rootFromOne, 0.U) }
+      val rootsMasked = rootsFromOp.zip(rootsFromOne).map {
+        case (rootFromOp, rootFromOne) =>
+          Mux(rootFromOp === 1.U, rootFromOne, 0.U)
+      }
 
-      val result = rootChecks.reduce(_ ^ _)
+      val result = rootsMasked.reduce(_ ^ _)
       result
     }
   }
@@ -145,11 +148,10 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
   // Make sure the arithmetic operations are correct (in Galois field)
   val feedback = Mux(outputSymbolCnt < p.k.asUInt(),
                      inputBitsReg ^ Regs(p.n - p.k - 1), 0.U)
-  for (i <- 0 until p.n - p.k) {
-    if (i == 0) {
-      Regs(0) := p.GFOp.mul(feedback, p.gCoeffs(0).asUInt())
-    } else {
-      Regs(i) := Regs(i - 1) ^ p.GFOp.mul(feedback, p.gCoeffs(i).asUInt())
+  Regs.zipWithIndex.foldLeft(0.U) {
+    case (prevReg, (nextReg, idx)) => {
+      nextReg := prevReg ^ p.GFOp.mul(feedback, p.gCoeffs(idx).asUInt())
+      nextReg
     }
   }
 
@@ -201,7 +203,7 @@ class PolyCompute(val p: RSParams = new RSParams(),
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
 
-  val cells = Seq.tabulate(numCells)(i => Module(new PolyCell(p)))
+  val cells = Seq.fill(numCells)(Module(new PolyCell(p)))
   val sIn :: sCompute :: sOut :: Nil = Enum(3)
   val state = RegInit(sIn)
 
@@ -262,9 +264,10 @@ class PolyCompute(val p: RSParams = new RSParams(),
 
 // TODO:
 //  - Bypass this module if the input symbol sequence does not contain
-//  - Improve performance by eliminating redundant cycles due to zeroes coefficients
+//    any error (syndromes are all zeroes)
+//  - Improve performance by eliminating redundant cycles due to zeroes
+//    coefficients
 //  - Support unrolling if it makes sense
-// any error (syndromes are all zeroes)
 class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
@@ -291,6 +294,9 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   // Registers for the derivative of Error locator polynomial's coefficients
   val locDerivRegs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
 
+  val theta = evalBRegs(p.n - p.k - 1)
+  val gamma = evalARegs(p.n - p.k)
+
   // Buffer input data for later correction
   val inputQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n))
   inputQueue.io.enq <> io.in
@@ -307,9 +313,12 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
     when (syndCmp.io.out.fire()) {
       syndCmpOutCnt := syndCmpOutCnt + 1.U
-      evalBRegs(p.n - p.k - 1) := syndCmp.io.out.bits
-      for (i <- p.n - p.k - 1 to 1 by - 1) {
-        evalBRegs(i - 1) := evalBRegs(i)
+
+      evalBRegs.dropRight(1).foldRight(syndCmp.io.out.bits) {
+        case (nextReg, prevReg) => {
+          nextReg := prevReg
+          nextReg
+        }
       }
     }
 
@@ -321,31 +330,41 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   when (state === sKeyEquationSolver) {
     when (cmpCnt === (p.n - p.k).asUInt()) {
       state := sChienSearch
-      for (i <- 0 until p.n - p.k) {
-        if (i % 2 == 1) {
-          locDerivRegs(i) := 0.U
-        }
-        else {
-          locDerivRegs(i) := locBRegs(i + 1)
-        }
-      }
+      // odd-th coefficients are zeros due to finite-field
+      locDerivRegs.zipWithIndex.filter(_._2 % 2 == 1).map { x => 0.U }
+      // even-th coefficients are obtained by the odd-th coefficients
+      // of the original polynomial
+      locDerivRegs.zip(locBRegs.drop(1)).
+        zipWithIndex.filter(_._2 % 2 == 0).map { x => x._1._1 := x._1._2 }
     }
     .otherwise {
       cmpCnt := cmpCnt + 1.U
-      for (i <- 0 to p.n - p.k) {
-        val theta = evalBRegs(p.n - p.k - 1)
-        val gamma = evalARegs(p.n - p.k)
-
-        if (i == 0) {
-          evalBRegs(i) := p.GFOp.mul(theta, evalARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
-          locBRegs(i) := p.GFOp.mul(theta, locARegs(i)) ^ p.GFOp.mul(gamma, 0.U)
-        } else {
-          evalBRegs(i) := p.GFOp.mul(theta, evalARegs(i)) ^ p.GFOp.mul(gamma, evalBRegs(i - 1))
-          locBRegs(i) := p.GFOp.mul(theta, locARegs(i)) ^ p.GFOp.mul(gamma, locBRegs(i - 1))
-          evalARegs(i) := evalBRegs(i - 1)
-          locARegs(i) := locBRegs(i - 1)
+      evalBRegs.zip(evalARegs).foldLeft(0.U) {
+        case (prevReg, (nextReg, a)) => {
+          nextReg := p.GFOp.mul(theta, a) ^ p.GFOp.mul(gamma, prevReg)
+          nextReg
         }
       }
+
+      locBRegs.zip(locARegs).foldLeft(0.U) {
+        case (prevReg, (nextReg, a)) => {
+          nextReg := p.GFOp.mul(theta, a) ^ p.GFOp.mul(gamma, prevReg)
+          nextReg
+        }
+      }
+
+      evalARegs.drop(1).zip(evalBRegs).map {
+        case (aReg, bReg) => {
+          aReg := bReg
+        }
+      }
+
+      locARegs.drop(1).zip(locBRegs).map {
+        case (aReg, bReg) => {
+          aReg := bReg
+        }
+      }
+
     }
   }
 
@@ -366,10 +385,11 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
   when (state === sChienSearch) {
     when (chienSearch.io.in.fire()) {
-      for (i <- 0 until p.n - p.k) {
-        locBRegs(i + 1) := locBRegs(i)
-        if (i == 0) {
-          locBRegs(0) := locBRegs(p.n - p.k)
+      val lastVal = locBRegs(p.n - p.k)
+      locBRegs.foldLeft(lastVal) {
+        (prevReg, nextReg) => {
+          nextReg := prevReg
+          nextReg
         }
       }
     }
@@ -454,18 +474,24 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   when (state === sErrorCorrection2) {
     when (evalPolyCmp.io.in.fire()) {
       evalInCnt := evalInCnt + 1.U
-      for (i <- 0 until p.n - p.k) {
-        evalBRegs(i + 1) := evalBRegs(i)
+      val lastVal = evalBRegs(p.n - p.k)
+      evalBRegs.foldLeft(lastVal) {
+        (prevReg, nextReg) => {
+          nextReg := prevReg
+          nextReg
+        }
       }
-      evalBRegs(0) := evalBRegs(p.n - p.k)
     }
 
     when (locDerivCmp.io.in.fire()) {
       locDerivInCnt := locDerivInCnt + 1.U
-      for (i <- 0 until p.n - p.k - 1) {
-        locDerivRegs(i + 1) := locDerivRegs(i)
+      val lastVal = locDerivRegs(p.n - p.k - 1)
+      locDerivRegs.foldLeft(lastVal) {
+        (prevReg, nextReg) => {
+          nextReg := prevReg
+          nextReg
+        }
       }
-      locDerivRegs(0) := locDerivRegs(p.n - p.k - 1)
     }
 
     when (evalPolyCmp.io.out.fire()) {
