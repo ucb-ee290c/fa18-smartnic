@@ -5,7 +5,6 @@ package ecc
 import chisel3._
 import chisel3.util._
 import interconnect.{CREECBusParams, CREECWriteBus}
-//import interconnect._
 
 // References:
 // [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
@@ -35,6 +34,7 @@ import interconnect.{CREECBusParams, CREECWriteBus}
 // In general, a GF operations of two m-bit operands results to a m-bit value
 //
 case class RSParams(
+  // Sample configuration of RS(7, 3) with 3-bit symbol
   val n: Int = 7,
   val k: Int = 3,
   val symbolWidth: Int = 3,
@@ -184,25 +184,11 @@ class PolyCell(val p: RSParams = new RSParams()) extends Module {
   io.SOut := Reg2
 }
 
-// This is the first step of RSDecoder
-// Here we want to verify whether the incoming sequence of symbols forms
-// a polynomial in(X) that has roots of a^1, a^2, ..., a^(n - k)
-// i.e., in(a^1) = 0, in(a^2) = 0, ..., in(a^(n - k)) = 0
-// in(X) = in(0) * X^(n - 1) + in(1) * X^(n - 2) + ... + in(n - 1) * X^0
-// We want to use systolic array of (n - k) cells, where each cell computes
-// in(a^i), i = 1..(n - k)
-// The cells chain together like this:
-// cell_(n - k - 1) --> cell_(n - k - 2) --> ... --> cell_1 --> cell_0 --> output
-// like a shift register
-// At each cycle, we broadcast one input symbol to all the cells. Each cell
-// performs individual computation and stores its temporary result into internal
-// registers. Once all the (n) input symbols have been supplied to the cells,
-// the cells should have their final value (which hopefully is zero).
-// Then each cell passes its value to the previous cell in a shift-register
-// fashion. Thus, at the output side, we would expect to receive (n - k) zeroes
-// in (n - k) successive cycles
-// This is a very simple version of systolic array which cells do not communicate
-// often (only passing data at the end)
+// This class computes one or many polynomials in a systolic-array fashion.
+// The number of polynomials is configured via the parameter *numCells*.
+// Each cell has an assigned root value.
+// The coefficients of each polynomial are supplied by the input signal
+// in successive clock cycles.
 // This implementation is based on Horner's method
 class PolyCompute(val p: RSParams = new RSParams(),
                   val numCells: Int,
@@ -283,7 +269,7 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
   val numRoots = math.pow(2, p.symbolWidth).toInt
   val chienCmp = Module(new PolyCompute(p, numRoots, p.n - p.k + 1))
 
-  val sInit :: sErrorPolyGen :: sChienCmp :: sErrorMagCmp0 :: sErrorMagCmp1 :: sErrorMagCmp2 :: sCorrect :: sDone :: Nil = Enum(8)
+  val sInit :: sErrorPolyGen :: sChienCmp :: sErrorMagCmp0 :: sErrorMagCmp1 :: sErrorMagCmp2 :: sCorrect :: Nil = Enum(7)
   val state = RegInit(sInit)
 
   val syndCmpOutCnt = RegInit(0.U(32.W))
@@ -303,7 +289,6 @@ class ErrorPolyGen(val p: RSParams = new RSParams()) extends Module {
   inputQueue.io.enq <> io.in
 
   io.in.ready := (state === sInit)
-  io.out.valid := (state === sDone)
 
   syndCmp.io.coeff := 0.U
   syndCmp.io.in <> io.in
