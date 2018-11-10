@@ -136,7 +136,6 @@ class RSCode(numSyms: Int, symbolWidth: Int,
     msgs ++ pars.reverse
   }
 
-
   // Make sure the generated symbol sequence forms a polynomial
   // that equals to zero at all the *numPars* roots
   // E.g., out(X) = syms(0) * X^(n - 1) + sym(1) * X^(n - 2) + ... + sym(n - 1) * X^0
@@ -153,6 +152,129 @@ class RSCode(numSyms: Int, symbolWidth: Int,
       }
     }
     check
+  }
+
+  def evaluatePoly(coeffs: Seq[Int], variable: Int): Int = {
+    val degree = coeffs.size
+    var result = 0
+    for (i <- 0 until degree) {
+      result = result ^ mul(coeffs(degree - i - 1), pow(variable, i))
+    }
+    result
+  }
+
+  def decode(inSyms: Seq[Int]): Seq[Int] = {
+    var syndromes = List[Int]()
+    var foundNZSyndrome = false
+
+    // Syndrome computation
+    for (i <- 0 until numPars) {
+      val res = evaluatePoly(inSyms, Log2Val(i))
+      syndromes = syndromes :+ res
+      if (res != 0) {
+        foundNZSyndrome = true
+      }
+    }
+
+    if (!foundNZSyndrome) {
+      // the input symbol sequence is bug-free
+      inSyms
+    } else {
+
+      printf("Check Syndromes result\n")
+      for (i <- 0 until syndromes.size) {
+        printf("syndromes(%d) = %d\n", i, syndromes(i))
+      }
+
+      var evaluatorsA = new Array[Int](numPars + 1)
+      var evaluatorsB = new Array[Int](numPars + 1)
+      var locatorsA = new Array[Int](numPars + 1)
+      var locatorsB = new Array[Int](numPars + 1)
+
+      evaluatorsA(numPars) = 1
+      for (i <- 0 until numPars) {
+        evaluatorsB(i) = syndromes(i)
+      }
+      locatorsB(0) = 1
+
+      // Key equation solver
+      for (t <- 0 until numPars) {
+        var tmpEvalB = evaluatorsB.map(x => x)
+        var tmpLocB = locatorsB.map(x => x)
+
+        val theta = tmpEvalB(numPars - 1)
+        val gamma = evaluatorsA(numPars)
+
+        for (i <- numPars to 0 by -1) {
+          if (i == 0) {
+            evaluatorsB(i) = mul(theta, evaluatorsA(i)) ^
+                             mul(gamma, 0)
+            locatorsB(i) = mul(theta, locatorsA(i)) ^
+                           mul(gamma, 0)
+          }
+          else {
+            evaluatorsB(i) = mul(theta, evaluatorsA(i)) ^
+                             mul(gamma, tmpEvalB(i - 1))
+            locatorsB(i) = mul(theta, locatorsA(i)) ^
+                           mul(gamma, tmpLocB(i - 1))
+          }
+        }
+
+        for (i <- 1 to numPars) {
+          evaluatorsA(i) = tmpEvalB(i - 1)
+          locatorsA(i) = tmpLocB(i - 1)
+        }
+      }
+
+      printf("Check KeyEquation result\n")
+      for (i <- 0 to numPars) {
+        printf("[%d] evaluator %d, locator %d\n", i, evaluatorsB(i), locatorsB(i))
+      }
+
+      // Chien search
+      var chienRootIndices = List[Int]()
+      for (i <- 0 until numVals) {
+        val res = evaluatePoly(locatorsB, Log2Val(i))
+        if (res == 0) {
+          chienRootIndices = chienRootIndices :+ i
+        }
+      }
+
+      printf("Check Chien'ssearch result\n")
+      for (i <- 0 until chienRootIndices.size) {
+        printf("%d\n", chienRootIndices(i))
+      }
+
+      // Error correction
+      val locatorsDeriv = new Array[Int](numPars)
+      for (i <- 0 until numPars) {
+        if (i % 2 == 1) {
+          locatorsDeriv(i) = 0
+        }
+        else {
+          locatorsDeriv(i) = locatorsB(i + 1)
+        }
+      }
+
+      var correctedSyms = new Array[Int](numSyms)
+      for (i <- 0 until numSyms) {
+        correctedSyms(i) = inSyms(i)
+      }
+
+      for (i <- 0 until chienRootIndices.size) {
+        // reverse ...
+        val idx = numSyms - 1 - chienRootIndices(i)
+        val rootVal = Log2Val(idx + 1)
+        correctedSyms(idx) = mul(evaluatePoly(evaluatorsB, rootVal),
+          inv(mul(rootVal, evaluatePoly(locatorsDeriv, rootVal))))
+      }
+
+      for (i <- 0 until correctedSyms.size) {
+        printf("[%d] correctedSyms %d\n", i, correctedSyms(i))
+      }
+
+      correctedSyms
+    }
   }
 
 }
@@ -385,6 +507,13 @@ class ECCTester extends ChiselFlatSpec {
     printf("swSyms(%d) = %d\n", i, swSyms(i))
   }
 
+  // This is the buggy input symbol sequence
+  val buggySyms = Seq(1, 2, 3, 4, 5, 11, 7, 8, 9, 10, 11, 3, 1, 12, 12)
+  // This is the correct symbol sequence
+  val swCorrectedSyms = Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 3, 3, 12, 12)
+
+  val correctedSyms = rs.decode(buggySyms)
+
   // Need to pass this test to go further
   require(rs.verify_encode(swSyms), "Incorrect software RSEncoding generator!")
 
@@ -419,15 +548,10 @@ class ECCTester extends ChiselFlatSpec {
 //    } should be(true)
 //  }
 
-  // This is the buggy input symbol sequence
-  val inSyms = Seq(1, 2, 3, 4, 5, 11, 7, 8, 9, 10, 11, 3, 1, 12, 12)
-  // This is the correct symbol sequence
-  val swCorrectedSyms = Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 3, 3, 12, 12)
-
   "RSDecoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSDecoder(params)) {
-      c => new RSDecoderUnitTester(c, inSyms, swCorrectedSyms)
+      c => new RSDecoderUnitTester(c, buggySyms, swCorrectedSyms)
     } should be(true)
   }
 
