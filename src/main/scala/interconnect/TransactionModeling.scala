@@ -30,21 +30,71 @@ case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
   * @tparam I type of input transactions
   * @tparam O type of output transactions
   */
-// TODO: this whole API should be based on (fs2) streams with a synchronization API, not on ticks and processing
+// TODO: this whole API should be based on streams with a synchronization API, not on ticks and processing
 // TODO: but this requires we first go through the struggle with this API and learn
-abstract class SoftwareModel[I <: Transaction, O <: Transaction] {
+// TODO: this class should be abstract, but that breaks easy composition
+class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val inputQueue = mutable.Queue[I]()
   val outputQueue = mutable.Queue[O]()
 
-  def process(in: Option[I]) : Option[Seq[O]]
+  def pushTransactions(ts: Seq[I]): Unit = {
+    ts.foreach { t => inputQueue.enqueue(t) }
+  }
 
-  final def tick: Unit = {
+  def pullTransactions() : Seq[O] = {
+    outputQueue.dequeueAll(_ => true)
+  }
+
+  def nothingToProcess : Boolean = {
+    inputQueue.isEmpty
+  }
+
+  // TODO: This function should be abstract
+  def process(in: Option[I]) : Option[Seq[O]] = None
+
+  def tick(): Unit = {
     val in = if (inputQueue.nonEmpty) Some(inputQueue.dequeue()) else None
+    in.foreach {t => println(s"Received Transaction $t")}
     val out = process(in)
     out match {
-      case Some(transactions) => transactions.foreach(outputQueue.enqueue(_))
+      case Some(transactions) =>
+        transactions.foreach(t => {
+          println(s"Sent Transaction $t")
+          outputQueue.enqueue(t)
+        })
       case None =>
     }
+  }
+
+  final def compose[O2 <: Transaction](s: SoftwareModel[O, O2]): SoftwareModel[I, O2] = {
+    // In this context:
+    // this = ILLEGAL to use without violating "early definition" syntax
+      // so inputQueue and outputQueue on their own refer to the members of ComposedModel
+    // self = the first model
+    // s = the second model being chained to the first model's output
+    class ComposedModel extends SoftwareModel[I, O2] {
+      override def tick(): Unit = {
+        if (inputQueue.nonEmpty) self.inputQueue.enqueue(inputQueue.dequeue())
+        self.tick()
+        if (self.outputQueue.nonEmpty) s.inputQueue.enqueue(self.outputQueue.dequeue())
+        s.tick()
+        if (s.outputQueue.nonEmpty) outputQueue.enqueue(s.outputQueue.dequeue)
+      }
+      /*
+      override def process(in: Option[I]): Option[Seq[O2]] = {
+        val firstModelProcess = self.process(in) // Option[Seq[O]]
+        firstModelProcess match {
+          case Some(seq) => {
+            return seq.map(_ => s.process(_))
+          }
+        }
+        firstModelProcess.map { // extract Seq[O] from Option
+          o => o.flatMap(seq => s.process(Some(seq)))
+        } // Now we have a Option[Seq[Seq[O2]]
+      }
+      */
+    }
+    new ComposedModel
   }
 }
 
@@ -52,7 +102,7 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] {
   * A software model for turning CREEC HighLevelTransactions into CREEC LowLevelTransactions
   */
 class CREECHighToLowModel extends SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] {
-  def process(in: Option[CREECHighLevelTransaction]) : Option[Seq[CREECLowLevelTransaction]] = {
+  override def process(in: Option[CREECHighLevelTransaction]) : Option[Seq[CREECLowLevelTransaction]] = {
     in match {
       case Some(t) =>
         val header = Seq(CREECHeaderBeat(t.data.length, 0, t.addr))

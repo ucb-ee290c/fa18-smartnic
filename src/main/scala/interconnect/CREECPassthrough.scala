@@ -14,7 +14,7 @@ class CREECPassthrough(p: BusParams) extends Module {
 }
 
 class CREECPassthroughModel extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
-  def process(in: Option[CREECLowLevelTransaction]): Option[Seq[CREECLowLevelTransaction]] = {
+  override def process(in: Option[CREECLowLevelTransaction]): Option[Seq[CREECLowLevelTransaction]] = {
     in match {
       case Some(t) => t match {
         case t: CREECHeaderBeat => Some(Seq(t))

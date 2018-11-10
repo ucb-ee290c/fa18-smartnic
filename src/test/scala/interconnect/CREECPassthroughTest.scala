@@ -12,6 +12,24 @@ object CREECPassthroughTest extends TestSuite {
     "--top-name")
 
   val tests = Tests {
+    'high2Low - {
+      val model = new CREECHighToLowModel
+      model.pushTransactions(Seq(
+        CREECHighLevelTransaction(Seq(
+          1000, 2000, 3000, 4000, 5000, 6000
+        ), 0x0),
+        CREECHighLevelTransaction(Seq(
+          1, 2, 3, 4, 5, 6
+        ), 0x1000),
+      ))
+      while (!model.nothingToProcess) model.tick()
+      val out = model.pullTransactions()
+
+      out.foreach { _ =>
+        print(_)
+      }
+    }
+    /*
     'produceOutput - {
       val model = new CREECPassthroughModel
       println(model)
@@ -28,5 +46,6 @@ object CREECPassthroughTest extends TestSuite {
         c => new DifferentialCoderTester(c, true)
       })
     }
+    */
   }
 }
