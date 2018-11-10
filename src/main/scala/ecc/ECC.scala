@@ -49,23 +49,25 @@ case class RSParams(
     def mul(a: UInt, b: UInt): UInt = {
       val op1 = a.asTypeOf(UInt(symbolWidth.W))
       val op2 = b.asTypeOf(UInt(symbolWidth.W))
-      val tmp = Wire(Vec(symbolWidth, UInt((2 * symbolWidth - 1).W)))
-      for (i <- symbolWidth - 1 to 0 by - 1) {
-        val tmp0 = if (i == symbolWidth - 1) {
-                     Mux(op2(i), op1 << i, 0.U)
-                   } else {
-                     tmp(i + 1) ^ Mux(op2(i), op1 << i, 0.U)
-                   }
 
-        val tmp1 = if (i == 0) {
-                     tmp0
-                   } else {
-                     Mux(tmp0(i + symbolWidth - 1),
-                         tmp0 ^ (fConst.asUInt() << (i - 1)), tmp0)
-                   }
-        tmp(i) := tmp1
+      val result = Seq.fill(symbolWidth)(
+        Wire(UInt((2 * symbolWidth - 1).W))
+      ).zipWithIndex.foldRight(0.U) {
+        case ((nextWire, idx), prevWire) => {
+          val currentMultResult = prevWire ^ Mux(op2(idx), op1 << idx, 0.U)
+
+          if (idx == 0) {
+            nextWire := currentMultResult
+          }
+          else {
+            nextWire := Mux(currentMultResult(idx + symbolWidth - 1),
+                          currentMultResult ^ (fConst.asUInt() << (idx - 1)),
+                          currentMultResult)
+          }
+          nextWire
+        }
       }
-      tmp(0)
+      result
     }
 
     def shlByOne(a: UInt): UInt = {
@@ -198,10 +200,14 @@ class PolyCompute(val p: RSParams = new RSParams(),
                   val numInputs: Int)
   extends Module {
   val io = IO(new Bundle {
-    val coeff = Input(UInt(p.symbolWidth.W))
+    val coeffs = Vec(numCells, Input(UInt(p.symbolWidth.W)))
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
+
+  def getNumCells(): Int = {
+    numCells
+  }
 
   val cells = Seq.fill(numCells)(Module(new PolyCell(p)))
   val sIn :: sCompute :: sOut :: Nil = Enum(3)
@@ -215,20 +221,18 @@ class PolyCompute(val p: RSParams = new RSParams(),
   io.out.bits := cells(0).io.SOut
 
   // Systolic array of PolyCells
-  for (i <- numCells - 1 to 0 by - 1) {
-    cells(i).io.running := (state === sIn && io.in.fire()) || (state === sCompute)
-    cells(i).io.Rx := io.in.bits
-    if (numCells == 1) {
-      cells(i).io.coeff := io.coeff
+  cells.foldRight(0.U) {
+    (next, prev) => {
+      next.io.SIn := prev
+      next.io.SOut
     }
-    else {
-      cells(i).io.coeff := p.Log2Val(i).asUInt()
-    }
+  }
 
-    if (i == numCells - 1) {
-      cells(i).io.SIn := 0.U
-    } else {
-      cells(i).io.SIn := cells(i + 1).io.SOut
+  cells.zip(io.coeffs) map {
+    case (c, coeff) => {
+      c.io.running := (state === sIn && io.in.fire()) || (state === sCompute)
+      c.io.Rx := io.in.bits
+      c.io.coeff := coeff
     }
   }
 
@@ -274,6 +278,8 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
 
+  val rootVals = VecInit(p.Log2Val.map(_.U))
+
   val syndCmp = Module(new PolyCompute(p, p.n - p.k, p.n))
   val numRoots = math.pow(2, p.symbolWidth).toInt
   val chienSearch = Module(new PolyCompute(p, numRoots, p.n - p.k + 1))
@@ -303,7 +309,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
   io.in.ready := (state === sInit)
 
-  syndCmp.io.coeff := 0.U
+  syndCmp.io.coeffs := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
   syndCmp.io.in <> io.in
   syndCmp.io.out.ready := (state === sInit)
 
@@ -368,7 +374,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
     }
   }
 
-  chienSearch.io.coeff := 0.U
+  chienSearch.io.coeffs := (0 until chienSearch.getNumCells()).map(x => rootVals(x))
   chienSearch.io.in.valid := (state === sChienSearch)
   chienSearch.io.in.bits := Mux(state === sChienSearch, locBRegs(p.n - p.k), 0.U)
   chienSearch.io.out.ready := (state === sChienSearch)
@@ -411,19 +417,18 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val evalInCnt = RegInit(0.U(32.W))
   val locDerivInCnt = RegInit(0.U(32.W))
 
-  val rootVals = VecInit(p.Log2Val.map(_.U))
   val evalPolyCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
   val locDerivCmp = Module(new PolyCompute(p, 1, p.n - p.k))
 
   val errorMagReg = RegNext(p.GFOp.mul(evalResult, p.GFOp.inv(p.GFOp.mul(locDerivResult, rootVals(locRootIdx)))))
 
-  evalPolyCmp.io.coeff := rootVals(locRootIdx)
+  evalPolyCmp.io.coeffs := (0 until evalPolyCmp.getNumCells()).map(x => rootVals(locRootIdx))
   evalPolyCmp.io.in.valid := (state === sErrorCorrection2 &&
                        evalInCnt <= (p.n - p.k).asUInt())
   evalPolyCmp.io.in.bits := evalBRegs(p.n - p.k)
   evalPolyCmp.io.out.ready := (state === sErrorCorrection2)
 
-  locDerivCmp.io.coeff := rootVals(locRootIdx)
+  locDerivCmp.io.coeffs := (0 until locDerivCmp.getNumCells()).map(x => rootVals(locRootIdx))
   locDerivCmp.io.in.valid := (state === sErrorCorrection2 &&
                             locDerivInCnt <= (p.n - p.k - 1).asUInt())
   locDerivCmp.io.in.bits := locDerivRegs(p.n - p.k - 1)

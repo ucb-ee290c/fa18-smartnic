@@ -60,11 +60,7 @@ class RSCode(numSyms: Int, symbolWidth: Int,
   }
 
   def pow(a: Int, n: Int): Int = {
-    var t: Int = 1
-    for (i <- 0 until n) {
-      t = mul(a, t)
-    }
-    t
+    (0 until n).foldLeft(1) { (prev, next) => mul(prev, a) }
   }
 
   def printValRootTable() {
@@ -168,21 +164,34 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
   poke(c.io.in.valid, true)
   poke(c.io.out.ready, true)
 
-  for (i <- 0 until c.p.k) {
-    poke(c.io.in.bits, swSyms(i))
-    // This is rather awkward
+  val maxCycles = 100
+
+  var numCycles = 0
+  var outCnt = 0
+  var inCnt = 0
+
+  while (numCycles < maxCycles && outCnt < c.p.n) {
+    numCycles += 1
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
+    }
+
+    if (inCnt == c.p.k) {
+      poke(c.io.in.valid, false)
+    }
+
+    if (peek(c.io.in.valid) == BigInt(1) &&
+        peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.k) {
+      poke(c.io.in.bits, swSyms(inCnt))
+      inCnt += 1
+    }
+
     if (peek(c.io.out.valid) == BigInt(1) &&
         peek(c.io.out.ready) == BigInt(1)) {
       hwSyms = hwSyms :+ peek(c.io.out.bits).toInt
+      outCnt += 1
     }
-    step(1)
-  }
 
-  poke(c.io.in.valid, false)
-
-  while (peek(c.io.out.valid) == BigInt(1) &&
-         peek(c.io.out.ready) == BigInt(1)) {
-    hwSyms = hwSyms :+ peek(c.io.out.bits).toInt
     step(1)
   }
 
@@ -198,6 +207,10 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
 class PolyComputeUnitTester(c: PolyCompute, swSyms: Seq[Int]) extends PeekPokeTester(c) {
   poke(c.io.in.valid, true)
   poke(c.io.out.ready, true)
+
+  for (i <- 0 until c.numCells) {
+    poke(c.io.coeffs(i), c.p.Log2Val(i))
+  }
 
   val maxCycles = 30
 
