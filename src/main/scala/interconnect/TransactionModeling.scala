@@ -34,8 +34,8 @@ case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
 // TODO: but this requires we first go through the struggle with this API and learn
 // TODO: this class should be abstract, but that breaks easy composition
 class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
-  val inputQueue = mutable.Queue[I]()
-  val outputQueue = mutable.Queue[O]()
+  val inputQueue: mutable.Queue[I] = mutable.Queue[I]()
+  val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
   val childModels: List[SoftwareModel[Transaction, Transaction]] = List()
 
   def pushTransactions(ts: Seq[I]): Unit = {
@@ -54,13 +54,14 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   def process(in: Option[I]) : Option[Seq[O]] = None
 
   def tick(): Unit = {
+    val thisClass = this.getClass.getSimpleName
     val in = if (inputQueue.nonEmpty) Some(inputQueue.dequeue()) else None
-    in.foreach {t => println(s"Received Transaction $t")}
+    in.foreach {t => println(s"$thisClass Received Transaction $t")}
     val out = process(in)
     out match {
       case Some(transactions) =>
         transactions.foreach(t => {
-          println(s"Sent Transaction $t")
+          println(s"$thisClass Sent Transaction $t")
           outputQueue.enqueue(t)
         })
       case None =>
@@ -81,19 +82,6 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
         s.tick()
         if (s.outputQueue.nonEmpty) outputQueue.enqueue(s.outputQueue.dequeue)
       }
-      /*
-      override def process(in: Option[I]): Option[Seq[O2]] = {
-        val firstModelProcess = self.process(in) // Option[Seq[O]]
-        firstModelProcess match {
-          case Some(seq) => {
-            return seq.map(_ => s.process(_))
-          }
-        }
-        firstModelProcess.map { // extract Seq[O] from Option
-          o => o.flatMap(seq => s.process(Some(seq)))
-        } // Now we have a Option[Seq[Seq[O2]]
-      }
-      */
     }
     new ComposedModel
   }
