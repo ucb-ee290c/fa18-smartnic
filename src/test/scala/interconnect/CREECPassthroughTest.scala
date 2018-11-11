@@ -56,7 +56,7 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     assert(outGold == out)
   }
 
-  "the High2Low and Passthrough models" should "compose" in {
+  "multiple High2Low and Passthrough models" should "compose" in {
     val composedModel =
       (new CREECHighToLowModel).compose(new CREECPassthroughModel).compose(new CREECPassthroughModel)
     composedModel.pushTransactions(Seq(
@@ -69,7 +69,7 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     val out = composedModel.pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(4, 0, 0x2000),
-      CREECDataBeat(1001, 0), CREECDataBeat(2001, 0), CREECDataBeat(3001, 0), CREECDataBeat(4001, 0)
+      CREECDataBeat(1002, 0), CREECDataBeat(2002, 0), CREECDataBeat(3002, 0), CREECDataBeat(4002, 0)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
