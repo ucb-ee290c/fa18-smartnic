@@ -351,6 +351,13 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
   val dataOut = Reg(new TransactionData)
   val dataIn = Reg(new TransactionData)
 
+  // Default cases
+  io.out.header.bits := headerOut
+  io.out.header.valid := false.B
+  io.out.data.bits := dataOut
+  io.out.data.valid := false.B
+  io.in.header.ready := false.B
+  io.in.data.ready := false.B
   when(state === sAwaitHeader) {
     headerIn := io.in.header.deq()
     headerOut := {

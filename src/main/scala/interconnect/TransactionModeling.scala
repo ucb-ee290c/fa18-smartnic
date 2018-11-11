@@ -36,6 +36,7 @@ case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
 class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val inputQueue = mutable.Queue[I]()
   val outputQueue = mutable.Queue[O]()
+  val childModels: List[SoftwareModel[Transaction, Transaction]] = List()
 
   def pushTransactions(ts: Seq[I]): Unit = {
     ts.foreach { t => inputQueue.enqueue(t) }
@@ -46,7 +47,7 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   }
 
   def nothingToProcess : Boolean = {
-    inputQueue.isEmpty
+    inputQueue.isEmpty && childModels.forall(_.inputQueue.isEmpty)
   }
 
   // TODO: This function should be abstract
