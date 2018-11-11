@@ -8,9 +8,9 @@ import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 // Software implementation of the RSEncoder
 class RSCode(numSyms: Int, symbolWidth: Int,
              msgs: Seq[Int]) {
-  val numVals = BigInt(2).pow(symbolWidth).toInt
-  var Log2Val: Array[Int] = new Array[Int](numVals)
-  var Val2Log: Array[Int] = new Array[Int](numVals)
+  val numRoots = BigInt(2).pow(symbolWidth).toInt
+  var Log2Val: Array[Int] = new Array[Int](numRoots)
+  var Val2Log: Array[Int] = new Array[Int](numRoots)
   // Primitive Polynomial
   val fConst = {
     symbolWidth match {
@@ -36,14 +36,14 @@ class RSCode(numSyms: Int, symbolWidth: Int,
 
   Log2Val(0) = 1
   Log2Val(1) = 2 // according to the spec, usually choose a^1 to be 2
-  for (i <- 2 until numVals) {
+  for (i <- 2 until numRoots) {
     Log2Val(i) = Log2Val(i - 1) << 1
-    if (Log2Val(i) >= numVals) {
-      Log2Val(i) = (Log2Val(i) % numVals) ^ (fConst % numVals)
+    if (Log2Val(i) >= numRoots) {
+      Log2Val(i) = (Log2Val(i) % numRoots) ^ (fConst % numRoots)
     }
   }
 
-  for (i <- 0 until numVals) {
+  for (i <- 0 until numRoots) {
     Val2Log(Log2Val(i)) = i
   }
 
@@ -55,7 +55,7 @@ class RSCode(numSyms: Int, symbolWidth: Int,
     if (a == 0 || b == 0) {
       0
     } else {
-      Log2Val((Val2Log(a) + Val2Log(b)) % (numVals - 1))
+      Log2Val((Val2Log(a) + Val2Log(b)) % (numRoots - 1))
     }
   }
 
@@ -64,29 +64,29 @@ class RSCode(numSyms: Int, symbolWidth: Int,
   }
 
   def printValRootTable() {
-    for (i <- 0 until numVals) {
+    for (i <- 0 until numRoots) {
       printf("Val2Log(%d) = %d\n", i, Val2Log(i))
     }
   }
 
   def printLogRootTable() {
-    for (i <- 0 until numVals) {
+    for (i <- 0 until numRoots) {
       printf("Log2Val(%d) = %d\n", i, Log2Val(i))
     }
   }
 
   def inv(a: Int): Int = {
-    //pow(a, numVals - 2)
+    //pow(a, numRoots - 2)
     var tmp = a
     var result = 1
     while (tmp != 1) {
       tmp = tmp << 1
-      if (tmp >= numVals) {
-        tmp = (tmp % numVals) ^ (fConst % numVals)
+      if (tmp >= numRoots) {
+        tmp = (tmp % numRoots) ^ (fConst % numRoots)
       }
       result = result << 1
-      if (result >= numVals) {
-        result = (result % numVals) ^ (fConst % numVals)
+      if (result >= numRoots) {
+        result = (result % numRoots) ^ (fConst % numRoots)
       }
 
     }
@@ -136,56 +136,45 @@ class RSCode(numSyms: Int, symbolWidth: Int,
     msgs ++ pars.reverse
   }
 
-  // Make sure the generated symbol sequence forms a polynomial
-  // that equals to zero at all the *numPars* roots
-  // E.g., out(X) = syms(0) * X^(n - 1) + sym(1) * X^(n - 2) + ... + sym(n - 1) * X^0
-  // then we need to ensure that: out(a^1) = 0, out(a^2) = 0, ... out(a^(numPars)) = 0
-  def verify_encode(syms: Seq[Int]): Boolean = {
-    var check: Boolean = true
-    for (r <- 0 to numPars - 1) {
-      var t: Int = 0
-      for (i <- 0 until syms.size) {
-        t = add(t, mul(syms(i), pow(Log2Val(r), syms.size - i - 1)))
-      }
-      if (t != 0) {
-        check = false
-      }
-    }
-    check
-  }
-
+  // This function computes the following polynomial
+  // coeffs(0) * X^(0) + coeffs(1) * X^(1) + ... + coeffs(d - 1) * X^(d - 1)
+  // where X = variable, d = coeffs.size
   def evaluatePoly(coeffs: Seq[Int], variable: Int): Int = {
     val degree = coeffs.size
     var result = 0
     for (i <- 0 until degree) {
-      result = result ^ mul(coeffs(degree - i - 1), pow(variable, i))
+      result = result ^ mul(coeffs(i), pow(variable, i))
     }
     result
   }
 
-  def decode(inSyms: Seq[Int]): Seq[Int] = {
+  // A correct symbol sequence forms a polynomial that has roots
+  // at a^0, a^1, ..., a^(numPars - 1)
+  def syndromeCompute(syms: Seq[Int]): (Seq[Int], Boolean) = {
     var syndromes = List[Int]()
-    var foundNZSyndrome = false
-
+    val revSyms = syms.reverse
+    var foundNZSym = false
     // Syndrome computation
     for (i <- 0 until numPars) {
-      val res = evaluatePoly(inSyms, Log2Val(i))
+      val res = evaluatePoly(revSyms, Log2Val(i))
       syndromes = syndromes :+ res
       if (res != 0) {
-        foundNZSyndrome = true
+        foundNZSym = true
       }
     }
+    (syndromes, foundNZSym)
+  }
 
-    if (!foundNZSyndrome) {
+  def verifySyms(syms: Seq[Int]): Boolean = {
+    syndromeCompute(syms)._2 == false
+  }
+
+  def decode(inSyms: Seq[Int]): Seq[Int] = {
+    val (syndromes, foundNZSym) = syndromeCompute(inSyms)
+    if (!foundNZSym) {
       // the input symbol sequence is bug-free
       inSyms
     } else {
-
-      printf("Check Syndromes result\n")
-      for (i <- 0 until syndromes.size) {
-        printf("syndromes(%d) = %d\n", i, syndromes(i))
-      }
-
       var evaluatorsA = new Array[Int](numPars + 1)
       var evaluatorsB = new Array[Int](numPars + 1)
       var locatorsA = new Array[Int](numPars + 1)
@@ -226,26 +215,6 @@ class RSCode(numSyms: Int, symbolWidth: Int,
         }
       }
 
-      printf("Check KeyEquation result\n")
-      for (i <- 0 to numPars) {
-        printf("[%d] evaluator %d, locator %d\n", i, evaluatorsB(i), locatorsB(i))
-      }
-
-      // Chien search
-      var chienRootIndices = List[Int]()
-      for (i <- 0 until numVals) {
-        val res = evaluatePoly(locatorsB, Log2Val(i))
-        if (res == 0) {
-          chienRootIndices = chienRootIndices :+ i
-        }
-      }
-
-      printf("Check Chien'ssearch result\n")
-      for (i <- 0 until chienRootIndices.size) {
-        printf("%d\n", chienRootIndices(i))
-      }
-
-      // Error correction
       val locatorsDeriv = new Array[Int](numPars)
       for (i <- 0 until numPars) {
         if (i % 2 == 1) {
@@ -256,21 +225,27 @@ class RSCode(numSyms: Int, symbolWidth: Int,
         }
       }
 
+      // Chien search
+      var chienRootIndices = List[Int]()
+      for (i <- 0 until numRoots) {
+        val res = evaluatePoly(locatorsB, Log2Val(i))
+        if (res == 0) {
+          chienRootIndices = chienRootIndices :+ i
+        }
+      }
+
+      // Error correction
       var correctedSyms = new Array[Int](numSyms)
       for (i <- 0 until numSyms) {
         correctedSyms(i) = inSyms(i)
       }
 
       for (i <- 0 until chienRootIndices.size) {
-        // reverse ...
-        val idx = numSyms - 1 - chienRootIndices(i)
-        val rootVal = Log2Val(idx + 1)
-        correctedSyms(idx) = mul(evaluatePoly(evaluatorsB, rootVal),
-          inv(mul(rootVal, evaluatePoly(locatorsDeriv, rootVal))))
-      }
-
-      for (i <- 0 until correctedSyms.size) {
-        printf("[%d] correctedSyms %d\n", i, correctedSyms(i))
+        val idx = chienRootIndices(i)
+        val chienRootVal = Log2Val(idx)
+        correctedSyms(idx - 1) = correctedSyms(idx - 1) ^
+          mul(evaluatePoly(evaluatorsB, chienRootVal),
+              inv(mul(chienRootVal, evaluatePoly(locatorsDeriv, chienRootVal))))
       }
 
       correctedSyms
@@ -499,30 +474,33 @@ class ECCTester extends ChiselFlatSpec {
 
   val rs = new RSCode(numSymbols, symbolWidth, msgs)
 
-  val gCoeffs = rs.gCoeffs
-  val fConst = rs.fConst
-
+  // Runnig software RS Encoder
   val swSyms = rs.encode()
   for (i <- 0 until swSyms.size) {
     printf("swSyms(%d) = %d\n", i, swSyms(i))
   }
 
+  // Need to pass this test to go further
+  require(rs.verifySyms(swSyms), "Incorrect software RS encoder!")
+
   // This is the buggy input symbol sequence
   val buggySyms = Seq(1, 2, 3, 4, 5, 11, 7, 8, 9, 10, 11, 3, 1, 12, 12)
-  // This is the correct symbol sequence
-  val swCorrectedSyms = Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 3, 3, 12, 12)
 
-  val correctedSyms = rs.decode(buggySyms)
+  // Running software RS Decoder
+  val swCorrectedSyms = rs.decode(buggySyms)
+  for (i <- 0 until swCorrectedSyms.size) {
+    printf("swCorrectedSyms(%d) = %d\n", i, swCorrectedSyms(i))
+  }
 
   // Need to pass this test to go further
-  require(rs.verify_encode(swSyms), "Incorrect software RSEncoding generator!")
+  require(rs.verifySyms(swCorrectedSyms), "Incorrect software RS decoder!")
 
   val params = RSParams(
     n = numSymbols,
     k = msgs.size,
     symbolWidth = symbolWidth,
-    gCoeffs = gCoeffs,
-    fConst = fConst,
+    gCoeffs = rs.gCoeffs,
+    fConst = rs.fConst,
     rs.Log2Val,
     rs.Val2Log
   )

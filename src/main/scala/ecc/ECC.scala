@@ -422,8 +422,6 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
   val errorMagReg = RegNext(p.GFOp.mul(evalResult, p.GFOp.inv(p.GFOp.mul(locDerivResult, rootVals(locRootIdx)))))
 
-  printf("[TEST] %d %d %d\n", evalResult, locDerivResult, rootVals(locRootIdx))
-
   evalPolyCmp.io.coeffs := (0 until evalPolyCmp.getNumCells()).map(x => rootVals(locRootIdx))
   evalPolyCmp.io.in.valid := (state === sErrorCorrection2 &&
                        evalInCnt <= (p.n - p.k).asUInt())
