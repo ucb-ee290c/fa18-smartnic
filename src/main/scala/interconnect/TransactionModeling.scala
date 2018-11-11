@@ -36,7 +36,7 @@ case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
 class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val inputQueue: mutable.Queue[I] = mutable.Queue[I]()
   val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
-  val childModels: List[SoftwareModel[Transaction, Transaction]] = List()
+  val childModels: mutable.ListBuffer[SoftwareModel[_,_]] = mutable.ListBuffer()
 
   def pushTransactions(ts: Seq[I]): Unit = {
     ts.foreach { t => inputQueue.enqueue(t) }
@@ -47,7 +47,7 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   }
 
   def nothingToProcess : Boolean = {
-    inputQueue.isEmpty && childModels.forall(_.inputQueue.isEmpty)
+    inputQueue.isEmpty && childModels.forall(m => m.inputQueue.isEmpty && m.outputQueue.isEmpty)
   }
 
   // TODO: This function should be abstract
@@ -75,12 +75,14 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
     // self = the first model
     // s = the second model being chained to the first model's output
     class ComposedModel extends SoftwareModel[I, O2] {
+      childModels += s
+      childModels += self
       override def tick(): Unit = {
-        if (inputQueue.nonEmpty) self.inputQueue.enqueue(inputQueue.dequeue())
+        if (inputQueue.nonEmpty) self.inputQueue.enqueue(inputQueue.dequeueAll(_ => true):_*)
         self.tick()
-        if (self.outputQueue.nonEmpty) s.inputQueue.enqueue(self.outputQueue.dequeue())
+        if (self.outputQueue.nonEmpty) s.inputQueue.enqueue(self.outputQueue.dequeueAll(_ => true):_*)
         s.tick()
-        if (s.outputQueue.nonEmpty) outputQueue.enqueue(s.outputQueue.dequeue)
+        if (s.outputQueue.nonEmpty) outputQueue.enqueue(s.outputQueue.dequeueAll(_ => true):_*)
       }
     }
     new ComposedModel

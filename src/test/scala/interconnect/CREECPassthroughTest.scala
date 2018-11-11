@@ -10,7 +10,7 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     "--tr-write-vcd",
     "--target-dir", "test_run_dir/creec",
     "--top-name")
-
+/*
   "the High2Low model" should "translate correctly" in {
     val model = new CREECHighToLowModel
     model.pushTransactions(Seq(
@@ -54,6 +54,22 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
     assert(outGold == out)
+  }
+*/
+  "the High2Low and Passthrough models" should "compose" in {
+    val high2LowModel = new CREECHighToLowModel
+    val passthroughModel = new CREECPassthroughModel
+    val composedModel: SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] =
+      high2LowModel.compose(passthroughModel)
+    composedModel.pushTransactions(Seq(
+      CREECHighLevelTransaction(Seq(
+        1000, 2000, 3000, 4000
+      ), 0x0)
+    ))
+    while (!composedModel.nothingToProcess) composedModel.tick()
+    //composedModel.tick()
+    val out = composedModel.pullTransactions()
+    println(out)
   }
 }
 
