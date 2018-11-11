@@ -10,7 +10,7 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     "--tr-write-vcd",
     "--target-dir", "test_run_dir/creec",
     "--top-name")
-/*
+
   "the High2Low model" should "translate correctly" in {
     val model = new CREECHighToLowModel
     model.pushTransactions(Seq(
@@ -22,7 +22,7 @@ class CREECPassthroughTest extends ChiselFlatSpec {
       ), 0x1000)
     ))
     println("LAUNCHING MODEL SIMULATION")
-    while (!model.nothingToProcess) model.tick()
+    model.advanceSimulation()
     val out = model.pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(4, 0, 0x0),
@@ -45,7 +45,7 @@ class CREECPassthroughTest extends ChiselFlatSpec {
       CREECDataBeat(4000, 0)
     ))
     println("LAUNCHING MODEL SIMULATION")
-    while (!model.nothingToProcess) model.tick()
+    model.advanceSimulation()
     val out = model.pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(4, 0, 0x0),
@@ -55,21 +55,25 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     println(out)
     assert(outGold == out)
   }
-*/
+
   "the High2Low and Passthrough models" should "compose" in {
-    val high2LowModel = new CREECHighToLowModel
-    val passthroughModel = new CREECPassthroughModel
-    val composedModel: SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] =
-      high2LowModel.compose(passthroughModel)
+    val composedModel =
+      (new CREECHighToLowModel).compose(new CREECPassthroughModel).compose(new CREECPassthroughModel)
     composedModel.pushTransactions(Seq(
       CREECHighLevelTransaction(Seq(
         1000, 2000, 3000, 4000
-      ), 0x0)
+      ), 0x2000)
     ))
-    while (!composedModel.nothingToProcess) composedModel.tick()
-    //composedModel.tick()
+    println("LAUNCHING MODEL SIMULATION")
+    composedModel.advanceSimulation()
     val out = composedModel.pullTransactions()
+    val outGold = Seq(
+      CREECHeaderBeat(4, 0, 0x2000),
+      CREECDataBeat(1001, 0), CREECDataBeat(2001, 0), CREECDataBeat(3001, 0), CREECDataBeat(4001, 0)
+    )
+    println("OUTPUT TRANSACTIONS PULLED")
     println(out)
+    assert(outGold == out)
   }
 }
 

@@ -37,17 +37,26 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val inputQueue: mutable.Queue[I] = mutable.Queue[I]()
   val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
   val childModels: mutable.ListBuffer[SoftwareModel[_,_]] = mutable.ListBuffer()
+  var cycle = 0
 
   def pushTransactions(ts: Seq[I]): Unit = {
     ts.foreach { t => inputQueue.enqueue(t) }
   }
 
-  def pullTransactions() : Seq[O] = {
+  def pullTransactions(): Seq[O] = {
     outputQueue.dequeueAll(_ => true)
   }
 
-  def nothingToProcess : Boolean = {
-    inputQueue.isEmpty && childModels.forall(m => m.inputQueue.isEmpty && m.outputQueue.isEmpty)
+  def nothingToProcess: Boolean = {
+    inputQueue.isEmpty && childModels.forall(m => m.nothingToProcess)
+  }
+
+  def advanceSimulation(): Unit = {
+    while (!nothingToProcess) {
+      println(s"CYCLE $cycle")
+      self.tick()
+      cycle += 1
+    }
   }
 
   // TODO: This function should be abstract
