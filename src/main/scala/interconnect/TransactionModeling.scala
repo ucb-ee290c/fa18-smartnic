@@ -33,7 +33,7 @@ case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
 // TODO: this whole API should be based on streams with a synchronization API, not on ticks and processing
 // TODO: but this requires we first go through the struggle with this API and learn
 // TODO: this class should be abstract, but that breaks easy composition
-class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
+abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val inputQueue: mutable.Queue[I] = mutable.Queue[I]()
   val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
   val childModels: mutable.ListBuffer[SoftwareModel[_,_]] = mutable.ListBuffer()
@@ -60,20 +60,18 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   }
 
   // TODO: This function should be abstract
-  def process(in: Option[I]) : Option[Seq[O]] = None
+  def process(in: I) : Seq[O]
 
   def tick(): Unit = {
     val thisClass = this.getClass.getSimpleName
-    val in = if (inputQueue.nonEmpty) Some(inputQueue.dequeue()) else None
-    in.foreach {t => println(s"$thisClass Received Transaction $t")}
-    val out = process(in)
-    out match {
-      case Some(transactions) =>
-        transactions.foreach(t => {
-          println(s"$thisClass Sent Transaction $t")
-          outputQueue.enqueue(t)
-        })
-      case None =>
+    if (inputQueue.nonEmpty) {
+      val in = inputQueue.dequeue()
+      println(s"$thisClass Received Transaction $in")
+      val out = process(in)
+      out.foreach { t =>
+        println(s"$thisClass Sent Transaction $t")
+        outputQueue.enqueue(t)
+      }
     }
   }
 
@@ -93,6 +91,7 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
         s.tick()
         if (s.outputQueue.nonEmpty) outputQueue.enqueue(s.outputQueue.dequeueAll(_ => true):_*)
       }
+      override def process(in: I): Seq[O2] = Seq()
     }
     new ComposedModel
   }
@@ -102,13 +101,9 @@ class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   * A software model for turning CREEC HighLevelTransactions into CREEC LowLevelTransactions
   */
 class CREECHighToLowModel extends SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] {
-  override def process(in: Option[CREECHighLevelTransaction]) : Option[Seq[CREECLowLevelTransaction]] = {
-    in match {
-      case Some(t) =>
-        val header = Seq(CREECHeaderBeat(t.data.length, 0, t.addr))
-        val dataBeats = t.data.map(dataBeat => CREECDataBeat(dataBeat, 0))
-        Some(header ++ dataBeats)
-      case None => None
-    }
+  override def process(in: CREECHighLevelTransaction) : Seq[CREECLowLevelTransaction] = {
+      val header = Seq(CREECHeaderBeat(in.data.length, 0, in.addr))
+      val dataBeats = in.data.map(dataBeat => CREECDataBeat(dataBeat, 0))
+      header ++ dataBeats
   }
 }
