@@ -68,6 +68,9 @@ object CompressionUtils {
   }
 }
 
+/*
+ * Functions for manipulating bytes.
+ */
 object ByteUtils {
   /*
    * Compacts 8 bytes into a 64-bit int.
@@ -195,128 +198,8 @@ class RunLengthCoderTester(c: RunLengthCoder, encode: Boolean) extends PeekPokeT
 }
 
 /*
- * Full CREEC-level test of differential coding.
+ * Test of fifo used in RunLength coder.
  */
-class CREECDifferentialCoderTester(c: CREECDifferentialCoder, encode: Boolean) extends PeekPokeTester(c) {
-  val allTestAddrs = List(611, 612, 613)
-  val allTestLens = List(5, 1, 2)
-  val allTestDatas = List(
-    List[Byte](
-      3, 4, 5, 6, 7, 8, 9, 10,
-      0, 1, 2, 7, 8, 8, 8, 8,
-      8, 8, 9, 7, 8, 9, 7, 8,
-      1, 2, 1, 0, 0, 0, 0, 0,
-      0, 0, 1, 0, 0, 12, 0, 12
-    ),
-    List[Byte](
-      0, 0, 0, 0, 0, 0, 0, 0
-    ),
-    List[Byte](
-      1, 2, 3, 4, 5, 6, 7, 8,
-      9, 10, 11, 12, 13, 14, 15, 16
-    )
-  )
-
-  for (i <- allTestAddrs.indices) {
-    test(allTestAddrs(i), allTestLens(i), allTestDatas(i))
-  }
-
-  def test(addr: Int, len: Int, data: List[Byte]): Boolean = {
-    val expectedData = if (encode)
-      CompressionUtils.differentialEncode(data)
-    else
-      CompressionUtils.differentialDecode(data)
-    val header = Header(len, addr)
-    val expectedHeader = Header(len, addr)
-    var datas: List[Data] = List[Data]()
-    for (i <- 0 until math.ceil(data.length / 8.0).toInt) {
-      datas = datas :+ Data(ByteUtils.squish(data.slice(8 * i, 8 * i + 8)))
-    }
-    var expectedDatas: List[Data] = List[Data]()
-    for (i <- 0 until math.ceil(data.length / 8.0).toInt) {
-      expectedDatas = expectedDatas :+ Data(ByteUtils.squish(expectedData.slice(8 * i, 8 * i + 8)))
-    }
-
-    poke(c.io.in.header.valid, true)
-    poke(c.io.in.data.valid, true)
-    poke(c.io.out.header.ready, true)
-    poke(c.io.out.data.ready, true)
-
-    var i = 0
-    var timeout = 0
-    var datasOut: List[Data] = List[Data]()
-    while (i < datas.length || datasOut.length < expectedDatas.length) {
-      if (peek(c.io.in.header.ready) != BigInt(0)) {
-        pokeHeader(c, header)
-      }
-      if (i < datas.length) {
-        val data = datas(i)
-        if (peek(c.io.in.data.ready) != BigInt(0)) {
-          pokeData(c, data)
-          i = i + 1
-        }
-      }
-      if (peek(c.io.out.header.valid) != BigInt(0)) {
-        expect(peekHeader(c) == expectedHeader, "input and output headers did not match.")
-      }
-      if (peek(c.io.out.data.valid) != BigInt(0)) {
-        datasOut = datasOut :+ peekData(c)
-      }
-
-      step(1)
-      timeout += 1
-      if (timeout > 200) {
-        expect(good = false, "took too long.")
-        return false
-      }
-    }
-    expect(datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }) == expectedData,
-      "actual output did not match expected output.")
-  }
-
-  case class Header(len: Int, addr: Int, id: Int = 0, encrypted: Boolean = false,
-                    compressed: Boolean = false, ecc: Boolean = false) {
-  }
-
-  case class Data(data: BigInt, id: Int = 0) {
-    override def toString: String = {
-      "%016x".format(data)
-    }
-  }
-
-  def peekData(c: CREECDifferentialCoder): Data = {
-    Data(
-      data = peek(c.io.out.data.bits.data),
-      id = peek(c.io.out.data.bits.id).toInt
-    )
-  }
-
-  def peekHeader(c: CREECDifferentialCoder): Header = {
-    Header(
-      len = peek(c.io.out.header.bits.len).toInt,
-      addr = peek(c.io.out.header.bits.addr).toInt,
-      id = peek(c.io.out.header.bits.id).toInt,
-      encrypted = peek(c.io.out.header.bits.encrypted) != 0,
-      compressed = peek(c.io.out.header.bits.compressed) != 0,
-      ecc = peek(c.io.out.header.bits.ecc) != 0
-    )
-  }
-
-  def pokeHeader(c: CREECDifferentialCoder, header: Header): Unit = {
-    poke(c.io.in.header.bits.len, header.len)
-    poke(c.io.in.header.bits.id, header.id)
-    poke(c.io.in.header.bits.addr, header.addr)
-    poke(c.io.in.header.bits.encrypted, header.encrypted)
-    poke(c.io.in.header.bits.compressed, header.compressed)
-    poke(c.io.in.header.bits.ecc, header.ecc)
-  }
-
-  def pokeData(c: CREECDifferentialCoder, data: Data): Unit = {
-    poke(c.io.in.data.bits.data, data.data)
-    poke(c.io.in.data.bits.id, data.id)
-  }
-}
-
 class BasicFIFOTester(c: BasicFIFO) extends PeekPokeTester(c) {
   val inputs = List(45, 80, 1, 12, 15, 9, 0, 0, 22)
   poke(c.io.push, true)
@@ -359,8 +242,9 @@ class BasicFIFOTester(c: BasicFIFO) extends PeekPokeTester(c) {
 
 /*
  * Test of creec-level run-length encoding
- */ //TODO: combine this with creecdifferentialtester
-class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends PeekPokeTester(c) {
+ */
+class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extends PeekPokeTester(c) {
+  require(operation == "differential" || operation == "runLength")
   val allTestAddrs = List(611, 612, 613, 614)
   val allTestLens = List(5, 1, 2, 9)
   val allTestDatas = List(
@@ -396,10 +280,18 @@ class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends
   }
 
   def test(addr: Int, len: Int, data: List[Byte]): Boolean = {
-    var expectedData = if (encode)
-      CompressionUtils.runLengthEcode(data)
-    else
-      CompressionUtils.runLengthDecode(data)
+    var expectedData = if (encode) {
+      if (operation == "runLength")
+        CompressionUtils.runLengthEcode(data)
+      else
+        CompressionUtils.differentialEncode(data)
+    }
+    else {
+      if (operation == "runLength")
+        CompressionUtils.runLengthDecode(data)
+      else
+        CompressionUtils.differentialDecode(data)
+    }
     while (expectedData.length % 8 != 0) {
       expectedData = expectedData :+ 0.toByte
     }
@@ -461,14 +353,14 @@ class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends
     }
   }
 
-  def peekData(c: CREECRunLengthCoder): Data = {
+  def peekData(c: CREECCoder): Data = {
     Data(
       data = peek(c.io.out.data.bits.data),
       id = peek(c.io.out.data.bits.id).toInt
     )
   }
 
-  def peekHeader(c: CREECRunLengthCoder): Header = {
+  def peekHeader(c: CREECCoder): Header = {
     Header(
       len = peek(c.io.out.header.bits.len).toInt,
       addr = peek(c.io.out.header.bits.addr).toInt,
@@ -479,7 +371,7 @@ class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends
     )
   }
 
-  def pokeHeader(c: CREECRunLengthCoder, header: Header): Unit = {
+  def pokeHeader(c: CREECCoder, header: Header): Unit = {
     poke(c.io.in.header.bits.len, header.len)
     poke(c.io.in.header.bits.id, header.id)
     poke(c.io.in.header.bits.addr, header.addr)
@@ -488,7 +380,7 @@ class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends
     poke(c.io.in.header.bits.ecc, header.ecc)
   }
 
-  def pokeData(c: CREECRunLengthCoder, data: Data): Unit = {
+  def pokeData(c: CREECCoder, data: Data): Unit = {
     poke(c.io.in.data.bits.data, data.data)
     poke(c.io.in.data.bits.id, data.id)
   }
@@ -542,28 +434,28 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "CREECDifferentialCoder" should "encode" in {
-    Driver.execute(testerArgs :+ "creec_differential_encoder", () => new CREECDifferentialCoder) {
-      c => new CREECDifferentialCoderTester(c, true)
+    Driver.execute(testerArgs :+ "creec_differential_encoder", () => new CREECCoder(operation = "differential")) {
+      c => new CREECCoderTester(c, true, "differential")
     } should be(true)
   }
 
   "CREECDifferentialCoder" should "decode" in {
-    Driver.execute(testerArgs :+ "creec_differential_decoder", () => new CREECDifferentialCoder(
-      coderParams = CoderParams(encode = false))) {
-      c => new CREECDifferentialCoderTester(c, false)
+    Driver.execute(testerArgs :+ "creec_differential_decoder", () => new CREECCoder(
+      coderParams = CoderParams(encode = false), operation = "differential")) {
+      c => new CREECCoderTester(c, false, "differential")
     } should be(true)
   }
 
   "CREECRunLengthCoder" should "encode" in {
-    Driver.execute(testerArgs :+ "creec_run_length_encoder", () => new CREECRunLengthCoder) {
-      c => new CREECRunLengthCoderTester(c, true)
+    Driver.execute(testerArgs :+ "creec_run_length_encoder", () => new CREECCoder(operation = "runLength")) {
+      c => new CREECCoderTester(c, true, "runLength")
     } should be(true)
   }
 
   "CREECRunLengthCoder" should "decode" in {
-    Driver.execute(testerArgs :+ "creec_run_length_decoder", () => new CREECRunLengthCoder(
-      coderParams = new CoderParams(encode = false))) {
-      c => new CREECRunLengthCoderTester(c, false)
+    Driver.execute(testerArgs :+ "creec_run_length_decoder", () => new CREECCoder(
+      coderParams = new CoderParams(encode = false), operation = "runLength")) {
+      c => new CREECCoderTester(c, false, "runLength")
     } should be(true)
   }
 

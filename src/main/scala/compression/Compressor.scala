@@ -528,6 +528,34 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
 }
 
 /*
+ * Generic module for CREEC coders (differential or runLength).
+ */
+class CREECCoder(creecParams: CREECBusParams = new CREECBusParams,
+                 coderParams: CoderParams = new CoderParams,
+                 operation: String) extends Module {
+  val io = IO(new Bundle {
+    val in: CREECBus = {
+      if (coderParams.encode)
+        Flipped(new CREECWriteBus(creecParams))
+      else
+        Flipped(new CREECReadBus(creecParams))
+    }
+    val out: CREECBus = {
+      if (coderParams.encode)
+        new CREECWriteBus(creecParams)
+      else
+        new CREECReadBus(creecParams)
+    }
+  })
+  require(operation == "differential" || operation == "runLength")
+  val coder = if(operation == "differential")
+    Module(new CREECDifferentialCoder(creecParams, coderParams))
+  else
+    Module(new CREECRunLengthCoder(creecParams, coderParams))
+  coder.io <> io
+}
+
+/*
  * max.
  * TODO:
  */
