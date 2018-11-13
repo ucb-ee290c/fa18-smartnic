@@ -27,16 +27,18 @@ class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
                      byteWidth: Int = 8) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
-    val out = Decoupled(Output(UInt(byteWidth.W)))
+    val out = Decoupled(Output(new FlaggedByte(byteWidth)))
   })
   //define state machine
-  val sAccept :: sSend :: sStutter :: Nil = Enum(3)
+  val sAccept :: sSend :: sStutter :: sEnd :: Nil = Enum(4)
   val state = RegInit(sAccept)
 
   //register the input and output bytes
   val byteIn = RegInit(0.U(byteWidth.W))
-  val byteOut = Wire(UInt(byteWidth.W))
-  dontTouch(byteOut)
+  val dataOut = Wire(new FlaggedByte(byteWidth))
+  dataOut.flag := false.B
+  dontTouch(dataOut.byte)
+  dontTouch(dataOut.flag)
 
   //keep track of how many 0's have been seen for encoder, or how many zeros
   //    need to be sent for decoder.
@@ -54,12 +56,18 @@ class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
    */
   val goToStutter = RegInit(false.B)
 
+  //true when the entire input is consumed and the last byte has been sent. Transitions
+  //    into the sEnd state, where the output flag is high. When the output flag is high,
+  //    the oputput byte is not valid.
+  val finish = Wire(Bool())
+  finish := false.B
+
   //state transitions
   when(state === sAccept) {
-    byteOut := 0.U
+    dataOut.byte := 0.U
+    finish := false.B
     byteIn := io.in.deq().byte
-    if (coderParams.encode)
-      stop := io.in.deq().flag
+    stop := io.in.deq().flag
     io.out.noenq()
     when(io.in.fire()) {
       state := sSend
@@ -68,7 +76,8 @@ class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     io.in.nodeq()
 
     if (coderParams.encode) {
-      byteOut := Mux(byteIn === 0.U, run, Mux(run === 0.U, byteIn, run - 1.U))
+      dataOut.byte := Mux(byteIn === 0.U, run, Mux(run === 0.U, byteIn, run - 1.U))
+      finish := stop && !stutter
       run := Mux(byteIn =/= 0.U || stop, 0.U, run + 1.U)
       stutter := Mux(byteIn === 0.U, stop && run === 0.U, run =/= 0.U)
       state := Mux(byteIn === 0.U && run =/= 0.U && !stop, sAccept, state)
@@ -78,52 +87,71 @@ class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
       when(byteIn === 0.U && run =/= 0.U && !stop) {
         io.out.noenq()
       }.otherwise {
-        io.out.enq(byteOut)
+        io.out.enq(dataOut)
       }
     }
     else {
-      byteOut := byteIn
+      dataOut.byte := byteIn
+      finish := stop && !goToStutter
       run := byteIn - 1.U
-      goToStutter := Mux(goToStutter,
-        false.B,
-        Mux(byteIn === 0.U, true.B, goToStutter))
-      state := Mux(goToStutter, Mux(byteIn === 0.U, sAccept, sStutter), state)
+      goToStutter := Mux(goToStutter, false.B, byteIn === 0.U)
       when(goToStutter) {
         io.out.noenq()
+        state := Mux(byteIn === 0.U,
+            Mux(stop, sEnd, sAccept),
+            sStutter)
       }.otherwise {
-        io.out.enq(byteOut)
+        io.out.enq(dataOut)
       }
     }
 
     when(io.out.fire()) {
       when(stutter) {
         state := sStutter
+      }.elsewhen(finish) {
+        state := sEnd
       }.otherwise {
         state := sAccept
       }
     }
-  }.otherwise /*sStutter*/ {
+  }.elsewhen(state === sStutter) {
     io.in.nodeq()
-    io.out.enq(byteOut)
-    if (coderParams.encode)
-      byteOut := stutterByte
-    else
-      byteOut := 0.U
-    when(stop) {
-      run := 0.U
+    io.out.enq(dataOut)
+    if (coderParams.encode) {
+      dataOut.byte := stutterByte
+      finish := true.B && stop
+      when(stop) {
+        run := 0.U
+      }
+    }
+    else {
+      dataOut.byte := 0.U
+      finish := run === 0.U && stop
     }
     when(io.out.fire()) {
-      if (coderParams.encode) {
-        state := sAccept
-      }
-      else {
-        run := run - 1.U
-        when(run === 0.U) {
+      when(finish) {
+        state := sEnd
+      }.otherwise {
+        if (coderParams.encode) {
           state := sAccept
-        }.otherwise {
-          state := sStutter
+        }
+        else {
+          run := run - 1.U
+          when(run === 0.U) {
+            state := sAccept
+          }.otherwise {
+            state := sStutter
+          }
         }
       }
+    }
+  }.otherwise /*sEnd*/ {
+    io.in.nodeq()
+    dataOut.byte := 77.U
+    dataOut.flag := true.B
+    io.out.enq(dataOut)
+    when(io.out.fire()) {
+      state := sAccept
     }
   }
 }
@@ -319,6 +347,43 @@ class Compressor(creecParams: CREECBusParams = new CREECBusParams,
 }
 
 /*
+ * Basic FIFO that does not use decoupled and has no notion of fullness.
+ * This module is dangerous if not used properly. The output is always
+ * valid, so pop must be set to high if the output is used in order to
+ * advance the pointer. There is no bound checking.
+ * //TODO: allow taking multiple out of the queue at once and/or putting multiple in
+ */
+class BasicFIFO(width: Int, length: Int) extends Module {
+  val io = IO(new Bundle {
+    val in = Input(UInt(width.W))
+    val push = Input(Bool())
+    val pop = Input(Bool())
+    val reset = Input(Bool())
+    val out = Output(UInt(width.W))
+    val len = Output(UInt(log2Ceil(length).W)) //TODO: test this
+  })
+  val fifo = Reg(Vec(length, UInt(width.W)))
+  val head = RegInit(0.U((log2Ceil(length) + 1).W))
+  val tail = RegInit(0.U((log2Ceil(length) + 1).W))
+
+  io.out := fifo(tail)
+  fifo(head) := Mux(io.reset, fifo(head), io.in)
+  io.len := head - tail
+
+  when(io.reset) {
+    head := 0.U
+    tail := 0.U
+  }.otherwise {
+    when(io.push) {
+      head := head + 1.U
+    }
+    when(io.pop) {
+      tail := tail + 1.U
+    }
+  }
+}
+
+/*
  * CREEC-level block for run-length encoding.
  * //TODO: combine this module with CREECDifferentialCoder
  */
@@ -339,19 +404,68 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     }
   })
   //create state machine definitions
-  val sAwaitHeader :: sSendHeader :: sAwaitData :: sProcessData :: sSendData :: Nil = Enum(5)
+  val sAwaitHeader :: sSendHeader :: sAwaitData :: sProcessData :: sAccumulate :: sSendData :: Nil = Enum(6)
   val state = RegInit(sAwaitHeader)
-
-  //keep track of how many more data beats we need to process
-  val beatsToGo = Reg(io.in.header.bits.len.cloneType)
 
   //register the header and data inputs once they have been accepted
   val headerIn = Reg(new TransactionHeader with BusAddress with CREECMetadata)
   val headerOut = Reg(new TransactionHeader with BusAddress with CREECMetadata)
-  val dataOut = Reg(new TransactionData)
-  val dataIn = Reg(new TransactionData)
+  val dataOut = Wire(new TransactionData)
+
+  //dataInBuffer holds the beats to be processed, while dataOutBuffer holds processed bytes.
+  val dataInBuffer = Module(new BasicFIFO(creecParams.dataWidth, creecParams.maxBeats))
+  val dataOutBuffer = Module(new BasicFIFO(8, creecParams.maxBeats * 3 / 2 * 8)) //TODO: parameters
+  dontTouch(dataInBuffer.io.pop)
+  dontTouch(dataInBuffer.io.push)
+  dontTouch(dataInBuffer.io.in)
+  dontTouch(dataInBuffer.io.reset)
+  dontTouch(dataInBuffer.io.out)
+  dontTouch(dataOutBuffer.io.pop)
+  dontTouch(dataOutBuffer.io.push)
+  dontTouch(dataOutBuffer.io.in)
+  dontTouch(dataOutBuffer.io.reset)
+  dontTouch(dataOutBuffer.io.out)
+
+  //how many beats we need to get before the processing starts or send at the end
+  val beatsToReceive = Reg(io.in.header.bits.len.cloneType)
+  val beatsToProcess = Reg(io.in.header.bits.len.cloneType)
+  val bytesToSend = Reg(SInt((creecParams.beatBits + 1).W))
+
+  //keeps track of which byte we are on for both the coded and uncoded sides.
+  //    popCounter is for the data being popped off of dataInBuffer, and
+  //    pushCounter is for the data being pushed onto dataOutBuffer.
+  //    TODO: make this parameterized
+  val counter = RegInit(0.U(3.W))
+
+  val coder = Module(new RunLengthCoder(creecParams, coderParams))
+
+  //TODO: parameters
+  val beatBuilder = Reg(Vec(8, UInt(8.W)))
+
+  //defaults //TODO: is there a way to do this automatically?
+  dataInBuffer.io.in := 0.U
+  dataInBuffer.io.push := false.B
+  dataInBuffer.io.reset := false.B
+  dataInBuffer.io.pop := false.B
+  dataOutBuffer.io.in := 0.U
+  dataOutBuffer.io.push := false.B
+  dataOutBuffer.io.reset := false.B
+  dataOutBuffer.io.pop := false.B
+  coder.io.out.ready := false.B
+  dataOut.data := beatBuilder.asUInt
+  dataOut.id := 0.U
+
+  //TODO temporary vvvvv
+  coder.io.in.bits.byte := 0.U
+  coder.io.in.bits.flag := false.B
+  coder.io.in.valid := false.B
+  io.out.data.bits.data := DontCare
+  io.out.data.bits.id := DontCare
+  io.out.data.valid := false.B
+  //TODO temporary ^^^^^
 
   when(state === sAwaitHeader) {
+    dataInBuffer.io.reset := false.B
     headerIn := io.in.header.deq()
     headerOut := {
       val out = Wire(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
@@ -374,24 +488,84 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     io.in.header.nodeq()
     io.out.data.noenq()
     io.out.header.enq(headerOut)
-    beatsToGo := headerIn.len
+    beatsToReceive := headerIn.len
+    beatsToProcess := headerIn.len
     when(io.out.header.fire()) {
       state := sAwaitData
     }
   }.elsewhen(state === sAwaitData) {
     io.in.header.nodeq()
     io.in.data.deq()
-    dataIn := io.in.data.bits
     io.out.header.noenq()
     io.out.data.noenq()
+    bytesToSend := 0.S
     when(io.in.data.fire()) {
-      state := sProcessData
+      when(beatsToReceive === 0.U) {
+        state := sProcessData
+      }.otherwise {
+        beatsToReceive := beatsToReceive - 1.U
+        dataInBuffer.io.in := io.in.data.bits.data
+        dataInBuffer.io.push := true.B
+        state := sAwaitData
+      }
     }
   }.elsewhen(state === sProcessData) {
-    when(true.B) { //TODO: this is when the data is done being processed.
+    io.in.header.nodeq()
+    io.in.data.nodeq()
+    io.out.header.noenq()
+    io.out.data.noenq()
+
+    coder.io.in.enq({
+      val flaggedByte = Wire(new FlaggedByte())
+      flaggedByte.byte := dataInBuffer.io.out.asTypeOf(Vec(8, UInt(8.W)))(counter)
+      flaggedByte.flag := counter === 7.U && beatsToProcess === 0.U
+      flaggedByte
+    })
+
+    dataOutBuffer.io.in := coder.io.out.deq()
+
+    when(coder.io.out.fire()) {
+      dataOutBuffer.io.push := true.B
+      bytesToSend := bytesToSend + 1.S
+    }
+
+    when(coder.io.in.fire()) {
+      counter := counter + 1.U
+      when(counter === 7.U) {
+        beatsToProcess := beatsToProcess - 1.U
+        dataInBuffer.io.pop := true.B
+      }
+    }
+
+    when(beatsToProcess === 0.U) {
+      state := sAccumulate
+      counter := 0.U
+    }
+  }.elsewhen(state === sAccumulate) {
+    io.in.header.nodeq()
+    io.in.data.nodeq()
+    io.out.header.noenq()
+    io.out.data.noenq()
+    beatBuilder(counter) := dataOutBuffer.io.out
+    dataOutBuffer.io.pop := true.B
+    counter := counter + 1.U
+    when(counter === 7.U) {
       state := sSendData
+      counter := 0.U
     }
   }.otherwise /*sSendData*/ {
-
+    io.in.header.nodeq()
+    io.in.data.nodeq()
+    io.out.header.noenq()
+    io.out.data.enq(dataOut)
+    when(io.out.data.fire()) {
+      when(bytesToSend <= 0.S) {
+        state := sAwaitHeader
+        dataInBuffer.io.reset := true.B
+      }.otherwise {
+        bytesToSend := bytesToSend - 8.S
+        state := sAccumulate
+      }
+    }
   }
 }
