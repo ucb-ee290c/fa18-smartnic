@@ -98,8 +98,8 @@ class RunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
       when(goToStutter) {
         io.out.noenq()
         state := Mux(byteIn === 0.U,
-            Mux(stop, sEnd, sAccept),
-            sStutter)
+          Mux(stop, sEnd, sAccept),
+          sStutter)
       }.otherwise {
         io.out.enq(dataOut)
       }
@@ -367,7 +367,14 @@ class BasicFIFO(width: Int, length: Int) extends Module {
   val tail = RegInit(0.U((log2Ceil(length) + 1).W))
 
   io.out := fifo(tail)
-  fifo(head) := Mux(io.reset, fifo(head), io.in)
+  for(i <- 0 until length) {
+    when(io.reset) {
+      fifo(i) := 0.U
+    }
+  }
+  when(!io.reset) {
+    fifo(head) := io.in
+  }
   io.len := head - tail
 
   when(io.reset) {
@@ -498,7 +505,6 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     io.in.data.deq()
     io.out.header.noenq()
     io.out.data.noenq()
-    bytesToSend := 0.S
     when(io.in.data.fire()) {
       when(beatsToReceive === 0.U) {
         state := sProcessData
@@ -518,28 +524,32 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     coder.io.in.enq({
       val flaggedByte = Wire(new FlaggedByte())
       flaggedByte.byte := dataInBuffer.io.out.asTypeOf(Vec(8, UInt(8.W)))(counter)
-      flaggedByte.flag := counter === 7.U && beatsToProcess === 0.U
+      flaggedByte.flag := counter === 7.U && beatsToProcess === 1.U
       flaggedByte
     })
 
-    dataOutBuffer.io.in := coder.io.out.deq()
+    when(!coder.io.out.deq().flag) {
+      dataOutBuffer.io.in := coder.io.out.bits.byte
+    }
 
     when(coder.io.out.fire()) {
       dataOutBuffer.io.push := true.B
-      bytesToSend := bytesToSend + 1.S
-    }
-
-    when(coder.io.in.fire()) {
-      counter := counter + 1.U
-      when(counter === 7.U) {
-        beatsToProcess := beatsToProcess - 1.U
-        dataInBuffer.io.pop := true.B
+      when(coder.io.out.bits.flag) {
+        state := sAccumulate
+        counter := 0.U
+      }.otherwise {
+        bytesToSend := bytesToSend + 1.S
       }
     }
 
-    when(beatsToProcess === 0.U) {
-      state := sAccumulate
-      counter := 0.U
+    when(coder.io.in.fire()) {
+      when(beatsToProcess =/= 0.U) {
+        counter := counter + 1.U
+        when(counter === 7.U) {
+          beatsToProcess := beatsToProcess - 1.U
+          dataInBuffer.io.pop := true.B
+        }
+      }
     }
   }.elsewhen(state === sAccumulate) {
     io.in.header.nodeq()
@@ -559,9 +569,11 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     io.out.header.noenq()
     io.out.data.enq(dataOut)
     when(io.out.data.fire()) {
-      when(bytesToSend <= 0.S) {
+      when(bytesToSend <= 8.S) {
         state := sAwaitHeader
         dataInBuffer.io.reset := true.B
+        dataOutBuffer.io.reset := true.B
+        bytesToSend := 0.S
       }.otherwise {
         bytesToSend := bytesToSend - 8.S
         state := sAccumulate

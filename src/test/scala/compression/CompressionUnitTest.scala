@@ -190,8 +190,6 @@ class RunLengthCoderTester(c: RunLengthCoder, encode: Boolean) extends PeekPokeT
         return false
       }
     }
-    println("got: " + output)
-    println("exp: " + expectedOutput)
     expect(output == expectedOutput, "actual output did not match expected output.")
   }
 }
@@ -331,8 +329,6 @@ class BasicFIFOTester(c: BasicFIFO) extends PeekPokeTester(c) {
   poke(c.io.pop, true)
   //expect all outputs to follow
   for (input <- inputs) {
-    println(input + "")
-    println(peek(c.io.out) + "")
     expect(peek(c.io.out) == input, "actual output did not match expected output")
     step(1)
   }
@@ -451,9 +447,6 @@ class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends
         return false
       }
     }
-    println("got")
-    println(datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }) + "")
-    println(expectedData + "")
     expect(datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }) == expectedData,
       "actual output did not match expected output.")
   }
