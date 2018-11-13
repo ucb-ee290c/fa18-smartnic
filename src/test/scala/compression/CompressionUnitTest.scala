@@ -359,7 +359,7 @@ class BasicFIFOTester(c: BasicFIFO) extends PeekPokeTester(c) {
 
 /*
  * Test of creec-level run-length encoding
- */
+ */ //TODO: combine this with creecdifferentialtester
 class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends PeekPokeTester(c) {
   val allTestAddrs = List(611, 612, 613, 614)
   val allTestLens = List(5, 1, 2, 9)
@@ -494,6 +494,13 @@ class CREECRunLengthCoderTester(c: CREECRunLengthCoder, encode: Boolean) extends
   }
 }
 
+/*
+ * Top-level test.
+ */
+class CompressorTester(c: Compressor) extends PeekPokeTester(c) {
+  //TODO
+}
+
 /**
   * From within sbt use:
   * testOnly example.test.CompressionTester
@@ -563,6 +570,18 @@ class CompressionTester extends ChiselFlatSpec {
   "BasicFIFO" should "work" in {
     Driver.execute(testerArgs :+ "basic_fifo", () => new BasicFIFO(64, 128)) {
       c => new BasicFIFOTester(c)
+    } should be(true)
+  }
+
+  "Compressor" should "compress" in {
+    Driver.execute(testerArgs :+ "compressor", () => new Compressor(compress = true)) {
+      c => new CompressorTester(c)
+    } should be(true)
+  }
+
+  "Compressor" should "decompress" in {
+    Driver.execute(testerArgs :+ "compressor", () => new Compressor(compress = false)) {
+      c => new CompressorTester(c)
     } should be(true)
   }
 }

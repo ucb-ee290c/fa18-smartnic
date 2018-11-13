@@ -311,41 +311,6 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
   }
 }
 
-//TODO ===========================================================================================
-//TODO ===========================================================================================
-//TODO ===========================================================================================
-
-/*
- * max.
- * TODO:
- */
-class SnappyCompressorParams {
-  val outputSize: Int = 32 + 512 * 7 / 6
-}
-
-/*
- * Top-level module for whole compression scheme. Slots into CREEC bus.
- */
-class Compressor(creecParams: CREECBusParams = new CREECBusParams,
-                 blockDeviceParams: BlockDeviceIOBusParams,
-                 compress: Boolean) extends Module {
-  val io = IO(new Bundle {
-    val in: CREECBus = {
-      if (compress)
-        Flipped(new CREECWriteBus(blockDeviceParams))
-      else
-        Flipped(new CREECReadBus(blockDeviceParams))
-    }
-    val out: CREECBus = {
-      if (compress)
-        new CREECWriteBus(creecParams)
-      else
-        new CREECReadBus(creecParams)
-    }
-  })
-  //TODO:
-}
-
 /*
  * Basic FIFO that does not use decoupled and has no notion of fullness.
  * This module is dangerous if not used properly. The output is always
@@ -360,14 +325,13 @@ class BasicFIFO(width: Int, length: Int) extends Module {
     val pop = Input(Bool())
     val reset = Input(Bool())
     val out = Output(UInt(width.W))
-    val len = Output(UInt(log2Ceil(length).W)) //TODO: test this
   })
   val fifo = Reg(Vec(length, UInt(width.W)))
   val head = RegInit(0.U((log2Ceil(length) + 1).W))
   val tail = RegInit(0.U((log2Ceil(length) + 1).W))
 
   io.out := fifo(tail)
-  for(i <- 0 until length) {
+  for (i <- 0 until length) {
     when(io.reset) {
       fifo(i) := 0.U
     }
@@ -375,7 +339,6 @@ class BasicFIFO(width: Int, length: Int) extends Module {
   when(!io.reset) {
     fifo(head) := io.in
   }
-  io.len := head - tail
 
   when(io.reset) {
     head := 0.U
@@ -421,17 +384,7 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
 
   //dataInBuffer holds the beats to be processed, while dataOutBuffer holds processed bytes.
   val dataInBuffer = Module(new BasicFIFO(creecParams.dataWidth, creecParams.maxBeats))
-  val dataOutBuffer = Module(new BasicFIFO(8, creecParams.maxBeats * 3 / 2 * 8)) //TODO: parameters
-  dontTouch(dataInBuffer.io.pop)
-  dontTouch(dataInBuffer.io.push)
-  dontTouch(dataInBuffer.io.in)
-  dontTouch(dataInBuffer.io.reset)
-  dontTouch(dataInBuffer.io.out)
-  dontTouch(dataOutBuffer.io.pop)
-  dontTouch(dataOutBuffer.io.push)
-  dontTouch(dataOutBuffer.io.in)
-  dontTouch(dataOutBuffer.io.reset)
-  dontTouch(dataOutBuffer.io.out)
+  val dataOutBuffer = Module(new BasicFIFO(creecParams.dataWidth / 8, creecParams.maxBeats * 3 / 2 * 8))
 
   //how many beats we need to get before the processing starts or send at the end
   val beatsToReceive = Reg(io.in.header.bits.len.cloneType)
@@ -441,13 +394,11 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
   //keeps track of which byte we are on for both the coded and uncoded sides.
   //    popCounter is for the data being popped off of dataInBuffer, and
   //    pushCounter is for the data being pushed onto dataOutBuffer.
-  //    TODO: make this parameterized
-  val counter = RegInit(0.U(3.W))
+  val counter = RegInit(0.U((log2Ceil(8)).W))
 
   val coder = Module(new RunLengthCoder(creecParams, coderParams))
 
-  //TODO: parameters
-  val beatBuilder = Reg(Vec(8, UInt(8.W)))
+  val beatBuilder = Reg(Vec(creecParams.dataWidth / 8, UInt(8.W)))
 
   //defaults //TODO: is there a way to do this automatically?
   dataInBuffer.io.in := 0.U
@@ -458,26 +409,13 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
   dataOutBuffer.io.push := false.B
   dataOutBuffer.io.reset := false.B
   dataOutBuffer.io.pop := false.B
+  coder.io.in.bits.byte := 0.U
+  coder.io.in.bits.flag := false.B
+  coder.io.in.valid := false.B
   coder.io.out.ready := false.B
   dataOut.data := beatBuilder.asUInt
   dataOut.id := 0.U
 
-  //TODO temporary vvvvv
-  coder.io.in.bits.byte := 0.U
-  coder.io.in.bits.flag := false.B
-  coder.io.in.valid := false.B
-  io.out.data.bits.data := DontCare
-  io.out.data.bits.id := DontCare
-  io.out.data.valid := false.B
-  //TODO temporary ^^^^^
-
-  // Default cases
-  io.out.header.bits := headerOut
-  io.out.header.valid := false.B
-  io.out.data.bits := dataOut
-  io.out.data.valid := false.B
-  io.in.header.ready := false.B
-  io.in.data.ready := false.B
   when(state === sAwaitHeader) {
     dataInBuffer.io.reset := false.B
     headerIn := io.in.header.deq()
@@ -587,4 +525,40 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
       }
     }
   }
+}
+
+/*
+ * max.
+ * TODO:
+ */
+class SnappyCompressorParams {
+  val outputSize: Int = 32 + 512 * 7 / 6
+}
+
+/*
+ * Top-level module for whole compression scheme. Slots into CREEC bus.
+ */
+class Compressor(creecParams: CREECBusParams = new CREECBusParams,
+                 blockDeviceParams: BlockDeviceIOBusParams = new BlockDeviceIOBusParams,
+                 compress: Boolean) extends Module {
+  val io = IO(new Bundle {
+    val in: CREECBus = {
+      if (compress)
+        Flipped(new CREECWriteBus(blockDeviceParams))
+      else
+        Flipped(new CREECReadBus(blockDeviceParams))
+    }
+    val out: CREECBus = {
+      if (compress)
+        new CREECWriteBus(creecParams)
+      else
+        new CREECReadBus(creecParams)
+    }
+  })
+  val differential = Module(new CREECDifferentialCoder(creecParams, CoderParams(encode = compress)))
+  val runLength = Module(new CREECRunLengthCoder(creecParams, CoderParams(encode = compress)))
+
+  io.in <> differential.io.in
+  differential.io.out <> runLength.io.in
+  io.out <> runLength.io.out
 }
