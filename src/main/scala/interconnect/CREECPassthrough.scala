@@ -14,13 +14,10 @@ class CREECPassthrough(p: BusParams) extends Module {
 }
 
 class CREECPassthroughModel extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
-  def process(in: Option[CREECLowLevelTransaction]): Option[Seq[CREECLowLevelTransaction]] = {
+  override def process(in: CREECLowLevelTransaction): Seq[CREECLowLevelTransaction] = {
     in match {
-      case Some(t) => t match {
-        case t: CREECHeaderBeat => Some(Seq(t))
-        case t: CREECDataBeat => Some(Seq(CREECDataBeat(t.data + 1, t.id)))
-      }
-      case None => None
+      case t: CREECHeaderBeat => Seq(t)
+      case t: CREECDataBeat => Seq(CREECDataBeat(t.data + 1, t.id))
     }
   }
 }

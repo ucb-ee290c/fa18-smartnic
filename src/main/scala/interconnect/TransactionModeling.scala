@@ -30,21 +30,70 @@ case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
   * @tparam I type of input transactions
   * @tparam O type of output transactions
   */
-// TODO: this whole API should be based on (fs2) streams with a synchronization API, not on ticks and processing
+// TODO: this whole API should be based on streams with a synchronization API, not on ticks and processing
 // TODO: but this requires we first go through the struggle with this API and learn
-abstract class SoftwareModel[I <: Transaction, O <: Transaction] {
-  val inputQueue = mutable.Queue[I]()
-  val outputQueue = mutable.Queue[O]()
+// TODO: this class should be abstract, but that breaks easy composition
+abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
+  val inputQueue: mutable.Queue[I] = mutable.Queue[I]()
+  val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
+  val childModels: mutable.ListBuffer[SoftwareModel[_,_]] = mutable.ListBuffer()
+  var cycle = 0
 
-  def process(in: Option[I]) : Option[Seq[O]]
+  def pushTransactions(ts: Seq[I]): Unit = {
+    ts.foreach { t => inputQueue.enqueue(t) }
+  }
 
-  final def tick: Unit = {
-    val in = if (inputQueue.nonEmpty) Some(inputQueue.dequeue()) else None
-    val out = process(in)
-    out match {
-      case Some(transactions) => transactions.foreach(outputQueue.enqueue(_))
-      case None =>
+  def pullTransactions(): Seq[O] = {
+    outputQueue.dequeueAll(_ => true)
+  }
+
+  def nothingToProcess: Boolean = {
+    inputQueue.isEmpty && childModels.forall(m => m.nothingToProcess)
+  }
+
+  def advanceSimulation(): Unit = {
+    while (!nothingToProcess) {
+      println(s"CYCLE $cycle")
+      self.tick()
+      cycle += 1
     }
+  }
+
+  // TODO: This function should be abstract
+  def process(in: I) : Seq[O]
+
+  def tick(): Unit = {
+    val thisClass = this.getClass.getSimpleName
+    if (inputQueue.nonEmpty) {
+      val in = inputQueue.dequeue()
+      println(s"$thisClass Received Transaction $in")
+      val out = process(in)
+      out.foreach { t =>
+        println(s"$thisClass Sent Transaction $t")
+        outputQueue.enqueue(t)
+      }
+    }
+  }
+
+  final def compose[O2 <: Transaction](s: SoftwareModel[O, O2]): SoftwareModel[I, O2] = {
+    // In this context:
+    // this = ILLEGAL to use without violating "early definition" syntax
+      // so inputQueue and outputQueue on their own refer to the members of ComposedModel
+    // self = the first model
+    // s = the second model being chained to the first model's output
+    class ComposedModel extends SoftwareModel[I, O2] {
+      childModels += s
+      childModels += self
+      override def tick(): Unit = {
+        if (inputQueue.nonEmpty) self.inputQueue.enqueue(inputQueue.dequeueAll(_ => true):_*)
+        self.tick()
+        if (self.outputQueue.nonEmpty) s.inputQueue.enqueue(self.outputQueue.dequeueAll(_ => true):_*)
+        s.tick()
+        if (s.outputQueue.nonEmpty) outputQueue.enqueue(s.outputQueue.dequeueAll(_ => true):_*)
+      }
+      override def process(in: I): Seq[O2] = Seq()
+    }
+    new ComposedModel
   }
 }
 
@@ -52,13 +101,9 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] {
   * A software model for turning CREEC HighLevelTransactions into CREEC LowLevelTransactions
   */
 class CREECHighToLowModel extends SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] {
-  def process(in: Option[CREECHighLevelTransaction]) : Option[Seq[CREECLowLevelTransaction]] = {
-    in match {
-      case Some(t) =>
-        val header = Seq(CREECHeaderBeat(t.data.length, 0, t.addr))
-        val dataBeats = t.data.map(dataBeat => CREECDataBeat(dataBeat, 0))
-        Some(header ++ dataBeats)
-      case None => None
-    }
+  override def process(in: CREECHighLevelTransaction) : Seq[CREECLowLevelTransaction] = {
+      val header = Seq(CREECHeaderBeat(in.data.length, 0, in.addr))
+      val dataBeats = in.data.map(dataBeat => CREECDataBeat(dataBeat, 0))
+      header ++ dataBeats
   }
 }

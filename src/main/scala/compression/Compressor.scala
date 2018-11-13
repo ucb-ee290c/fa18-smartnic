@@ -471,6 +471,13 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
   io.out.data.valid := false.B
   //TODO temporary ^^^^^
 
+  // Default cases
+  io.out.header.bits := headerOut
+  io.out.header.valid := false.B
+  io.out.data.bits := dataOut
+  io.out.data.valid := false.B
+  io.in.header.ready := false.B
+  io.in.data.ready := false.B
   when(state === sAwaitHeader) {
     dataInBuffer.io.reset := false.B
     headerIn := io.in.header.deq()
