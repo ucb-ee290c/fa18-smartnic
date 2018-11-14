@@ -51,3 +51,11 @@ class SubStage extends FlatSpec with Matchers {
     SubStageTester() should be (true)
   }
 }
+
+class SubKeySchedule extends FlatSpec with Matchers {
+  behavior of "SubKeySchedule"
+
+  it should "SubKeySchedule" in {
+    SubKeyScheduleTimeInterleaveTester() should be (true)
+  }
+}
