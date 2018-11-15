@@ -10,6 +10,7 @@ case class BusParams(maxBeats: Int, maxInFlight: Int, dataWidth: Int) {
   val idBits = log2Ceil(maxInFlight)
   require(dataWidth > 0)
   require(dataWidth % 8 == 0)
+  val bytesPerBeat: Int = dataWidth / 8
 }
 
 // From the block device IO (master) to the compression block (slave) (64 beats per req guaranteed)

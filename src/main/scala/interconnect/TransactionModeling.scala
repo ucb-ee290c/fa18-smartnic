@@ -14,13 +14,11 @@ abstract class CREECTransaction extends Transaction
   * A HighLevelTransaction represents a full sector write request or read response with all
   * the control and data bundled together. It is generic to any CREECBus parameterization.
   */
-case class CREECHighLevelTransaction(data: Seq[Byte], addr: Long) extends CREECTransaction {
+case class CREECHighLevelTransaction(data: Seq[Byte], addr: BigInt) extends CREECTransaction {
   assert(data.length % 8 == 0, "CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats")
 
   // TODO: Print bytes as unsigned
-  override def toString: String = super.toString
-    //s"CREECHighLevelTransaction("
-  //}
+  //override def toString: String = super.toString
 }
 
 /**
@@ -59,6 +57,7 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
   val childModels: mutable.ListBuffer[SoftwareModel[_,_]] = mutable.ListBuffer()
   var tickNum = 0
+  val thisClass = this.getClass.getSimpleName
 
   def pushTransactions(ts: Seq[I]): Unit = {
     ts.foreach { t => inputQueue.enqueue(t) }
@@ -84,13 +83,12 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
 
   // TODO: This def should ideally be final
   def tick(): Unit = {
-    val thisClass = this.getClass.getSimpleName
     if (inputQueue.nonEmpty) {
       val in = inputQueue.dequeue()
-      println(s"$thisClass Received Transaction $in")
+      println(s"$thisClass received Transaction $in")
       val out = process(in)
       out.foreach { t =>
-        println(s"$thisClass Sent Transaction $t")
+        println(s"$thisClass sent Transaction $t")
         outputQueue.enqueue(t)
       }
     }
@@ -116,6 +114,9 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
     }
     new ComposedModel
   }
+
+  // Shorthand for compose
+  final def ->[O2 <: Transaction](s: SoftwareModel[O, O2]): SoftwareModel[I, O2] = compose(s)
 }
 
 /**
@@ -123,12 +124,42 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   */
 class CREECHighToLowModel(p: BusParams) extends SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] {
   override def process(in: CREECHighLevelTransaction) : Seq[CREECLowLevelTransaction] = {
-    //BigInt(0x1000L).toByteArray.reverse.padTo(8, 0).reverse
     assert(in.data.length % (p.dataWidth / 8) == 0, "CREEC high transaction must have data with length = multiple of bus width")
     val beats = in.data.grouped(p.dataWidth / 8).toSeq
     assert((beats.length - 1) <= p.maxBeats, "CREEC high transaction has more beats than bus can support")
     val header = Seq(CREECHeaderBeat(beats.length - 1, 0, in.addr)(p))
     val dataBeats = beats.map(dataBeat => CREECDataBeat(dataBeat, 0)(p))
     header ++ dataBeats
+  }
+}
+
+class CREECLowToHighModel(p: BusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECHighLevelTransaction] {
+  val dataRepack = mutable.Map[Int, Seq[Byte]]()
+  val inFlight = mutable.Map[Int, CREECHeaderBeat]()
+
+  override def process(in: CREECLowLevelTransaction): Seq[CREECHighLevelTransaction] = {
+    in match {
+      case t: CREECHeaderBeat =>
+        assert(!inFlight.contains(t.id), s"$thisClass received a header beat with id ${t.id} which was in flight and not completed.")
+        inFlight.update(t.id, t)
+        dataRepack.update(t.id, Seq())
+        Seq()
+      case t: CREECDataBeat =>
+        assert(inFlight.contains(t.id), s"$thisClass received a data beat with id ${t.id} which didn't have an associated header beat.")
+        val storedData = dataRepack.getOrElse(t.id, Seq())
+        val newData = storedData ++ t.data
+        dataRepack.update(t.id, newData)
+        //println(newData.length)
+        //println(inFlight(t.id).len)
+        //Seq(CREECHighLevelTransaction(newData, inFlight(t.id).addr))
+        if (newData.length / p.bytesPerBeat == (inFlight(t.id).len + 1)) {
+          val savedAddr = inFlight(t.id).addr
+          inFlight.remove(t.id)
+          dataRepack.remove(t.id)
+          Seq(CREECHighLevelTransaction(newData, savedAddr))
+        } else {
+          Seq()
+        }
+    }
   }
 }

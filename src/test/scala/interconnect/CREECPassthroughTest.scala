@@ -64,10 +64,10 @@ class CREECPassthroughTest extends ChiselFlatSpec {
   "multiple High2Low and Passthrough models" should "compose" in {
     implicit val busParams: BusParams = new CREECBusParams
     val composedModel =
-      new CREECHighToLowModel(busParams)
-        .compose(new CREECPassthroughModel(busParams))
-        .compose(new CREECPassthroughModel(busParams))
-        .compose(new CREECPassthroughModel(busParams))
+      new CREECHighToLowModel(busParams) ->
+        new CREECPassthroughModel(busParams) ->
+          new CREECPassthroughModel(busParams) ->
+            new CREECPassthroughModel(busParams)
 
     composedModel.pushTransactions(Seq(
       CREECHighLevelTransaction(Seq(
@@ -80,6 +80,32 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     val outGold = Seq(
       CREECHeaderBeat(0, 0, 0x1000),
       CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 11), 0)
+    )
+    println("OUTPUT TRANSACTIONS PULLED")
+    println(out)
+    assert(outGold == out)
+  }
+
+  "the High2Low -> passthrough -> Low2High chain" should "work together" in {
+    implicit val busParams: BusParams = new CREECBusParams
+    val composedModel =
+      new CREECHighToLowModel(busParams) ->
+        new CREECPassthroughModel(busParams) ->
+          new CREECLowToHighModel(busParams)
+    composedModel.pushTransactions(Seq(
+      CREECHighLevelTransaction(Seq(
+        1, 2, 3, 4, 5, 6, 7, 8,
+        10, 11, 12, 13, 14, 15, 16, 17
+      ), 0x1000)
+    ))
+    println("LAUNCHING MODEL SIMULATION")
+    composedModel.advanceSimulation()
+    val out = composedModel.pullTransactions()
+    val outGold = Seq(
+      CREECHighLevelTransaction(Seq(
+        1, 2, 3, 4, 5, 6, 7, 9,
+        10, 11, 12, 13, 14, 15, 16, 18
+      ), 0x1000)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
