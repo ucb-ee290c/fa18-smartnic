@@ -243,8 +243,8 @@ class InvAES128TimeInterleaveCompute extends Module {
     val mux_select_stage0 = counter === numStages.U
 
     // Ready Valid
-    io.data_in.ready  := !running
-    io.data_out.valid := !running
+    io.data_in.ready  := !running && io.key_valid
+    io.data_out.valid := !running && io.key_valid
 
     //Computations -----------------------------------------
     //Initial round
