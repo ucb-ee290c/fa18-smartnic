@@ -20,36 +20,61 @@ class BlockDeviceIOBusParams extends BusParams(64, 1, 64)
 // Used internally to connect (compression -> parity/ECC -> encryption -> mapping/MMU unit)
 class CREECBusParams extends BusParams(128, 1, 64)
 
-/**
-  * This CREECMetadata struct will be written in the sector mapping table
-  */
 trait CREECMetadata {
-  // Indicate whether compression, encryption, ECC was applied to this transaction
-  val compressed = Bool()
-  val encrypted = Bool()
-  val ecc = Bool()
 }
 
 // TODO: traits can't take parameters in Scala
 trait BusAddress {
-  // Sector (512B) address (2TB addressable)
-  val addr = UInt(32.W)
 }
 
 class CREECMetadataBundle extends Bundle with CREECMetadata
 
+// TODO: migrate all the stuff that belongs in a trait back to traits once testers2 can accommodate them
 class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   val len = UInt(p.beatBits.W)
   val id = UInt(p.maxInFlight.W)
+
+  // Indicate whether compression, encryption, ECC was applied to this transaction
+  // This CREECMetadata struct will be written in the sector mapping table
+  val compressed = Bool()
+  val encrypted = Bool()
+  val ecc = Bool()
+
+  // Sector (512B) address (2TB addressable)
+  val addr = UInt(32.W)
+
+  def Lit(len: UInt, id: UInt, compressed: Bool, encrypted: Bool, ecc: Bool, addr: UInt) = {
+    import chisel3.core.BundleLitBinding
+    val clone = cloneType
+    clone.selfBind(BundleLitBinding(Map(
+      clone.len -> litArgOfBits(len),
+      clone.id -> litArgOfBits(id),
+      clone.compressed -> litArgOfBits(compressed),
+      clone.encrypted -> litArgOfBits(encrypted),
+      clone.ecc -> litArgOfBits(ecc),
+      clone.addr -> litArgOfBits(addr)
+    )))
+    clone
+  }
 }
 
 class TransactionData(val p: BusParams = new CREECBusParams) extends Bundle {
   val data = UInt(p.dataWidth.W)
   val id = UInt(p.maxInFlight.W)
+
+  def Lit(data: UInt, id: UInt) = {
+    import chisel3.core.BundleLitBinding
+    val clone = cloneType
+    clone.selfBind(BundleLitBinding(Map(
+      clone.data -> litArgOfBits(data),
+      clone.id -> litArgOfBits(id)
+    )))
+    clone
+  }
 }
 
 abstract class CREECBus(val p: BusParams) extends Bundle {
-  val header = Decoupled(new TransactionHeader(p) with BusAddress with CREECMetadata)
+  val header = Decoupled(new TransactionHeader(p))
   val data = Decoupled(new TransactionData(p))
 }
 

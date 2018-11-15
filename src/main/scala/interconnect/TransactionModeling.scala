@@ -149,9 +149,6 @@ class CREECLowToHighModel(p: BusParams) extends SoftwareModel[CREECLowLevelTrans
         val storedData = dataRepack.getOrElse(t.id, Seq())
         val newData = storedData ++ t.data
         dataRepack.update(t.id, newData)
-        //println(newData.length)
-        //println(inFlight(t.id).len)
-        //Seq(CREECHighLevelTransaction(newData, inFlight(t.id).addr))
         if (newData.length / p.bytesPerBeat == (inFlight(t.id).len + 1)) {
           val savedAddr = inFlight(t.id).addr
           inFlight.remove(t.id)

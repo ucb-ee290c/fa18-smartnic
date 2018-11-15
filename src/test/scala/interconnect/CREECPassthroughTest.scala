@@ -1,9 +1,10 @@
 package interconnect
-import chisel3.iotesters.{ChiselFlatSpec, Driver}
-import compression.{DifferentialCoder, DifferentialCoderTester}
-import utest._
+import chisel3._
+import chisel3.tester._
+import chisel3.tester.TestAdapters._
+import org.scalatest.FlatSpec
 
-class CREECPassthroughTest extends ChiselFlatSpec {
+class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
   val testerArgs = Array(
     "-fiwv",
     "--backend-name", "treadle",
@@ -111,9 +112,29 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     println(out)
     assert(outGold == out)
   }
+
+  "the passthrough module" should "be testable with testers2" in {
+    test(new CREECPassthrough(new CREECBusParams)) { c =>
+      // TODO: bug in testers... binding ReadyValidSource to c.io.master.header compiled even though the directionality is wrong
+      val headerSource = new ReadyValidSource(c.io.slave.header, c.clock)
+      val dataSource = new ReadyValidSource(c.io.slave.data, c.clock)
+      fork {
+        headerSource.enqueue(c.io.slave.header.bits.Lit(3.U, 0.U, false.B, false.B, false.B, 0.U))
+        dataSource.enqueue(c.io.slave.data.bits.Lit(100.U, 0.U))
+        c.clock.step(1)
+      }.fork {
+        println(c.io.master.data.bits.data.peek().litValue())
+        c.clock.step(1)
+        println(c.io.master.data.bits.data.peek().litValue())
+        c.clock.step(1)
+        println(c.io.master.data.bits.data.peek().litValue())
+      }.join()
+    }
+  }
 }
 
 // Example of using uTest
+/*
 object CREECPassthroughTest extends TestSuite {
   val testerArgs = Array(
     "-fiwv",
@@ -141,3 +162,4 @@ object CREECPassthroughTest extends TestSuite {
     }
   }
 }
+*/
