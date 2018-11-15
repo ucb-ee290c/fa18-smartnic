@@ -60,27 +60,31 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     println(out)
     assert(outGold == out)
   }
-/*
+
   "multiple High2Low and Passthrough models" should "compose" in {
+    implicit val busParams: BusParams = new CREECBusParams
     val composedModel =
-      (new CREECHighToLowModel).compose(new CREECPassthroughModel).compose(new CREECPassthroughModel)
+      new CREECHighToLowModel(busParams)
+        .compose(new CREECPassthroughModel(busParams))
+        .compose(new CREECPassthroughModel(busParams))
+        .compose(new CREECPassthroughModel(busParams))
+
     composedModel.pushTransactions(Seq(
       CREECHighLevelTransaction(Seq(
-        1000, 2000, 3000, 4000
-      ), 0x2000)
+        1, 2, 3, 4, 5, 6, 7, 8
+      ), 0x1000)
     ))
     println("LAUNCHING MODEL SIMULATION")
     composedModel.advanceSimulation()
     val out = composedModel.pullTransactions()
     val outGold = Seq(
-      CREECHeaderBeat(4, 0, 0x2000),
-      CREECDataBeat(1002, 0), CREECDataBeat(2002, 0), CREECDataBeat(3002, 0), CREECDataBeat(4002, 0)
+      CREECHeaderBeat(0, 0, 0x1000),
+      CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 11), 0)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
     assert(outGold == out)
   }
-  */
 }
 
 // Example of using uTest
