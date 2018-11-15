@@ -124,3 +124,26 @@ class AESTopFullTimeInterleave extends Module {
     decrypt.io.key_schedule := keygen.io.key_schedule
     decrypt.io.key_valid    := keygen.io.key_valid
 }
+
+//TODO: Add passthrough support
+//TODO: Add input and output sync FIFOs
+//TODO: Add width conversion
+class AESTopCREECBusWrapper extends Module {
+    val io = IO(new Bundle {
+        val encrypt_slave = new CREECWriteBus(new CREECBusParams)
+        val encrypt_master = Flipped(new CREECWriteBus(new CREECBusParams))
+
+        val decrypt_slave = new CREECReadBus(new CREECBusParams)
+        val decrypt_master = Flipped(new CREECReadBus(new CREECBusParams))
+    })
+
+    val AESTop = Module(new AESTopFullTimeInterleave)
+
+    val encrypt_bypass = io.encrypt_master.header.bits.encrypted
+    io.encrypt_slave.header.ready := false.B
+    io.encrypt_master.header.valid := false.B
+
+    val decrypt_bypass = io.decrypt_master.header.bits.encrypted
+    io.encrypt_slave.header.ready := false.B
+    io.encrypt_master.header.valid := false.B
+}
