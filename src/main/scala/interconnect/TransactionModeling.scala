@@ -1,6 +1,7 @@
 package interconnect
 
 import scala.collection.mutable
+import java.nio._
 
 /**
   * A Transaction is an abstract notion of a chunk of data and control that a block can process at a time
@@ -10,18 +11,39 @@ trait Transaction
 abstract class CREECTransaction extends Transaction
 
 /**
-  * A HighLevelTransaction represents a full sector write request or read response with all the control and data bundled together
+  * A HighLevelTransaction represents a full sector write request or read response with all
+  * the control and data bundled together. It is generic to any CREECBus parameterization.
   */
-case class CREECHighLevelTransaction(data: Seq[BigInt], addr: BigInt) extends CREECTransaction
+case class CREECHighLevelTransaction(data: Seq[Byte], addr: Long) extends CREECTransaction {
+  assert(data.length % 8 == 0, "CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats")
+
+  // TODO: Print bytes as unsigned
+  override def toString: String = super.toString
+    //s"CREECHighLevelTransaction("
+  //}
+}
 
 /**
   * A HighLevelTransaction can be decomposed into 1 CREECHeaderBeat and multiple CREECDataBeats.
-  * These LowLevelTransactions are used to drive the physical wires of the CREECBus
+  * These LowLevelTransactions are used to drive the physical wires of the CREECBus.
+  * LowLevelTransactions are CREECBus parameter specific.
   */
 abstract class CREECLowLevelTransaction extends CREECTransaction
 
-case class CREECHeaderBeat(len: Int, id: Int, addr: BigInt) extends CREECLowLevelTransaction
-case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
+case class CREECHeaderBeat(len: Int, id: Int, addr: BigInt)(implicit p: BusParams) extends CREECLowLevelTransaction {
+  require(len <= p.maxBeats)
+  require(id <= p.maxInFlight)
+}
+case class CREECDataBeat(data: Seq[Byte], id: Int)(implicit p: BusParams) extends CREECLowLevelTransaction {
+  require(id <= p.maxBeats)
+  // data.length = 64 bits, 128 bits, 256 bits, etc... = data width of CREECBus
+  require((data.length * 8) == p.dataWidth)
+}
+
+// Can define custom transactions below the CREECBus level for each block's testing and
+// software model in isolation of the bus integration. Coming soon...
+//case class ECCEncodeCommand(message: Int) extends Transaction
+//case class ECCEncodedData() extends Transaction
 
 /**
   * An abstract software model for a DUT which pulls a input transaction and produces output transactions on each tick.
@@ -32,12 +54,11 @@ case class CREECDataBeat(data: BigInt, id: Int) extends CREECLowLevelTransaction
   */
 // TODO: this whole API should be based on streams with a synchronization API, not on ticks and processing
 // TODO: but this requires we first go through the struggle with this API and learn
-// TODO: this class should be abstract, but that breaks easy composition
 abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val inputQueue: mutable.Queue[I] = mutable.Queue[I]()
   val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
   val childModels: mutable.ListBuffer[SoftwareModel[_,_]] = mutable.ListBuffer()
-  var cycle = 0
+  var tickNum = 0
 
   def pushTransactions(ts: Seq[I]): Unit = {
     ts.foreach { t => inputQueue.enqueue(t) }
@@ -53,15 +74,15 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
 
   def advanceSimulation(): Unit = {
     while (!nothingToProcess) {
-      println(s"CYCLE $cycle")
+      println(s"TICK $tickNum")
       self.tick()
-      cycle += 1
+      tickNum += 1
     }
   }
 
-  // TODO: This function should be abstract
   def process(in: I) : Seq[O]
 
+  // TODO: This def should ideally be final
   def tick(): Unit = {
     val thisClass = this.getClass.getSimpleName
     if (inputQueue.nonEmpty) {
@@ -100,10 +121,14 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
 /**
   * A software model for turning CREEC HighLevelTransactions into CREEC LowLevelTransactions
   */
-class CREECHighToLowModel extends SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] {
+class CREECHighToLowModel(p: BusParams) extends SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] {
   override def process(in: CREECHighLevelTransaction) : Seq[CREECLowLevelTransaction] = {
-      val header = Seq(CREECHeaderBeat(in.data.length, 0, in.addr))
-      val dataBeats = in.data.map(dataBeat => CREECDataBeat(dataBeat, 0))
-      header ++ dataBeats
+    //BigInt(0x1000L).toByteArray.reverse.padTo(8, 0).reverse
+    assert(in.data.length % (p.dataWidth / 8) == 0, "CREEC high transaction must have data with length = multiple of bus width")
+    val beats = in.data.grouped(p.dataWidth / 8).toSeq
+    assert((beats.length - 1) <= p.maxBeats, "CREEC high transaction has more beats than bus can support")
+    val header = Seq(CREECHeaderBeat(beats.length - 1, 0, in.addr)(p))
+    val dataBeats = beats.map(dataBeat => CREECDataBeat(dataBeat, 0)(p))
+    header ++ dataBeats
   }
 }
