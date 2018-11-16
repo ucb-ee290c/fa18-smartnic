@@ -547,11 +547,16 @@ class CREECCoder(creecParams: CREECBusParams = new CREECBusParams,
         new CREECReadBus(creecParams)
     }
   })
-  require(operation == "differential" || operation == "runLength")
-  val coder = if(operation == "differential")
+
+  require(List("differential", "runLength", "compression").contains(operation))
+
+  val coder = if (operation == "differential")
     Module(new CREECDifferentialCoder(creecParams, coderParams))
-  else
+  else if (operation == "runLength")
     Module(new CREECRunLengthCoder(creecParams, coderParams))
+  else
+    Module(new Compressor(creecParams, compress = coderParams.encode))
+
   coder.io <> io
 }
 
