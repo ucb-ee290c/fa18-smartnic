@@ -297,11 +297,10 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val numRoots = math.pow(2, p.symbolWidth).toInt
   val chienSearch = Module(new PolyCompute(p, p.n, p.n - p.k + 1, true))
 
-  val sInit :: sKeyEquationSolver :: sChienSearch :: sErrorCorrection0 :: sErrorCorrection1 :: sErrorCorrection2 :: Nil = Enum(6)
-  val state = RegInit(sInit)
+  val sSyndromeCmp :: sKeyEquationSolver :: sChienSearch :: sErrorCorrection0 :: sErrorCorrection1 :: sErrorCorrection2 :: Nil = Enum(6)
+  val state = RegInit(sSyndromeCmp)
 
   val syndCmpOutCnt = RegInit(0.U(32.W))
-  val cmpCnt = RegInit(0.U(32.W))
 
   // Registers for the Error evaluator polynomial's coefficients
   val evalARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
@@ -323,13 +322,13 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val inputQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n))
   inputQueue.io.enq <> io.in
 
-  io.in.ready := (state === sInit)
+  io.in.ready := (state === sSyndromeCmp)
 
   syndCmp.io.coeffs := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
   syndCmp.io.in <> io.in
-  syndCmp.io.out.ready := (state === sInit)
+  syndCmp.io.out.ready := (state === sSyndromeCmp)
 
-  when (state === sInit) {
+  when (state === sSyndromeCmp) {
     evalARegs(p.n - p.k) := 1.U
     locBRegs(0) := 1.U
 
@@ -355,7 +354,6 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
   when (state === sKeyEquationSolver) {
      when (degA < ((p.n - p.k) / 2).asUInt()) {
-    //when (cmpCnt === (p.n - p.k).asUInt()) {
       state := sChienSearch
       // odd-th coefficients are zeros due to finite-field
       locDerivRegs.zipWithIndex.filter(_._2 % 2 == 1).map { x => 0.U }
@@ -365,7 +363,6 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
         zipWithIndex.filter(_._2 % 2 == 0).map { x => x._1._1 := x._1._2 }
     }
     .otherwise {
-      cmpCnt := cmpCnt + 1.U
 
       when (degA < degB && theta =/= 0.U && gamma =/= 0.U) {
         evalARegs.zip(evalBRegs).map {
@@ -524,7 +521,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
     errorMagReg := 0.U
     when (outCnt === p.n.asUInt()) {
       outCnt := 0.U
-      state := sInit
+      state := sSyndromeCmp
       outValidReg := false.B
     }
     .elsewhen (outCnt === (locRootIdx - 1.U)) {
