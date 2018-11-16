@@ -7,8 +7,8 @@ import chisel3._
   */
 class CREECPassthrough(p: BusParams) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new CREECWriteBus(p))
-    val master = new CREECWriteBus(p)
+    val slave = Flipped(new CREECBus(p))
+    val master = new CREECBus(p)
   })
   // TODO: this module is actually buggy since it doesn't handle backpressure from the master port and can drop 1 beat
   io.slave.header.ready := RegNext(io.master.header.ready)

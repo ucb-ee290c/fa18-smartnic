@@ -20,11 +20,11 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
                      val nBuffers: Int = 8,
                      val nBlockDeviceTrackers: Int = 1) extends Module {
   val io = IO(new Bundle {
-    val wrSlave = new CREECWriteBus(new CREECBusParams)
-    val wrMaster = new CREECWriteBus(new BlockDeviceIOBusParams)
+    val wrSlave = new CREECBus(new CREECBusParams)
+    val wrMaster = new CREECBus(new BlockDeviceIOBusParams)
 
-    val rdSlave = new CREECReadBus(new BlockDeviceIOBusParams)
-    val rdMaster = new CREECReadBus(new CREECBusParams)
+    val rdSlave = new CREECBus(new BlockDeviceIOBusParams)
+    val rdMaster = new CREECBus(new CREECBusParams)
   })
 
   //class DataBuffer extends Module {
