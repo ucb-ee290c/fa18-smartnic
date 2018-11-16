@@ -81,7 +81,7 @@ case class RSParams(
 
     def inv(a: UInt): UInt = {
       val op = a.asTypeOf(UInt(symbolWidth.W))
-      val numVals = math.pow(2, symbolWidth).toInt
+      val numVals = math.pow(2, symbolWidth).toInt - 1
 
       val rootsFromOp = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(op) {
         (prevWire, nextWire) => {
