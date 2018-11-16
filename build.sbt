@@ -49,6 +49,7 @@ libraryDependencies ++= (Seq("chisel3", "chisel-iotesters").map {
 
 libraryDependencies ++= Seq("org.typelevel" %% "squants" % "1.3.0")
 libraryDependencies ++= Seq("com.lihaoyi" %% "utest" % "0.6.5")
+libraryDependencies ++= Seq("edu.berkeley.cs" %% "chisel-testers2" % "0.1-SNAPSHOT")
 
 scalacOptions ++= scalacOptionsVersion(scalaVersion.value)
 scalacOptions ++= Seq("-language:reflectiveCalls", "-unchecked", "-deprecation", "-feature")

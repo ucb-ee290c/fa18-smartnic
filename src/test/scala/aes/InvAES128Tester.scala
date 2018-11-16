@@ -22,21 +22,6 @@ class InvAES128CombinationalTester(dut: InvAES128Combinational, trial: AESTrial)
 
     val bigIntOut : BigInt = peek(dut.io.data_out)
     logger info s"Combinational"
-    /*
-    readOutput(dut.io.stage1out, "stage1out")
-    readOutput(dut.io.stage2key, "stage2key")
-    readOutput(dut.io.stage2out, "stage2out")
-    readOutput(dut.io.stage3key, "stage3key")
-    readOutput(dut.io.stage3out, "stage3out")
-    readOutput(dut.io.stage3rcon, "stage3rcon")
-    readOutput(dut.io.stage4out, "stage4out")
-    readOutput(dut.io.stage5out, "stage5out")
-    readOutput(dut.io.stage6out, "stage6out")
-    readOutput(dut.io.stage7out, "stage7out")
-    readOutput(dut.io.stage8out, "stage8out")
-    readOutput(dut.io.stage9out, "stage9out")
-    */
-
 
     val hex0 : Long = (bigIntOut << 64 >> 64).toLong
     val hex1 : Long = (bigIntOut >> 64).toLong
@@ -82,11 +67,6 @@ class InvAES128Tester(dut: InvAES128, trial: AESTrial) extends PeekPokeTester(du
         cyclesWaiting += 1
         logger info s"waited: $cyclesWaiting cycles"
         logger info s"counter: ${peek(dut.io.counter)}"
-//        logger info s"running? : ${peek(dut.io.running) == 1}"
-//        var peekstage = peek(dut.io.peek_stage)
-//        logger info s"peek stage? : ${(peekstage >> 64).toLong.toHexString} ${(peekstage << 64 >> 64).toLong.toHexString}"
-//        logger info s"in ready? : ${peek(dut.io.data_in.ready) == 1}"
-//        logger info s""
         step(1)
       }
 

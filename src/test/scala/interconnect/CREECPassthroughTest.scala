@@ -1,9 +1,12 @@
 package interconnect
-import chisel3.iotesters.{ChiselFlatSpec, Driver}
-import compression.{DifferentialCoder, DifferentialCoderTester}
-import utest._
+import chisel3._
+import chisel3.tester._
+import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
+import org.scalatest.FlatSpec
 
-class CREECPassthroughTest extends ChiselFlatSpec {
+import scala.collection.mutable
+
+class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
   val testerArgs = Array(
     "-fiwv",
     "--backend-name", "treadle",
@@ -12,23 +15,26 @@ class CREECPassthroughTest extends ChiselFlatSpec {
     "--top-name")
 
   "the High2Low model" should "translate correctly" in {
-    val model = new CREECHighToLowModel
+    implicit val busParams: BusParams = new CREECBusParams
+    val model = new CREECHighToLowModel(busParams)
     model.pushTransactions(Seq(
       CREECHighLevelTransaction(Seq(
-        1000, 2000, 3000, 4000
+        12, 13, 14, 15, 16, 17, 18, 19,
+        20, 21, 22, 23, 24, 25, 26, 27
       ), 0x0),
       CREECHighLevelTransaction(Seq(
-        1, 2
+        1, 2, 3, 4, 5, 6, 7, 8
       ), 0x1000)
     ))
     println("LAUNCHING MODEL SIMULATION")
-    model.advanceSimulation()
+    model.advanceSimulation(true)
     val out = model.pullTransactions()
     val outGold = Seq(
-      CREECHeaderBeat(4, 0, 0x0),
-      CREECDataBeat(1000, 0), CREECDataBeat(2000, 0), CREECDataBeat(3000, 0), CREECDataBeat(4000, 0),
-      CREECHeaderBeat(2, 0, 0x1000),
-      CREECDataBeat(1, 0), CREECDataBeat(2, 0)
+      CREECHeaderBeat(1, 0, 0x0),
+      CREECDataBeat(Seq(12, 13, 14, 15, 16, 17, 18, 19), 0),
+      CREECDataBeat(Seq(20, 21, 22, 23, 24, 25, 26, 27), 0),
+      CREECHeaderBeat(0, 0, 0x1000),
+      CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 8), 0)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
@@ -36,20 +42,22 @@ class CREECPassthroughTest extends ChiselFlatSpec {
   }
 
   "the CREECPassthrough model" should "pass transactions through with +1 on data" in {
-    val model = new CREECPassthroughModel
+    implicit val busParams: BusParams = new CREECBusParams
+    val model = new CREECPassthroughModel(busParams)
     model.pushTransactions(Seq(
-      CREECHeaderBeat(4, 0, 0x0),
-      CREECDataBeat(1000, 0),
-      CREECDataBeat(2000, 0),
-      CREECDataBeat(3000, 0),
-      CREECDataBeat(4000, 0)
+      CREECHeaderBeat(0, 0, 0x0),
+      CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 8), 0),
+      CREECDataBeat(Seq(255, 255, 255, 255, 255, 255, 255, 255).map(_.asInstanceOf[Byte]), 0),  // test overflow
+      CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 1).map(_.asInstanceOf[Byte]), 0)   // test small data
     ))
     println("LAUNCHING MODEL SIMULATION")
-    model.advanceSimulation()
+    model.advanceSimulation(true)
     val out = model.pullTransactions()
     val outGold = Seq(
-      CREECHeaderBeat(4, 0, 0x0),
-      CREECDataBeat(1001, 0), CREECDataBeat(2001, 0), CREECDataBeat(3001, 0), CREECDataBeat(4001, 0)
+      CREECHeaderBeat(0, 0, 0x0),
+      CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 9), 0),
+      CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 0), 0),
+      CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 2), 0)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
@@ -57,27 +65,87 @@ class CREECPassthroughTest extends ChiselFlatSpec {
   }
 
   "multiple High2Low and Passthrough models" should "compose" in {
+    implicit val busParams: BusParams = new CREECBusParams
     val composedModel =
-      (new CREECHighToLowModel).compose(new CREECPassthroughModel).compose(new CREECPassthroughModel)
+      new CREECHighToLowModel(busParams) ->
+        new CREECPassthroughModel(busParams) ->
+          new CREECPassthroughModel(busParams) ->
+            new CREECPassthroughModel(busParams)
+
     composedModel.pushTransactions(Seq(
       CREECHighLevelTransaction(Seq(
-        1000, 2000, 3000, 4000
-      ), 0x2000)
+        1, 2, 3, 4, 5, 6, 7, 8
+      ), 0x1000)
     ))
     println("LAUNCHING MODEL SIMULATION")
-    composedModel.advanceSimulation()
+    composedModel.advanceSimulation(true)
     val out = composedModel.pullTransactions()
     val outGold = Seq(
-      CREECHeaderBeat(4, 0, 0x2000),
-      CREECDataBeat(1002, 0), CREECDataBeat(2002, 0), CREECDataBeat(3002, 0), CREECDataBeat(4002, 0)
+      CREECHeaderBeat(0, 0, 0x1000),
+      CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 11), 0)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
     assert(outGold == out)
   }
+
+  "the High2Low -> passthrough -> Low2High chain" should "work together" in {
+    implicit val busParams: BusParams = new CREECBusParams
+    val composedModel =
+      new CREECHighToLowModel(busParams) ->
+        new CREECPassthroughModel(busParams) ->
+          new CREECLowToHighModel(busParams)
+    composedModel.pushTransactions(Seq(
+      CREECHighLevelTransaction(Seq(
+        1, 2, 3, 4, 5, 6, 7, 8,
+        10, 11, 12, 13, 14, 15, 16, 17
+      ), 0x1000)
+    ))
+    println("LAUNCHING MODEL SIMULATION")
+    composedModel.advanceSimulation(true)
+    val out = composedModel.pullTransactions()
+    val outGold = Seq(
+      CREECHighLevelTransaction(Seq(
+        1, 2, 3, 4, 5, 6, 7, 9,
+        10, 11, 12, 13, 14, 15, 16, 18
+      ), 0x1000)
+    )
+    println("OUTPUT TRANSACTIONS PULLED")
+    println(out)
+    assert(outGold == out)
+  }
+
+  "the passthrough module" should "be testable with testers2" in {
+    test(new CREECPassthrough(new CREECBusParams)) { c =>
+      // TODO: usability bug in testers... binding ReadyValidSource to
+        // c.io.master.header compiled even though the directionality is wrong
+      // TODO: this implicit shouldn't be required...
+        // lowleveltransactions don't need to be aware of the bus params
+      implicit val busParams = c.io.master.p
+      val tx = CREECHighLevelTransaction(Seq(
+        1, 2, 3, 4, 5, 6, 7, 8,
+        100, 101, 102, 103, 104, 105, 106, 107
+      ), 0x1000)
+      val monitor = new CREECMonitor(c.io.master, c.clock)
+
+      c.io.master.header.ready.poke(true.B)
+      c.io.master.data.ready.poke(true.B)
+      fork {
+        // TX thread
+        val driver = new CREECDriver(c.io.slave, c.clock)
+        driver.pushTransactions(Seq(tx))
+      }
+      fork {
+        // Time advancement thread
+        c.clock.step(100)
+      }.join()
+      println(monitor.receivedTransactions.dequeueAll(_ => true))
+    }
+  }
 }
 
 // Example of using uTest
+/*
 object CREECPassthroughTest extends TestSuite {
   val testerArgs = Array(
     "-fiwv",
@@ -88,7 +156,7 @@ object CREECPassthroughTest extends TestSuite {
 
   val tests = Tests {
     'produceOutput - {
-      val model = new CREECPassthroughModel
+      val model = new CREECPassthroughModel(new CREECBusParams)
       println(model)
     }
     'failForFun - {
@@ -105,3 +173,4 @@ object CREECPassthroughTest extends TestSuite {
     }
   }
 }
+*/

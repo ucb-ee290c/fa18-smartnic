@@ -223,7 +223,7 @@ class SubKeyExpansionWrapper extends Module {
 }
 
 /**
-  * PeekPokeTester for SubByte
+  * PeekPokeTester for SubKeyExpansion
   */
 class SubKeyExpansionTester(dut: SubKeyExpansionWrapper) extends PeekPokeTester(dut) {
 
@@ -414,6 +414,89 @@ object SubStageTester {
   def apply(): Boolean = {
     chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new SubStageWrapper()) {
       c => new SubStageTester(c)
+    }
+  }
+}
+
+
+//-----------------------------
+class KeyScheduleTestBundle extends Bundle {
+  val key_in_top = Input(UInt(128.W))
+  val key_in_valid = Input(Bool())
+  val key_time_ready = Output(Bool())
+  val key_time_valid = Output(Bool())
+  val equality = Output(Vec(10, Bool()))
+  val key_comb_schedule = Output(Vec(10, UInt(128.W)))
+  val key_time_schedule = Output(Vec(10, UInt(128.W)))
+}
+
+class KeyScheduleTestWrapper extends Module {
+  val io = IO(new KeyScheduleTestBundle)
+
+  val key_comb = Module (new KeySchedule)
+  val key_time = Module (new KeyScheduleTimeInterleave)
+
+  key_comb.io.key_in      := io.key_in_top.asTypeOf(Vec(16, UInt(8.W)))
+  key_time.io.key_in.bits := io.key_in_top.asTypeOf(Vec(16, UInt(8.W)))
+  key_time.io.key_in.valid := io.key_in_valid
+
+  io.key_time_ready := key_time.io.key_in.ready
+  io.key_time_valid := key_time.io.key_valid
+
+  for (i <- 0 until 10) {
+    io.equality(i) := key_comb.io.key_schedule(i).asTypeOf(UInt(128.W)) === key_time.io.key_schedule(i).asTypeOf(UInt(128.W))
+    io.key_comb_schedule(i) := key_comb.io.key_schedule(i).asTypeOf(UInt(128.W))
+    io.key_time_schedule(i) := key_time.io.key_schedule(i).asTypeOf(UInt(128.W))
+  }
+}
+
+class SubKeyScheduleTimeInterleaveTester(dut: KeyScheduleTestWrapper) extends PeekPokeTester(dut) {
+  logger info s" Key Schedule Time Interleave test"
+  var key : BigInt = (BigInt(0xd9d09fb4L) << 96) + (BigInt(0xa6a5e6ceL) << 64) + (BigInt(0xdbd39cb5L) << 32) +  BigInt(0xa7a4e7cfL)
+
+  val maxCyclesWait = 10
+  var cyclesWaiting = 0
+  logger info s"Waiting for key schedule to be ready"
+  while ((peek(dut.io.key_time_ready) == 0) && cyclesWaiting < maxCyclesWait) {
+    cyclesWaiting += 1
+    logger info s"waited: $cyclesWaiting cycles"
+    step(1)
+  }
+
+  if (cyclesWaiting > maxCyclesWait) {
+    expect(false, "Waited too long")
+  }
+
+  expect(dut.io.key_time_ready, 1, "key_time not ready")
+  expect(dut.io.key_time_valid, 1, "key_time should be valid")
+
+  poke(dut.io.key_in_top, key)
+  poke(dut.io.key_in_valid, 1)
+
+  step(1)
+  expect(dut.io.key_time_ready, 0, "key_time should have accepted new key")
+  expect(dut.io.key_time_valid, 0, "key_time should have accepted new key")
+
+  cyclesWaiting = 0
+  while ((peek(dut.io.key_time_valid) == 0) && cyclesWaiting < maxCyclesWait) {
+    cyclesWaiting += 1
+    logger info s"waited: $cyclesWaiting cycles"
+    step(1)
+  }
+
+  if (cyclesWaiting > maxCyclesWait) {
+    expect(false, "Waited too long")
+  }
+
+  for (i <- 0 until 10) {
+    expect(dut.io.equality(i), 1, s"Output $i does not match")
+  }
+}
+
+object SubKeyScheduleTimeInterleaveTester {
+  def apply(): Boolean = {
+    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new KeyScheduleTestWrapper()) {
+      c => new SubKeyScheduleTimeInterleaveTester(c)
     }
   }
 }

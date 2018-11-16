@@ -243,8 +243,8 @@ class InvAES128TimeInterleaveCompute extends Module {
     val mux_select_stage0 = counter === numStages.U
 
     // Ready Valid
-    io.data_in.ready  := !running
-    io.data_out.valid := !running
+    io.data_in.ready  := !running && io.key_valid
+    io.data_out.valid := !running && io.key_valid
 
     //Computations -----------------------------------------
     //Initial round
@@ -314,24 +314,3 @@ class InvAES128 extends Module {
     io.counter      := cipher.io.counter
     io.peek_stage   := cipher.io.peek_stage
 }
-
-/*
-class AES128EncrypterWrapper extends Module {
-    val io = IO(new Bundle {
-        val slave = new CREECWriteBus(new CREECBusParams)
-        val master = Flipped(new CREECWriteBus(new CREECBusParams))
-    })
-    // Hookup AES128 to the slave and master port here
-    io.slave.wrHeader.ready := false.B
-    io.master.wrHeader.valid := false.B
-}
-
-class AES128DecrypterWrapper extends Module {
-    val io = IO(new Bundle {
-        val slave = new CREECReadBus(new CREECBusParams)
-        val master = Flipped(new CREECReadBus(new CREECBusParams))
-    })
-    // Hookup the decrypter
-    io.slave.rdHeader.ready := false.B
-    io.master.rdHeader.valid := false.B
-}*/

@@ -21,15 +21,15 @@ class CREECWriteWidthConverter(p: BusParams) extends Module {
   * @param ratio Width ratio of inWidth:outWidth. Must be power of 2
   * @param expand Set to true if outWidth > inWidth.
   */
-class CREECWidthConverterModel(ratio: Int, expand: Boolean) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
+class CREECWidthConverterModel(ratio: Int, expand: Boolean, allowPadding: Boolean)(p: BusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
   override def process(in: CREECLowLevelTransaction): Seq[CREECLowLevelTransaction] = {
     in match {
       case t: CREECHeaderBeat =>
         if (expand) {
           assert(t.len % ratio == 0)
-          Seq(CREECHeaderBeat(t.len / ratio, t.id, t.addr))
+          Seq(CREECHeaderBeat(t.len / ratio, t.id, t.addr)(p))
         } else {
-          Seq(CREECHeaderBeat(t.len * ratio, t.id, t.addr))
+          Seq(CREECHeaderBeat(t.len * ratio, t.id, t.addr)(p))
         }
       case t: CREECDataBeat =>
         if (expand) {

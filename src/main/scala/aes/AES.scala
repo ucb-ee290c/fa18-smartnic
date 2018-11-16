@@ -2,7 +2,6 @@ package aes
 
 import chisel3._
 import chisel3.util._
-import interconnect.{CREECBusParams, CREECReadBus, CREECWriteBus}
 //import freechips.rocketchip.subsystem.BaseSubsystem
 //import freechips.rocketchip.config.{Parameters, Field}
 //import freechips.rocketchip.diplomacy._
@@ -283,8 +282,8 @@ class AES128TimeInterleaveCompute extends Module {
     val mux_select_stage1 = counter === numStages.U
 
     // Ready Valid
-    io.data_in.ready  := !running
-    io.data_out.valid := !running
+    io.data_in.ready  := !running && io.key_valid
+    io.data_out.valid := !running && io.key_valid
 
     //Computations -----------------------------------------
     //Initial round
@@ -442,24 +441,4 @@ class AES128 extends Module {
     io.running      := running
     io.counter      := counter
     io.peek_stage   := data_reg.asTypeOf(UInt(128.W))
-}
-
-class AES128EncrypterWrapper extends Module {
-    val io = IO(new Bundle {
-        val slave = new CREECWriteBus(new CREECBusParams)
-        val master = Flipped(new CREECWriteBus(new CREECBusParams))
-    })
-    // Hookup AES128 to the slave and master port here
-    io.slave.header.ready := false.B
-    io.master.header.valid := false.B
-}
-
-class AES128DecrypterWrapper extends Module {
-    val io = IO(new Bundle {
-        val slave = new CREECReadBus(new CREECBusParams)
-        val master = Flipped(new CREECReadBus(new CREECBusParams))
-    })
-    // Hookup the decrypter
-    io.slave.header.ready := false.B
-    io.master.header.valid := false.B
 }

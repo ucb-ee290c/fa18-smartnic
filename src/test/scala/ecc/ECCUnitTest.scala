@@ -5,10 +5,10 @@ import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 //import interconnect._
 
-// Software implementation of the RSEncoder
-class RSCode(numSyms: Int, symbolWidth: Int,
-             msgs: Seq[Int]) {
+// Software implementation of the Reed-Solomon encoder & decoder
+class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
   val numRoots = BigInt(2).pow(symbolWidth).toInt
+  val numPars = numSyms - numMsgs
   var Log2Val: Array[Int] = new Array[Int](numRoots)
   var Val2Log: Array[Int] = new Array[Int](numRoots)
   // Primitive Polynomial
@@ -26,6 +26,8 @@ class RSCode(numSyms: Int, symbolWidth: Int,
       case 7 => Integer.parseInt("10001001", 2)
       // x^8 + x^4 + x^3 + x^2 + 1
       case 8 => Integer.parseInt("100011101", 2)
+      // x^10 + x^3 + 1
+      case 10 => Integer.parseInt("10000001001", 2)
       // x^16 + x^12 + x^3 + x + 1
       case 16 => Integer.parseInt("10001000000001011", 2)
       case _ => 0
@@ -93,32 +95,24 @@ class RSCode(numSyms: Int, symbolWidth: Int,
     result
   }
 
-  val numMsgs = msgs.size
-  val numPars = numSyms - numMsgs
-
   // Generator Polynomial
   // g(X) = (X + a^1)(X + a^2)(X + a^3) ... (X + a^numPars)
   //      = gCoeffs(0) + gCoeffs(1) * X^1 + gCoeffs(2) * X^2 + ... + gCoeffs(numPars) * X^numPars
   val gCoeffs = {
-    var coeffs = Seq[Int]()
     val powSets = (0 to numPars - 1).toSet[Int].subsets.map(_.toList).toList
-    for (j <- numPars to 1 by -1) {
-      var tmpSum: Int = 0
-      for (i <- 0 until powSets.size) {
-        if (powSets(i).size == j) {
-          var tmpMul: Int = 1
-          for (k <- 0 until j) {
-            tmpMul = mul(tmpMul, Log2Val(powSets(i)(k)))
-          }
-          tmpSum = add(tmpSum, tmpMul)
-        }
+    var coeffs = new Array[Int](numPars)
+
+    for (i <- 0 until powSets.size) {
+      val coeffIdx = numPars - powSets(i).size
+      if (coeffIdx < numPars) {
+        val powSum = powSets(i).reduce(_ + _) % (numRoots - 1)
+        coeffs(coeffIdx) = add(coeffs(coeffIdx), Log2Val(powSum))
       }
-      coeffs = coeffs :+ tmpSum
     }
     coeffs
   }
 
-  def encode(): Seq[Int] = {
+  def encode(msgs: Seq[Int]): Seq[Int] = {
     var pars: Array[Int] = new Array[Int](numPars)
     for (i <- 0 until numMsgs) {
       val tmp = pars.map(x => x)
@@ -169,50 +163,120 @@ class RSCode(numSyms: Int, symbolWidth: Int,
     syndromeCompute(syms)._2 == false
   }
 
+  def findDeg(coeffs: Seq[Int]): Int = {
+    var degVal = 0
+    for (i <- 0 until coeffs.size) {
+      if (coeffs(i) != 0) {
+        degVal = i
+      }
+    }
+    degVal
+  }
+
   def decode(inSyms: Seq[Int]): Seq[Int] = {
     val (syndromes, foundNZSym) = syndromeCompute(inSyms)
     if (!foundNZSym) {
       // the input symbol sequence is bug-free
       inSyms
     } else {
-      var evaluatorsA = new Array[Int](numPars + 1)
-      var evaluatorsB = new Array[Int](numPars + 1)
-      var locatorsA = new Array[Int](numPars + 1)
-      var locatorsB = new Array[Int](numPars + 1)
+      val size = numPars + 1
+      var evaluatorsA = new Array[Int](size)
+      var evaluatorsB = new Array[Int](size)
+      var locatorsA = new Array[Int](size)
+      var locatorsB = new Array[Int](size)
 
       evaluatorsA(numPars) = 1
+
+      var deg = numPars
+      var ddeg = numPars - 1
       for (i <- 0 until numPars) {
         evaluatorsB(i) = syndromes(i)
+        if (evaluatorsB(i) != 0)  {
+          ddeg = i
+        }
       }
       locatorsB(0) = 1
+      for (i <- 0 until size) {
+        printf("evalB(%d) = %d\n", i, evaluatorsB(i))
+      }
 
-      // Key equation solver
-      for (t <- 0 until numPars) {
-        var tmpEvalB = evaluatorsB.map(x => x)
-        var tmpLocB = locatorsB.map(x => x)
+      var degA = findDeg(evaluatorsA)
+      var degB = findDeg(evaluatorsB)
+      var numIters = 0
 
-        val theta = tmpEvalB(numPars - 1)
-        val gamma = evaluatorsA(numPars)
+      printf("[initial] degA = %d, degB = %d\n", degA, degB)
 
-        for (i <- numPars to 0 by -1) {
-          if (i == 0) {
-            evaluatorsB(i) = mul(theta, evaluatorsA(i)) ^
-                             mul(gamma, 0)
-            locatorsB(i) = mul(theta, locatorsA(i)) ^
-                           mul(gamma, 0)
+      while (degA >= numPars / 2) {
+        numIters = numIters + 1
+
+        // Let's swap!
+        if (degA < degB && evaluatorsB(size - 1) != 0 &&
+                           evaluatorsA(size - 1) != 0) {
+          val tmpEvalA = evaluatorsA.map(x => x)
+          val tmpLocA = locatorsA.map(x => x)
+          for (i <- 0 until size) {
+            evaluatorsA(i) = evaluatorsB(i)
+            locatorsA(i) = locatorsB(i)
           }
-          else {
-            evaluatorsB(i) = mul(theta, evaluatorsA(i)) ^
-                             mul(gamma, tmpEvalB(i - 1))
-            locatorsB(i) = mul(theta, locatorsA(i)) ^
-                           mul(gamma, tmpLocB(i - 1))
+          for (i <- 0 until size) {
+            evaluatorsB(i) = tmpEvalA(i)
+            locatorsB(i) = tmpLocA(i)
+          }
+          val tmpdeg = degA
+          degA = degB
+          degB = tmpdeg
+        }
+
+        val theta = evaluatorsB(size - 1)
+        val gamma = evaluatorsA(size - 1)
+
+        if (theta != 0 && gamma != 0) {
+          for (i <- 0 until size) {
+            evaluatorsA(i) = mul(theta, evaluatorsA(i)) ^
+                             mul(gamma, evaluatorsB(i))
+            locatorsA(i) = mul(theta, locatorsA(i)) ^
+                             mul(gamma, locatorsB(i))
+
           }
         }
 
-        for (i <- 1 to numPars) {
-          evaluatorsA(i) = tmpEvalB(i - 1)
-          locatorsA(i) = tmpLocB(i - 1)
+        if (theta == 0) {
+          val tmpEvalB = evaluatorsB.map(x => x)
+          evaluatorsB(0) = tmpEvalB(size - 1)
+          for (i <- 0 until size - 1) {
+            evaluatorsB(i + 1) = tmpEvalB(i)
+          }
+
+          val tmpLocB = locatorsB.map(x => x)
+          locatorsB(0) = tmpLocB(size - 1)
+          for (i <- 0 until size - 1) {
+            locatorsB(i + 1) = tmpLocB(i)
+          }
+
         }
+
+        if (gamma == 0) {
+          degA = degA - 1
+          // Don't shift at the last iteration
+          if (degA >= numPars / 2) {
+            val tmpEvalA = evaluatorsA.map(x => x)
+            evaluatorsA(0) = tmpEvalA(size - 1)
+            for (i <- 0 until size - 1) {
+              evaluatorsA(i + 1) = tmpEvalA(i)
+            }
+
+            val tmpLocA = locatorsA.map(x => x)
+            locatorsA(0) = tmpLocA(size - 1)
+            for (i <- 0 until size - 1) {
+              locatorsA(i + 1) = tmpLocA(i)
+            }
+          }
+        }
+      }
+
+      printf("Check Key Equation Solver result: done after %d iters\n", numIters)
+      for (i <- 0 until size) {
+        printf("[%d] eval=%d, loc=%d\n", i, evaluatorsA(i), locatorsA(i))
       }
 
       val locatorsDeriv = new Array[Int](numPars)
@@ -221,17 +285,19 @@ class RSCode(numSyms: Int, symbolWidth: Int,
           locatorsDeriv(i) = 0
         }
         else {
-          locatorsDeriv(i) = locatorsB(i + 1)
+          locatorsDeriv(i) = locatorsA(i + 1)
         }
       }
 
       // Chien search
       var chienRootIndices = List[Int]()
-      for (i <- 0 until numRoots) {
-        val res = evaluatePoly(locatorsB, Log2Val(i))
+      for (i <- numSyms - 1 to 0 by - 1) {
+        val res = evaluatePoly(locatorsA, Log2Val(numRoots - 1 - i))
         if (res == 0) {
-          chienRootIndices = chienRootIndices :+ i
+          chienRootIndices = chienRootIndices :+ (numSyms - i)
+          printf("found Chien root index: %d\n", numSyms - i)
         }
+
       }
 
       // Error correction
@@ -242,9 +308,9 @@ class RSCode(numSyms: Int, symbolWidth: Int,
 
       for (i <- 0 until chienRootIndices.size) {
         val idx = chienRootIndices(i)
-        val chienRootVal = Log2Val(idx)
+        val chienRootVal = Log2Val(numRoots - 1 - (numSyms - idx))
         correctedSyms(idx - 1) = correctedSyms(idx - 1) ^
-          mul(evaluatePoly(evaluatorsB, chienRootVal),
+          mul(evaluatePoly(evaluatorsA, chienRootVal),
               inv(mul(chienRootVal, evaluatePoly(locatorsDeriv, chienRootVal))))
       }
 
@@ -261,7 +327,7 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
   poke(c.io.in.valid, true)
   poke(c.io.out.ready, true)
 
-  val maxCycles = 100
+  val maxCycles = 300
 
   var numCycles = 0
   var outCnt = 0
@@ -309,7 +375,7 @@ class PolyComputeUnitTester(c: PolyCompute, swSyms: Seq[Int]) extends PeekPokeTe
     poke(c.io.coeffs(i), c.p.Log2Val(i))
   }
 
-  val maxCycles = 30
+  val maxCycles = 300
 
   var numCycles = 0
   var outCnt = 0
@@ -349,7 +415,7 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
   poke(c.io.in.valid, true)
   poke(c.io.out.ready, true)
 
-  val maxCycles = 100
+  val maxCycles = 3000
 
   var numCycles = 0
   var outCnt = 0
@@ -465,17 +531,17 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
   */
 class ECCTester extends ChiselFlatSpec {
   // RS(16, 8)
-  val numSymbols = 15
-  val numMsgs = 11
-  val symbolWidth = 4
+  val numSymbols = 16
+  val numMsgs = 8
+  val symbolWidth = 8
+  val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
+
   var msgs = Seq.fill(numMsgs) {
-    scala.util.Random.nextInt(BigInt(2).pow(symbolWidth).toInt - 1)
+    scala.util.Random.nextInt(rs.numRoots - 1)
   }
 
-  val rs = new RSCode(numSymbols, symbolWidth, msgs)
-
-  // Runnig software RS Encoder
-  val swSyms = rs.encode()
+  // Running software RS Encoder
+  val swSyms = rs.encode(msgs)
   for (i <- 0 until swSyms.size) {
     printf("swSyms(%d) = %d\n", i, swSyms(i))
   }
@@ -483,8 +549,24 @@ class ECCTester extends ChiselFlatSpec {
   // Need to pass this test to go further
   require(rs.verifySyms(swSyms), "Incorrect software RS encoder!")
 
-  // This is the buggy input symbol sequence
-  val buggySyms = Seq(1, 2, 3, 4, 5, 11, 7, 8, 9, 10, 11, 3, 1, 12, 12)
+  var buggySyms = new Array[Int](numSymbols)
+  for (i <- 0 until numSymbols) {
+    buggySyms(i) = swSyms(i)
+  }
+
+  // Randomly pick locations for introducing error symbols
+  // It's okay if we pick the same location multiple times
+  // as long as the number of errorneous locations does not
+  // exceed *maxNumErrorSyms*
+  val maxNumErrorSyms = (numSymbols - numMsgs) / 2
+  for (i <- 0 until maxNumErrorSyms) {
+    val errorIdx = scala.util.Random.nextInt(numSymbols - 1)
+    buggySyms(errorIdx) = scala.util.Random.nextInt(rs.numRoots - 1)
+  }
+
+  for (i <- 0 until numSymbols) {
+    printf("buggySyms(%d) = %d\n", i, buggySyms(i))
+  }
 
   // Running software RS Decoder
   val swCorrectedSyms = rs.decode(buggySyms)
@@ -519,18 +601,10 @@ class ECCTester extends ChiselFlatSpec {
     } should be(true)
   }
 
-//  "ECC" should "work" in {
-//    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-//    new ECC(params)) {
-//      c => new ECCUnitTester(c, swSyms)
-//    } should be(true)
-//  }
-
   "RSDecoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSDecoder(params)) {
       c => new RSDecoderUnitTester(c, buggySyms, swCorrectedSyms)
     } should be(true)
   }
-
 }
