@@ -531,8 +531,8 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
   */
 class ECCTester extends ChiselFlatSpec {
   // RS(16, 8)
-  val numSymbols = 32
-  val numMsgs = 16
+  val numSymbols = 16
+  val numMsgs = 8
   val symbolWidth = 8
   val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
 
