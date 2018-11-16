@@ -2,10 +2,10 @@ package interconnect
 
 import chisel3._
 
-class CREECWriteWidthConverter(p: BusParams) extends Module {
+class CREECWidthConverter(p: BusParams) extends Module {
   val io = IO(new Bundle {
-    val slave = new CREECWriteBus(p)
-    val master = new CREECWriteBus(p)
+    val slave = new CREECBus(p)
+    val master = new CREECBus(p)
   })
   io.master.header <> Reg(io.slave.header)
   io.master.data <> Reg(io.slave.data)
