@@ -62,3 +62,17 @@ As a result, it is preferred to use `uTest` to run tests using mill. See `src/te
 To run all `uTest` tests use `mill creec[2.12.4].test`, and to run a specific test use `mill creec[2.12.4].test interconnect.CREECPassthroughTest.produceOutput`.
 
 You can use the `-w` watch command for tests as well.
+
+## Modules
+
+### Compression
+
+### AES
+Module files are in `src/main/scala/aes`. Tests are in `src/test/scala/aes`.
+
+[Module Details](src/main/scala/aes/README.md)
+
+[Test Details](src/test/scala/aes/README.md)
+
+### ECC (Reed-Solomon)
+### Interconnect

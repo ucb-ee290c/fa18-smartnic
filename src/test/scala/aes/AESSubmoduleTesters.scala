@@ -223,7 +223,7 @@ class SubKeyExpansionWrapper extends Module {
 }
 
 /**
-  * PeekPokeTester for SubByte
+  * PeekPokeTester for SubKeyExpansion
   */
 class SubKeyExpansionTester(dut: SubKeyExpansionWrapper) extends PeekPokeTester(dut) {
 
@@ -489,17 +489,6 @@ class SubKeyScheduleTimeInterleaveTester(dut: KeyScheduleTestWrapper) extends Pe
   }
 
   for (i <- 0 until 10) {
-    /*
-    var bigIntOut : BigInt = peek(dut.io.key_comb_schedule(i))
-    var hex0 : Long = (bigIntOut << 64 >> 64).toLong
-    var hex1 : Long = (bigIntOut >> 64).toLong
-    logger info s" Key Comb as hex: ${hex1.toHexString} ${hex0.toHexString}"
-
-    bigIntOut = peek(dut.io.key_time_schedule(i))
-    hex0 = (bigIntOut << 64 >> 64).toLong
-    hex1 = (bigIntOut >> 64).toLong
-    logger info s" Key Time as hex: ${hex1.toHexString} ${hex0.toHexString}"
-    */
     expect(dut.io.equality(i), 1, s"Output $i does not match")
   }
 }
