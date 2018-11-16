@@ -1,8 +1,10 @@
 package interconnect
 import chisel3._
 import chisel3.tester._
-import chisel3.tester.TestAdapters._
+import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
+
+import scala.collection.mutable
 
 class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
   val testerArgs = Array(
@@ -25,7 +27,7 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
       ), 0x1000)
     ))
     println("LAUNCHING MODEL SIMULATION")
-    model.advanceSimulation()
+    model.advanceSimulation(true)
     val out = model.pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(1, 0, 0x0),
@@ -49,7 +51,7 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
       CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 1).map(_.asInstanceOf[Byte]), 0)   // test small data
     ))
     println("LAUNCHING MODEL SIMULATION")
-    model.advanceSimulation()
+    model.advanceSimulation(true)
     val out = model.pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(0, 0, 0x0),
@@ -76,7 +78,7 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
       ), 0x1000)
     ))
     println("LAUNCHING MODEL SIMULATION")
-    composedModel.advanceSimulation()
+    composedModel.advanceSimulation(true)
     val out = composedModel.pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(0, 0, 0x1000),
@@ -100,7 +102,7 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
       ), 0x1000)
     ))
     println("LAUNCHING MODEL SIMULATION")
-    composedModel.advanceSimulation()
+    composedModel.advanceSimulation(true)
     val out = composedModel.pullTransactions()
     val outGold = Seq(
       CREECHighLevelTransaction(Seq(
@@ -115,20 +117,29 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
 
   "the passthrough module" should "be testable with testers2" in {
     test(new CREECPassthrough(new CREECBusParams)) { c =>
-      // TODO: bug in testers... binding ReadyValidSource to c.io.master.header compiled even though the directionality is wrong
-      val headerSource = new ReadyValidSource(c.io.slave.header, c.clock)
-      val dataSource = new ReadyValidSource(c.io.slave.data, c.clock)
+      // TODO: usability bug in testers... binding ReadyValidSource to
+        // c.io.master.header compiled even though the directionality is wrong
+      // TODO: this implicit shouldn't be required...
+        // lowleveltransactions don't need to be aware of the bus params
+      implicit val busParams = c.io.master.p
+      val tx = CREECHighLevelTransaction(Seq(
+        1, 2, 3, 4, 5, 6, 7, 8,
+        100, 101, 102, 103, 104, 105, 106, 107
+      ), 0x1000)
+      val monitor = new CREECMonitor(c.io.master, c.clock)
+
+      c.io.master.header.ready.poke(true.B)
+      c.io.master.data.ready.poke(true.B)
       fork {
-        headerSource.enqueue(c.io.slave.header.bits.Lit(3.U, 0.U, false.B, false.B, false.B, 0.U))
-        dataSource.enqueue(c.io.slave.data.bits.Lit(100.U, 0.U))
-        c.clock.step(1)
-      }.fork {
-        println(c.io.master.data.bits.data.peek().litValue())
-        c.clock.step(1)
-        println(c.io.master.data.bits.data.peek().litValue())
-        c.clock.step(1)
-        println(c.io.master.data.bits.data.peek().litValue())
+        // TX thread
+        val driver = new CREECDriver(c.io.slave, c.clock)
+        driver.pushTransactions(Seq(tx))
+      }
+      fork {
+        // Time advancement thread
+        c.clock.step(100)
       }.join()
+      println(monitor.receivedTransactions.dequeueAll(_ => true))
     }
   }
 }

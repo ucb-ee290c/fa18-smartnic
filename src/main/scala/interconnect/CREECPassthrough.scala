@@ -3,19 +3,22 @@ package interconnect
 import chisel3._
 
 /**
-  * The RTL CREEC passthrough. Adds one to any data beat as it passes through.
+  * A RTL CREEC passthrough 'register slice'. Adds one to any data beat as it passes through.
   */
 class CREECPassthrough(p: BusParams) extends Module {
   val io = IO(new Bundle {
     val slave = Flipped(new CREECWriteBus(p))
     val master = new CREECWriteBus(p)
   })
-  io.slave.header.ready := true.B
-  io.slave.data.ready := true.B
+  // TODO: this module is actually buggy since it doesn't handle backpressure from the master port and can drop 1 beat
+  io.slave.header.ready := RegNext(io.master.header.ready)
+  io.slave.data.ready := RegNext(io.master.data.ready)
   io.master.header <> RegNext(io.slave.header)
   io.master.data <> RegNext(io.slave.data)
   // Let's add a little logic here
   io.master.data.bits.data := RegNext(io.slave.data.bits.data + 1.U)
+  io.master.header.valid := RegNext(io.slave.header.valid)
+  io.master.data.valid := RegNext(io.slave.data.valid)
 }
 
 class CREECPassthroughModel(p: BusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {

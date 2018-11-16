@@ -39,6 +39,7 @@ class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   val compressed = Bool()
   val encrypted = Bool()
   val ecc = Bool()
+  // You can add more small stuff here
 
   // Sector (512B) address (2TB addressable)
   val addr = UInt(32.W)

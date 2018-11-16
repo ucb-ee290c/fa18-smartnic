@@ -60,7 +60,7 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val thisClass = this.getClass.getSimpleName
 
   def pushTransactions(ts: Seq[I]): Unit = {
-    ts.foreach { t => inputQueue.enqueue(t) }
+    inputQueue.enqueue(ts:_*)
   }
 
   def pullTransactions(): Seq[O] = {
@@ -71,10 +71,10 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
     inputQueue.isEmpty && childModels.forall(m => m.nothingToProcess)
   }
 
-  def advanceSimulation(): Unit = {
+  def advanceSimulation(print: Boolean = false): Unit = {
     while (!nothingToProcess) {
-      println(s"TICK $tickNum")
-      self.tick()
+      if (print) println(s"TICK $tickNum")
+      self.tick(print)
       tickNum += 1
     }
   }
@@ -82,13 +82,13 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   def process(in: I) : Seq[O]
 
   // TODO: This def should ideally be final
-  def tick(): Unit = {
+  def tick(print: Boolean = false): Unit = {
     if (inputQueue.nonEmpty) {
       val in = inputQueue.dequeue()
-      println(s"$thisClass received Transaction $in")
+      if (print) println(s"$thisClass received $in")
       val out = process(in)
       out.foreach { t =>
-        println(s"$thisClass sent Transaction $t")
+        if (print) println(s"$thisClass sent $t")
         outputQueue.enqueue(t)
       }
     }
@@ -103,11 +103,11 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
     class ComposedModel extends SoftwareModel[I, O2] {
       childModels += s
       childModels += self
-      override def tick(): Unit = {
+      override def tick(print: Boolean = false): Unit = {
         if (inputQueue.nonEmpty) self.inputQueue.enqueue(inputQueue.dequeueAll(_ => true):_*)
-        self.tick()
+        self.tick(print)
         if (self.outputQueue.nonEmpty) s.inputQueue.enqueue(self.outputQueue.dequeueAll(_ => true):_*)
-        s.tick()
+        s.tick(print)
         if (s.outputQueue.nonEmpty) outputQueue.enqueue(s.outputQueue.dequeueAll(_ => true):_*)
       }
       override def process(in: I): Seq[O2] = Seq()
