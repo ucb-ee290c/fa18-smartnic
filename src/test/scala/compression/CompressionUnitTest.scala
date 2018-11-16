@@ -3,100 +3,6 @@ package compression
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 /*
- * Golden model for basic compression.
- */
-object CompressionUtils {
-  private def differential(input: List[Byte], encode: Boolean): List[Byte] = {
-    var output = List[Byte]()
-    var prev = 0.toByte
-    for (i <- input.indices) {
-      output = output :+ (if (encode) (input(i) - prev).toByte else (input(i) + prev).toByte)
-      prev = if (encode) input(i) else output(i)
-    }
-    output
-  }
-
-  def differentialEncode(input: List[Byte]): List[Byte] = {
-    differential(input, encode = true)
-  }
-
-  def differentialDecode(input: List[Byte]): List[Byte] = {
-    differential(input, encode = false)
-  }
-
-  /*TODO all these functions have the form {create output, use 1 state variable,
-   *  loop through input, apply some function that assigns to the output from
-   *  the input based on the state, and return the output}. Generalize this.
-   */
-
-  def runLengthEcode(input: List[Byte]): List[Byte] = {
-    var output = List[Byte]()
-    var run = 0
-    for (i <- input.indices) {
-      if (input(i) == 0) {
-        if (run == 0) {
-          output = output :+ 0.toByte
-        }
-        run += 1
-      } else {
-        if (run != 0) {
-          output = output :+ (run - 1).toByte
-        }
-        output = output :+ input(i)
-        run = 0
-      }
-    }
-    if (run != 0)
-      output = output :+ (run - 1).toByte
-    output
-  }
-
-  def runLengthDecode(input: List[Byte]): List[Byte] = {
-    var output = List[Byte]()
-    var expand = false
-    for (i <- input.indices) {
-      if (expand) {
-        output = output ++ List.fill(input(i) + 1)(0.toByte)
-        expand = false
-      } else if (input(i) == 0) {
-        expand = true
-      } else {
-        output = output :+ input(i)
-      }
-    }
-    output
-  }
-}
-
-/*
- * Functions for manipulating bytes.
- */
-object ByteUtils {
-  /*
-   * Compacts 8 bytes into a 64-bit int.
-   */
-  def squish(bytes: List[Byte]): BigInt = {
-    require(bytes.length == 8)
-    var squished = BigInt(0)
-    for (i <- 0 until 8) {
-      squished |= BigInt(bytes(i)) << (8 * i)
-    }
-    squished
-  }
-
-  /*
-   * Unpacks a 64-bit int into 8 bytes.
-   */
-  def unsquish(squished: BigInt): List[Byte] = {
-    var bytes: List[Byte] = List[Byte]()
-    for (i <- 0 until 8) {
-      bytes = bytes :+ ((squished & (BigInt(0xFF) << (8 * i))) >> (8 * i)).toByte
-    }
-    bytes
-  }
-}
-
-/*
  * Tests non-timed differential coder block.
  */
 class DifferentialCoderTester(c: DifferentialCoder, encode: Boolean) extends PeekPokeTester(c) {
@@ -117,10 +23,7 @@ class DifferentialCoderTester(c: DifferentialCoder, encode: Boolean) extends Pee
     List(0, 0, -1, 0, -1, 0, -1, 0),
     List(4, -1, 1, 1, -1, -1, 1, 1)
   )
-  val expectedOutput: List[Byte] = if (encode)
-    CompressionUtils.differentialEncode(inputs.flatten)
-  else
-    CompressionUtils.differentialDecode(inputs.flatten)
+  val expectedOutput: List[Byte] = CompressionUtils.differential(inputs.flatten, encode)
   var last: Byte = 0
   for (i <- inputs.indices) {
     for (j <- 0 until 8)
@@ -164,10 +67,7 @@ class RunLengthCoderTester(c: RunLengthCoder, encode: Boolean) extends PeekPokeT
 
   def test(input: List[Byte]): Boolean = {
     var output: List[Byte] = List[Byte]()
-    val expectedOutput = if (encode)
-      CompressionUtils.runLengthEcode(input)
-    else
-      CompressionUtils.runLengthDecode(input)
+    val expectedOutput = CompressionUtils.runLength(input, encode)
     poke(c.io.out.ready, true)
     poke(c.io.in.valid, true)
     var i = 0
@@ -304,22 +204,15 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
   }
 
   def test(addr: Int, len: Int, data: List[Byte]): Boolean = {
-    var expectedData = if (encode) {
+    var expectedData = {
       if (operation == "runLength")
-        CompressionUtils.runLengthEcode(data)
-      else if(operation == "differential")
-        CompressionUtils.differentialEncode(data)
-      else
-        CompressionUtils.runLengthEcode(CompressionUtils.differentialEncode(data))
-    }
-    else {
-      if (operation == "runLength")
-        CompressionUtils.runLengthDecode(data)
+        CompressionUtils.runLength(data, encode)
       else if (operation == "differential")
-        CompressionUtils.differentialDecode(data)
+        CompressionUtils.differential(data, encode)
       else
-        CompressionUtils.differentialDecode(CompressionUtils.runLengthDecode(data))
+        CompressionUtils.runLength(CompressionUtils.differential(data, encode), encode)
     }
+
     while (expectedData.length % 8 != 0) {
       expectedData = expectedData :+ 0.toByte
     }
