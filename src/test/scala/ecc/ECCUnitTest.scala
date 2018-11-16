@@ -99,20 +99,15 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
   // g(X) = (X + a^1)(X + a^2)(X + a^3) ... (X + a^numPars)
   //      = gCoeffs(0) + gCoeffs(1) * X^1 + gCoeffs(2) * X^2 + ... + gCoeffs(numPars) * X^numPars
   val gCoeffs = {
-    var coeffs = Seq[Int]()
     val powSets = (0 to numPars - 1).toSet[Int].subsets.map(_.toList).toList
-    for (j <- numPars to 1 by -1) {
-      var tmpSum: Int = 0
-      for (i <- 0 until powSets.size) {
-        if (powSets(i).size == j) {
-          var tmpMul: Int = 1
-          for (k <- 0 until j) {
-            tmpMul = mul(tmpMul, Log2Val(powSets(i)(k)))
-          }
-          tmpSum = add(tmpSum, tmpMul)
-        }
+    var coeffs = new Array[Int](numPars)
+
+    for (i <- 0 until powSets.size) {
+      val coeffIdx = numPars - powSets(i).size
+      if (coeffIdx < numPars) {
+        val powSum = powSets(i).reduce(_ + _) % (numRoots - 1)
+        coeffs(coeffIdx) = add(coeffs(coeffIdx), Log2Val(powSum))
       }
-      coeffs = coeffs :+ tmpSum
     }
     coeffs
   }
@@ -420,7 +415,7 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
   poke(c.io.in.valid, true)
   poke(c.io.out.ready, true)
 
-  val maxCycles = 300
+  val maxCycles = 3000
 
   var numCycles = 0
   var outCnt = 0
