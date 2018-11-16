@@ -4,7 +4,7 @@ package ecc
 
 import chisel3._
 import chisel3.util._
-import interconnect.{CREECBusParams, CREECWriteBus}
+import interconnect.{CREECBus, CREECBusParams}
 
 // References:
 // [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
@@ -600,8 +600,8 @@ class ECCEncoderWrapper(val rsParams: RSParams = new RSParams(),
           val busParams: CREECBusParams = new CREECBusParams()
   ) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new CREECWriteBus(busParams))
-    val master = new CREECWriteBus(busParams)
+    val slave = Flipped(new CREECBus(busParams))
+    val master = new CREECBus(busParams)
   })
 
   io.master.header.bits.compressed := false.B
