@@ -117,26 +117,21 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
 
   "the passthrough module" should "be testable with testers2" in {
     test(new CREECPassthrough(new CREECBusParams)) { c =>
-      // TODO: usability bug in testers... binding ReadyValidSource to
-        // c.io.master.header compiled even though the directionality is wrong
-      // TODO: this implicit shouldn't be required...
-        // lowleveltransactions don't need to be aware of the bus params
-      implicit val busParams = c.io.master.p
       val tx = CREECHighLevelTransaction(Seq(
         1, 2, 3, 4, 5, 6, 7, 8,
-        100, 101, 102, 103, 104, 105, 106, 107
+        100, 101, 102, 103, 104, 105, 106, 107,
+        1, 0, 0, 0, 0, 0, 0, 0
       ), 0x1000)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
 
+      driver.pushTransactions(Seq(tx))
+
+      // Time advancement thread
       fork {
-        // TX thread
-        driver.pushTransactions(Seq(tx))
-      }
-      fork {
-        // Time advancement thread
         c.clock.step(100)
-      }.join()
+      }.join() // join enforces that this thread must complete
+
       println(monitor.receivedTransactions.dequeueAll(_ => true))
     }
   }

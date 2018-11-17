@@ -6,7 +6,8 @@ import chisel3.tester._
 
 import scala.collection.mutable
 
-package object CREECAgent {
+object CREECAgent {
+  // TODO: usability bug in testers... binding ReadyValidSource to c.io.master.header compiled even though the directionality is wrong
   class CREECDriver(x: CREECBus, clk: Clock) {
     val high2LowModel = new CREECHighToLowModel(x.p)
     val transactionsToDrive = mutable.Queue[CREECLowLevelTransaction]()
@@ -94,7 +95,8 @@ package object CREECAgent {
           val id = x.data.bits.id.peek().litValue().toInt
           println(data, id)
           // all peeked values are read as BigInt (MSB -> LSB byte format), so reverse is needed
-          low2HighModel.pushTransactions(Seq(CREECDataBeat(data.toByteArray.reverse, id)))
+          low2HighModel.pushTransactions(Seq(
+            CREECDataBeat(data.toByteArray.reverse.padTo(busParams.bytesPerBeat, 0.asInstanceOf[Byte]), id)))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
           clk.step()
