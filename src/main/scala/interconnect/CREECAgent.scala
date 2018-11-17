@@ -1,7 +1,7 @@
 package interconnect
 
 import chisel3._
-import chisel3.tester.TestAdapters.{ReadyValidSource}
+import chisel3.tester.TestAdapters.ReadyValidSource
 import chisel3.tester._
 
 import scala.collection.mutable
@@ -9,8 +9,7 @@ import scala.collection.mutable
 package object CREECAgent {
   class CREECDriver(x: CREECBus, clk: Clock) {
     val high2LowModel = new CREECHighToLowModel(x.p)
-    // TODO: fork off internal threads to process the data from pushTransactions() (which should be asynchronous)
-    //val transactionsToDrive = mutable.Queue[CREECLowLevelTransaction]()
+    val transactionsToDrive = mutable.Queue[CREECLowLevelTransaction]()
     val headerDriver = new ReadyValidSource(x.header, clk)
     val dataDriver = new ReadyValidSource(x.data, clk)
 
@@ -18,10 +17,39 @@ package object CREECAgent {
       high2LowModel.pushTransactions(ts)
       high2LowModel.advanceSimulation()
       val lowTransactions = high2LowModel.pullTransactions()
-      lowTransactions.foreach { t =>
-        t match {
-          case t: CREECHeaderBeat => headerDriver.enqueue(new TransactionHeader().Lit(t.len.U, t.id.U, false.B, false.B, false.B, t.addr.U))
-          case t: CREECDataBeat => dataDriver.enqueue(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
+      transactionsToDrive.enqueue(lowTransactions:_*)
+    }
+
+    // Header driver thread
+    fork {
+      while (true) {
+        timescope {
+          // TODO: this looks like a hack
+          val headerTx = transactionsToDrive.dequeueFirst {
+            case _: CREECHeaderBeat => true
+            case _ => false
+          }.map(_.asInstanceOf[CREECHeaderBeat])
+          headerTx.foreach { t =>
+            headerDriver.enqueue(new TransactionHeader().Lit(t.len.U, t.id.U, false.B, false.B, false.B, t.addr.U))
+          }
+          clk.step()
+        }
+      }
+    }
+
+    // Data driver thread
+    fork {
+      while (true) {
+        timescope {
+          // TODO: this looks like a hack
+          val dataTx = transactionsToDrive.dequeueFirst {
+            case _: CREECDataBeat => true
+            case _ => false
+          }.map(_.asInstanceOf[CREECDataBeat])
+          dataTx.foreach { t =>
+            dataDriver.enqueue(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
+          }
+          clk.step()
         }
       }
     }
