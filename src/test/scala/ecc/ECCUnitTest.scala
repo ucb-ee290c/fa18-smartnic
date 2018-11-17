@@ -421,7 +421,7 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
   var outCnt = 0
   var inCnt = 0
 
-  while (numCycles < maxCycles && outCnt < c.p.n) {
+  while (numCycles < maxCycles && outCnt < c.p.k) {
     numCycles += 1
     if (numCycles >= maxCycles) {
       expect(false, "timeout!")
@@ -446,15 +446,14 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
     step(1)
   }
 
-  for (i <- 0 until c.p.n) {
+  for (i <- 0 until c.p.k) {
     printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
       i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
   }
 
-  for (i <- 0 until c.p.n) {
+  for (i <- 0 until c.p.k) {
     expect(hwCorrectedSyms(i) == swCorrectedSyms(i), "symbols do not match!")
   }
-
 }
 
 // This will test the RSEncoder block with the CREECBus
@@ -530,7 +529,69 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop, swSyms: Seq[Int])
 class ECCDecoderTopUnitTester(c: ECCDecoderTop, inSyms: Seq[Int],
                               swCorrectedSyms: Seq[Int])
   extends PeekPokeTester(c) {
-  // TODO
+
+  var hwCorrectedSyms = List[Int]()
+
+  poke(c.io.slave.header.valid, true)
+  poke(c.io.slave.data.valid, true)
+  poke(c.io.master.header.ready, true)
+  poke(c.io.master.data.ready, true)
+
+  // TODO: test with multiple data beats
+  val numBeats = c.rsParams.n * c.rsParams.symbolWidth / c.busParams.dataWidth
+  poke(c.io.slave.header.bits.len, numBeats)
+
+  val r = c.rsParams.n / numBeats
+  var beatCnt = 0
+
+  var numCycles = 0
+  val maxCycles = 300
+  var outputs = List[Int]()
+
+  // Wait until getting enough data or timeout
+  while (numCycles < maxCycles && outputs.size < c.rsParams.k) {
+    numCycles += 1
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
+    }
+
+    if (peek(c.io.slave.data.valid) == BigInt(1) &&
+        peek(c.io.slave.data.ready) == BigInt(1)) {
+      var inputBits: BigInt = 0
+      for (j <- beatCnt * r until (beatCnt + 1) * r) {
+        // Pack r input symbols into a single data item
+        // that has width == bus data width
+        inputBits = (inputBits << c.rsParams.symbolWidth) +
+                     inSyms(c.rsParams.n - j - 1)
+      }
+      poke(c.io.slave.data.bits.data, inputBits)
+      beatCnt = beatCnt + 1
+    }
+
+    if (peek(c.io.master.data.valid) == BigInt(1) &&
+        peek(c.io.master.data.ready) == BigInt(1)) {
+      var result: BigInt = peek(c.io.master.data.bits.data)
+      var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
+      for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
+        outputs = outputs :+ (result & mask).toInt
+        result = result >> c.rsParams.symbolWidth
+      }
+    }
+
+    step(1)
+  }
+
+  // Be careful of the order of the bytes
+  hwCorrectedSyms = hwCorrectedSyms ++ outputs.reverse
+
+  for (i <- 0 until c.rsParams.k) {
+    printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
+      i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
+  }
+
+  for (i <- 0 until c.rsParams.k) {
+    expect(hwCorrectedSyms(i) == swCorrectedSyms(i), "symbols do not match!")
+  }
 }
 
 /**

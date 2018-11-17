@@ -527,7 +527,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
     is (sErrorCorrection1) {
       errorMagReg := 0.U
-      when (outCnt === p.n.asUInt()) {
+      when (outCnt === p.k.asUInt()) {
         outCnt := 0.U
         state := sSyndromeCmp
         outValidReg := false.B
@@ -585,16 +585,13 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   }
 }
 
-// CREECBus integration with the RSEncoder and RSDecoder modules
+// CREECBus integration with the RSEncoder module
 // What to do:
-//   + Receive write request from upstream block (slave)
-//   + Send write request to downstream block (master)
+// *** Encoder
+//   + Receive write header from upstream block (slave)
+//   + Send write header to downstream block (master)
 //   + Receive write data from upstream block (slave)
-//   + Send write data to downstream block (master)
-//   + Receive read request from upstream block (slave)
-//   + Send read request to downstream block (master)
-//   + Receive read response from downstream block (master)
-//   + Send read response to upstream block (slave)
+//   + Send *encoded* write data to downstream block (master)
 class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
                     val busParams: CREECBusParams = new CREECBusParams()
   ) extends Module {
@@ -699,6 +696,13 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   }
 }
 
+// CREECBus integration with the RSDecoder module
+// What to do:
+// *** Decoder
+//   + Receive read header from downstream block (slave)
+//   + Send read header to upstream block (master)
+//   + Receive read data from downstream block (slave)
+//   + Send *decoded* read data to upstream block (master)
 class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
                     val busParams: CREECBusParams = new CREECBusParams()
   ) extends Module {
@@ -706,7 +710,99 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
     val slave = Flipped(new CREECBus(busParams))
     val master = new CREECBus(busParams)
   })
-  //TODO
 
-  io.master <> io.slave
+  // TODO: handle the metadata appropriately
+  io.master.header.bits.compressed := false.B
+  io.master.header.bits.ecc := true.B
+  io.master.header.bits.encrypted := false.B
+
+  io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
+  io.master.header.bits.len := RegNext(io.slave.header.bits.len)
+  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
+
+  io.master.data.bits.id := RegNext(io.slave.data.bits.id)
+
+  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
+  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
+  val state = RegInit(sRecvHeader)
+
+  val dec = Module(new RSDecoder(rsParams))
+
+  val dataInReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
+  val dataOutReg = RegInit(0.U(busParams.dataWidth.W))
+
+  io.slave.header.ready := state === sRecvHeader
+  io.master.header.valid := state === sRecvData
+
+  io.slave.data.ready := state === sRecvData
+  io.master.data.valid := state === sDone
+  io.master.data.bits.data := dataOutReg
+
+  val decInCnt = RegInit(0.U(32.W))
+  val decOutCnt = RegInit(0.U(32.W))
+  val itemCnt = RegInit(0.U(32.W))
+  val beatCnt = RegInit(0.U(32.W))
+  val numBeats = RegInit(0.U(32.W))
+
+  dec.io.in.valid := (state === sCompute) && (decInCnt < rsParams.n.asUInt())
+  dec.io.in.bits := dataInReg(rsParams.symbolWidth - 1, 0)
+  dec.io.out.ready := (state === sCompute) && (decOutCnt < rsParams.k.asUInt())
+
+  when (state === sRecvHeader) {
+    decInCnt := 0.U
+    decOutCnt := 0.U
+    beatCnt := 0.U
+
+    when (io.slave.header.fire()) {
+      state := sRecvData
+      numBeats := io.slave.header.bits.len
+    }
+  }
+
+  when (state === sRecvData) {
+    when (io.slave.data.fire()) {
+      beatCnt := beatCnt + 1.U
+      dataInReg := (dataInReg << busParams.dataWidth) + io.slave.data.bits.data
+      // May take multiple cycles to receive input data
+      // if it is larger than the bus data width
+      when (itemCnt === (numItems - 1).asUInt()) {
+        state := sCompute
+        itemCnt := 0.U
+      }
+      .otherwise {
+        itemCnt := itemCnt + 1.U
+      }
+    }
+  }
+
+  when (state === sCompute) {
+    when (dec.io.in.fire()) {
+      decInCnt := decInCnt + 1.U
+      dataInReg := (dataInReg >> rsParams.symbolWidth)
+    }
+
+    when (dec.io.out.fire()) {
+      when (decOutCnt === rsParams.k.asUInt() - 1.U) {
+        state := sDone
+      }
+      .otherwise {
+        decOutCnt := decOutCnt + 1.U
+      }
+      dataOutReg := (dataOutReg << rsParams.symbolWidth) + dec.io.out.bits
+    }
+  }
+
+  when (state === sDone) {
+    when (io.master.data.fire()) {
+      when (beatCnt === numBeats - 1.U) {
+        // If all data beats have been processed, receive the next header
+        state := sRecvHeader
+      }
+      .otherwise {
+        // Process the next data beat
+        state := sRecvData
+      }
+    }
+  }
+
 }
