@@ -585,7 +585,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   }
 }
 
-// Top-level ECC module that hooks up with the rest of the system
+// CREECBus integration with the RSEncoder and RSDecoder modules
 // What to do:
 //   + Receive write request from upstream block (slave)
 //   + Send write request to downstream block (master)
@@ -595,60 +595,68 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 //   + Send read request to downstream block (master)
 //   + Receive read response from downstream block (master)
 //   + Send read response to upstream block (slave)
-// TODO: Make it generic (parameterized) to different ECC algorithms
-class ECCEncoderWrapper(val rsParams: RSParams = new RSParams(),
-          val busParams: CREECBusParams = new CREECBusParams()
+class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
+                    val busParams: CREECBusParams = new CREECBusParams()
   ) extends Module {
   val io = IO(new Bundle {
     val slave = Flipped(new CREECBus(busParams))
     val master = new CREECBus(busParams)
   })
 
+  // TODO: handle the metadata appropriately
   io.master.header.bits.compressed := false.B
   io.master.header.bits.ecc := true.B
   io.master.header.bits.encrypted := false.B
 
-//  io.slave.rdData.bits.compressed := io.master.rdData.bits.compressed
-//  io.slave.rdData.bits.ecc := io.master.rdData.bits.ecc
-//  io.slave.rdData.bits.encrypted := io.master.rdData.bits.encrypted
+  io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
+  io.master.header.bits.len := RegNext(io.slave.header.bits.len)
+  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
 
-  io.master.header.bits.addr := io.slave.header.bits.addr
-  io.master.header.bits.len := io.slave.header.bits.len
-  io.master.header.bits.id := io.slave.header.bits.id
-
-  io.master.data.bits.id := io.slave.data.bits.id
+  io.master.data.bits.id := RegNext(io.slave.data.bits.id)
 
   val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
-  val sInit :: sCompute :: sDone :: Nil = Enum(3)
-  val state = RegInit(sInit)
+  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
+  val state = RegInit(sRecvHeader)
 
   val enc = Module(new RSEncoder(rsParams))
 
   val dataInReg = RegInit(0.U(busParams.dataWidth.W))
   val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
 
-  io.slave.header.ready := state === sInit
-  io.slave.data.ready :=  state === sInit
-  io.master.header.valid := state === sDone
+  io.slave.header.ready := state === sRecvHeader
+  io.master.header.valid := state === sRecvData
+
+  io.slave.data.ready := state === sRecvData
   io.master.data.valid := state === sDone
   io.master.data.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
 
   val encInCnt = RegInit(0.U(32.W))
   val encOutCnt = RegInit(0.U(32.W))
   val itemCnt = RegInit(0.U(32.W))
+  val beatCnt = RegInit(0.U(32.W))
+  val numBeats = RegInit(0.U(32.W))
 
   enc.io.in.valid := (state === sCompute) && (encInCnt < rsParams.k.asUInt())
   enc.io.in.bits := dataInReg
   enc.io.out.ready := (state === sCompute) && (encOutCnt < rsParams.n.asUInt())
 
-  when (state === sInit) {
+  when (state === sRecvHeader) {
     encInCnt := 0.U
     encOutCnt := 0.U
     itemCnt := 0.U
+    beatCnt := 0.U
 
-    when (io.slave.header.fire() && io.slave.data.fire()) {
+    when (io.slave.header.fire()) {
+      state := sRecvData
+      numBeats := io.slave.header.bits.len
+    }
+  }
+
+  when (state === sRecvData) {
+    when (io.slave.data.fire()) {
       state := sCompute
       dataInReg := io.slave.data.bits.data
+      beatCnt := beatCnt + 1.U
     }
   }
 
@@ -670,14 +678,35 @@ class ECCEncoderWrapper(val rsParams: RSParams = new RSParams(),
   }
 
   when (state === sDone) {
-    when (io.master.header.fire() && io.master.data.fire()) {
+    when (io.master.data.fire()) {
       dataOutReg := (dataOutReg >> busParams.dataWidth)
+      // May take multiple cycles to send the output data
+      // if it is larger than the bus data width
       when (itemCnt === numItems.asUInt() - 1.U) {
-        state := sInit
+        when (beatCnt === numBeats - 1.U) {
+          // If all data beats have been processed, receive the next header
+          state := sRecvHeader
+        }
+        .otherwise {
+          // Process the next data beat
+          state := sRecvData
+        }
       }
       .otherwise {
         itemCnt := itemCnt + 1.U
       }
     }
   }
+}
+
+class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
+                    val busParams: CREECBusParams = new CREECBusParams()
+  ) extends Module {
+  val io = IO(new Bundle {
+    val slave = Flipped(new CREECBus(busParams))
+    val master = new CREECBus(busParams)
+  })
+  //TODO
+
+  io.master <> io.slave
 }
