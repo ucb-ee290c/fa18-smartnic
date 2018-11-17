@@ -457,8 +457,7 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
 
 }
 
-// This will test the whole ECC block with the CREECBus
-// At the moment, the ECC only handles encoding
+// This will test the RSEncoder block with the CREECBus
 // This test assumes that the upstream block sends a
 // write request to the ECC block. The ECC block generates
 // the parity symbols and then sends a write request to
@@ -470,58 +469,69 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
 // Upstream --> 64-bit slave wrData --> ECC Computation --> 128-bit master wrData --> Downstream
 // In this case, two bus transactions will be needed to send the data (of 64-bit each) to the downstream block
 // I have no idea how good this scheme is, or is it even practical.
-// TODO:
-//   + Test the decoder
-//   + Test the bus interface rigorously
-//class ECCEncoderUnitTester(c: ECC, swSyms: Seq[Int]) extends PeekPokeTester(c) {
-//  var hwSyms = List[Int]()
-//
-//  poke(c.io.slave.wrReq.valid, true)
-//  poke(c.io.slave.wrData.valid, true)
-//  poke(c.io.master.wrReq.ready, true)
-//  poke(c.io.master.wrData.ready, true)
-//
-//  var inputBits: BigInt = 0
-//  for (i <- 0 until c.rsParams.k) {
-//    inputBits = (inputBits << c.rsParams.symbolWidth) + swSyms(c.rsParams.k - i - 1)
-//  }
-//  poke(c.io.slave.wrData.bits.data, inputBits)
-//
-//  var numCycles = 0
-//  val maxCycles = 30
-//  var tmpList = List[Int]()
-//
-//  // Wait until getting enough data or timeout
-//  while (numCycles < maxCycles && tmpList.size < swSyms.size) {
-//    numCycles += 1
-//    if (numCycles >= maxCycles) {
-//      expect(false, "timeout!")
-//    }
-//
-//    if (peek(c.io.master.wrReq.valid) == BigInt(1) &&
-//        peek(c.io.master.wrReq.ready) == BigInt(1) &&
-//        peek(c.io.master.wrData.valid) == BigInt(1) &&
-//        peek(c.io.master.wrData.valid) == BigInt(1)) {
-//      var result: BigInt = peek(c.io.master.wrData.bits.data)
-//      var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
-//      for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
-//        tmpList = tmpList :+ (result & mask).toInt
-//        result = result >> c.rsParams.symbolWidth
-//      }
-//    }
-//    step(1)
-//  }
-//  // Be careful of the order of the bytes
-//  hwSyms = hwSyms ++ tmpList.reverse
-//
-//  for (i <- 0 until c.rsParams.n) {
-//    printf("hwSyms(%d) = %d\n", i, hwSyms(i))
-//  }
-//
-//  for (i <- 0 until c.rsParams.n) {
-//    expect(hwSyms(i) == swSyms(i), "symbols do not match!")
-//  }
-//}
+class ECCEncoderTopUnitTester(c: ECCEncoderTop, swSyms: Seq[Int])
+  extends PeekPokeTester(c) {
+
+  var hwSyms = List[Int]()
+
+  poke(c.io.slave.header.valid, true)
+  poke(c.io.slave.data.valid, true)
+  poke(c.io.master.header.ready, true)
+  poke(c.io.master.data.ready, true)
+
+  // TODO: test with multiple data beats
+  poke(c.io.slave.header.bits.len, 1)
+
+  // Pack all input symbols into a single data item
+  // that has width == bus data width
+  var inputBits: BigInt = 0
+  for (i <- 0 until c.rsParams.k) {
+    inputBits = (inputBits << c.rsParams.symbolWidth) +
+                swSyms(c.rsParams.k - i - 1)
+  }
+  poke(c.io.slave.data.bits.data, inputBits)
+
+  var numCycles = 0
+  val maxCycles = 300
+  var outputs = List[Int]()
+
+  // Wait until getting enough data or timeout
+  while (numCycles < maxCycles && outputs.size < swSyms.size) {
+    numCycles += 1
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
+    }
+
+    if (peek(c.io.master.data.valid) == BigInt(1) &&
+        peek(c.io.master.data.ready) == BigInt(1)) {
+      var result: BigInt = peek(c.io.master.data.bits.data)
+      var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
+      for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
+        outputs = outputs :+ (result & mask).toInt
+        result = result >> c.rsParams.symbolWidth
+      }
+    }
+
+    step(1)
+  }
+
+  // Be careful of the order of the bytes
+  hwSyms = hwSyms ++ outputs.reverse
+
+  for (i <- 0 until c.rsParams.n) {
+    printf("hwSyms(%d) = %d\n", i, hwSyms(i))
+  }
+
+  for (i <- 0 until c.rsParams.n) {
+    expect(hwSyms(i) == swSyms(i), "symbols do not match!")
+  }
+}
+
+class ECCDecoderTopUnitTester(c: ECCDecoderTop, inSyms: Seq[Int],
+                              swCorrectedSyms: Seq[Int])
+  extends PeekPokeTester(c) {
+  // TODO
+}
 
 /**
   * From within sbt use:
@@ -607,4 +617,19 @@ class ECCTester extends ChiselFlatSpec {
       c => new RSDecoderUnitTester(c, buggySyms, swCorrectedSyms)
     } should be(true)
   }
+
+  "ECCEncoderTop" should "work" in {
+    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
+    new ECCEncoderTop(params)) {
+      c => new ECCEncoderTopUnitTester(c, swSyms)
+    } should be(true)
+  }
+
+  "ECCDecoderTop" should "work" in {
+    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
+    new ECCDecoderTop(params)) {
+      c => new ECCDecoderTopUnitTester(c, buggySyms, swCorrectedSyms)
+    } should be(true)
+  }
+
 }
