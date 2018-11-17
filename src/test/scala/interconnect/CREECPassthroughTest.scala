@@ -120,8 +120,9 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
       val tx = CREECHighLevelTransaction(Seq(
         1, 2, 3, 4, 5, 6, 7, 8,
         100, 101, 102, 103, 104, 105, 106, 107,
-        1, 0, 0, 0, 0, 0, 0, 0
-      ), 0x1000)
+        1, 0, 0, 0, 0, 0, 0, 0,
+        255, 255, 255, 255, 255, 255, 255, 255
+      ).map(_.asInstanceOf[Byte]), 0x1000)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
 

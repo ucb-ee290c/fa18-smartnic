@@ -90,7 +90,6 @@ object CREECAgent {
             clk.step()
           }
           // TODO: usability bug, if data.peek().litValue() is replaced with data.litValue(), you get a get None error
-          // TODO: potential bug if data.toByteArray isn't padded appropriately (if 'smaller' than databus width)
           val data = x.data.bits.data.peek().litValue()
           val id = x.data.bits.id.peek().litValue().toInt
           println(data, id)
