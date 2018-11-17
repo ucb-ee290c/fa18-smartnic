@@ -2,7 +2,7 @@ package aes
 
 import chisel3._
 import chisel3.util._
-import interconnect.{CREECBusParams, CREECReadBus, CREECWriteBus}
+import interconnect.{CREECBusParams, CREECBus}
 //import freechips.rocketchip.subsystem.BaseSubsystem
 //import freechips.rocketchip.config.{Parameters, Field}
 //import freechips.rocketchip.diplomacy._
@@ -130,11 +130,11 @@ class AESTopFullTimeInterleave extends Module {
 //TODO: Add width conversion
 class AESTopCREECBusWrapper extends Module {
     val io = IO(new Bundle {
-        val encrypt_slave = new CREECWriteBus(new CREECBusParams)
-        val encrypt_master = Flipped(new CREECWriteBus(new CREECBusParams))
+        val encrypt_slave = new CREECBus(new CREECBusParams)
+        val encrypt_master = Flipped(new CREECBus(new CREECBusParams))
 
-        val decrypt_slave = new CREECReadBus(new CREECBusParams)
-        val decrypt_master = Flipped(new CREECReadBus(new CREECBusParams))
+        val decrypt_slave = new CREECBus(new CREECBusParams)
+        val decrypt_master = Flipped(new CREECBus(new CREECBusParams))
     })
 
     val AESTop = Module(new AESTopFullTimeInterleave)

@@ -173,7 +173,7 @@ class DifferentialCoder(numElements: Int = 8, byteWidth: Int = 8, p: CoderParams
     val last = Input(SInt(byteWidth.W))
   })
   //temporary wire
-  val out = Wire(io.output.cloneType)
+  val out = Wire(chiselTypeOf(io.output))
   //encode or decode //TODO: use some cool scala thing to do this without intermediate wires
   for (i <- 0 until io.input.length) {
     if (p.encode) {
@@ -193,18 +193,8 @@ class DifferentialCoder(numElements: Int = 8, byteWidth: Int = 8, p: CoderParams
 class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
                              coderParams: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = {
-      if (coderParams.encode)
-        Flipped(new CREECWriteBus(creecParams))
-      else
-        Flipped(new CREECReadBus(creecParams))
-    }
-    val out: CREECBus = {
-      if (coderParams.encode)
-        new CREECWriteBus(creecParams)
-      else
-        new CREECReadBus(creecParams)
-    }
+    val in: CREECBus = new CREECBus(creecParams)
+    val out: CREECBus = new CREECBus(creecParams)
   })
   //States
   //  AwaitHeader: Waiting for a header to come in.
@@ -215,12 +205,12 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
   val state = RegInit(sAwaitHeader)
 
   //register the header and data inputs once they have been accepted
-  val headerIn = Reg(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
-  val headerOut = Reg(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+  val headerIn = Reg(new TransactionHeader(creecParams))
+  val headerOut = Reg(new TransactionHeader(creecParams))
   val dataOut = Reg(new TransactionData(creecParams))
 
   //keep track of how many more data beats we need to process
-  val beatsToGo = Reg(io.in.header.bits.len.cloneType)
+  val beatsToGo = Reg(chiselTypeOf(io.in.header.bits.len))
   //TODO: beatsToGo can be a vector that is n long, where n is the number of in-flight
   //      transactions. When a beat comes in, decrement the beatsToGo entry that corresponds
   //      to its id. For the differential encoder, this means we also have to have n
@@ -249,7 +239,7 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
   when(state === sAwaitHeader) {
     headerIn := io.in.header.deq()
     headerOut := {
-      val out = Wire(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+      val out = Wire(new TransactionHeader(creecParams))
       out.addr := io.in.header.bits.addr
       out.id := io.in.header.bits.id
       out.len := io.in.header.bits.len
@@ -360,26 +350,16 @@ class BasicFIFO(width: Int, length: Int) extends Module {
 class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
                           coderParams: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = {
-      if (coderParams.encode)
-        Flipped(new CREECWriteBus(creecParams))
-      else
-        Flipped(new CREECReadBus(creecParams))
-    }
-    val out: CREECBus = {
-      if (coderParams.encode)
-        new CREECWriteBus(creecParams)
-      else
-        new CREECReadBus(creecParams)
-    }
+    val in: CREECBus = new CREECBus(creecParams)
+    val out: CREECBus = new CREECBus(creecParams)
   })
   //create state machine definitions
   val sAwaitHeader :: sSendHeader :: sAwaitData :: sProcessData :: sAccumulate :: sSendData :: Nil = Enum(6)
   val state = RegInit(sAwaitHeader)
 
   //register the header and data inputs once they have been accepted
-  val headerIn = Reg(new TransactionHeader with BusAddress with CREECMetadata)
-  val headerOut = Reg(new TransactionHeader with BusAddress with CREECMetadata)
+  val headerIn = Reg(new TransactionHeader)
+  val headerOut = Reg(new TransactionHeader)
   val dataOut = Wire(new TransactionData)
 
   //dataInBuffer holds the beats to be processed, while dataOutBuffer holds processed bytes.
@@ -387,8 +367,8 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
   val dataOutBuffer = Module(new BasicFIFO(creecParams.dataWidth / 8, creecParams.maxBeats * 3 / 2 * 8))
 
   //how many beats we need to get before the processing starts or send at the end
-  val beatsToReceive = Reg(io.in.header.bits.len.cloneType)
-  val beatsToProcess = Reg(io.in.header.bits.len.cloneType)
+  val beatsToReceive = Reg(chiselTypeOf(io.in.header.bits.len))
+  val beatsToProcess = Reg(chiselTypeOf(io.in.header.bits.len))
   val bytesToSend = Reg(SInt((creecParams.beatBits + 1).W))
 
   //keeps track of which byte we are on for both the coded and uncoded sides.
@@ -420,7 +400,7 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
     dataInBuffer.io.reset := false.B
     headerIn := io.in.header.deq()
     headerOut := {
-      val out = Wire(new TransactionHeader(creecParams) with BusAddress with CREECMetadata)
+      val out = Wire(new TransactionHeader(creecParams))
       out.addr := io.in.header.bits.addr
       out.id := io.in.header.bits.id
       out.len := io.in.header.bits.len
@@ -534,24 +514,19 @@ class CREECCoder(creecParams: CREECBusParams = new CREECBusParams,
                  coderParams: CoderParams = new CoderParams,
                  operation: String) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = {
-      if (coderParams.encode)
-        Flipped(new CREECWriteBus(creecParams))
-      else
-        Flipped(new CREECReadBus(creecParams))
-    }
-    val out: CREECBus = {
-      if (coderParams.encode)
-        new CREECWriteBus(creecParams)
-      else
-        new CREECReadBus(creecParams)
-    }
+    val in: CREECBus = new CREECBus(creecParams)
+    val out: CREECBus = new CREECBus(creecParams)
   })
-  require(operation == "differential" || operation == "runLength")
-  val coder = if(operation == "differential")
+
+  require(List("differential", "runLength", "compression").contains(operation))
+
+  val coder = if (operation == "differential")
     Module(new CREECDifferentialCoder(creecParams, coderParams))
-  else
+  else if (operation == "runLength")
     Module(new CREECRunLengthCoder(creecParams, coderParams))
+  else
+    Module(new Compressor(creecParams, compress = coderParams.encode))
+
   coder.io <> io
 }
 
@@ -570,18 +545,8 @@ class Compressor(creecParams: CREECBusParams = new CREECBusParams,
                  blockDeviceParams: BlockDeviceIOBusParams = new BlockDeviceIOBusParams,
                  compress: Boolean) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = {
-      if (compress)
-        Flipped(new CREECWriteBus(blockDeviceParams))
-      else
-        Flipped(new CREECReadBus(blockDeviceParams))
-    }
-    val out: CREECBus = {
-      if (compress)
-        new CREECWriteBus(creecParams)
-      else
-        new CREECReadBus(creecParams)
-    }
+    val in: CREECBus = Flipped(new CREECBus(blockDeviceParams))
+    val out: CREECBus = new CREECBus(creecParams)
   })
   val differential = Module(new CREECDifferentialCoder(creecParams, CoderParams(encode = compress)))
   val runLength = Module(new CREECRunLengthCoder(creecParams, CoderParams(encode = compress)))
@@ -589,4 +554,25 @@ class Compressor(creecParams: CREECBusParams = new CREECBusParams,
   io.in <> differential.io.in
   differential.io.out <> runLength.io.in
   io.out <> runLength.io.out
+}
+
+class CREECDifferentialCoderModel(encode: Boolean) extends
+  SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
+    Seq(CREECHighLevelTransaction(CompressionUtils.differential(in.data.toList, encode), in.addr))
+  }
+}
+
+class CREECRunLengthCoderModel(encode: Boolean) extends
+  SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
+    Seq(CREECHighLevelTransaction(CompressionUtils.runLength(in.data.toList, encode), in.addr))
+  }
+}
+
+class CompressorModel(compress: Boolean) extends
+  SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
+    Seq(CREECHighLevelTransaction(CompressionUtils.compress(in.data.toList, compress), in.addr))
+  }
 }

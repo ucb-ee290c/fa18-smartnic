@@ -3,100 +3,6 @@ package compression
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
 /*
- * Golden model for basic compression.
- */
-object CompressionUtils {
-  private def differential(input: List[Byte], encode: Boolean): List[Byte] = {
-    var output = List[Byte]()
-    var prev = 0.toByte
-    for (i <- input.indices) {
-      output = output :+ (if (encode) (input(i) - prev).toByte else (input(i) + prev).toByte)
-      prev = if (encode) input(i) else output(i)
-    }
-    output
-  }
-
-  def differentialEncode(input: List[Byte]): List[Byte] = {
-    differential(input, encode = true)
-  }
-
-  def differentialDecode(input: List[Byte]): List[Byte] = {
-    differential(input, encode = false)
-  }
-
-  /*TODO all these functions have the form {create output, use 1 state variable,
-   *  loop through input, apply some function that assigns to the output from
-   *  the input based on the state, and return the output}. Generalize this.
-   */
-
-  def runLengthEcode(input: List[Byte]): List[Byte] = {
-    var output = List[Byte]()
-    var run = 0
-    for (i <- input.indices) {
-      if (input(i) == 0) {
-        if (run == 0) {
-          output = output :+ 0.toByte
-        }
-        run += 1
-      } else {
-        if (run != 0) {
-          output = output :+ (run - 1).toByte
-        }
-        output = output :+ input(i)
-        run = 0
-      }
-    }
-    if (run != 0)
-      output = output :+ (run - 1).toByte
-    output
-  }
-
-  def runLengthDecode(input: List[Byte]): List[Byte] = {
-    var output = List[Byte]()
-    var expand = false
-    for (i <- input.indices) {
-      if (expand) {
-        output = output ++ List.fill(input(i) + 1)(0.toByte)
-        expand = false
-      } else if (input(i) == 0) {
-        expand = true
-      } else {
-        output = output :+ input(i)
-      }
-    }
-    output
-  }
-}
-
-/*
- * Functions for manipulating bytes.
- */
-object ByteUtils {
-  /*
-   * Compacts 8 bytes into a 64-bit int.
-   */
-  def squish(bytes: List[Byte]): BigInt = {
-    require(bytes.length == 8)
-    var squished = BigInt(0)
-    for (i <- 0 until 8) {
-      squished |= BigInt(bytes(i)) << (8 * i)
-    }
-    squished
-  }
-
-  /*
-   * Unpacks a 64-bit int into 8 bytes.
-   */
-  def unsquish(squished: BigInt): List[Byte] = {
-    var bytes: List[Byte] = List[Byte]()
-    for (i <- 0 until 8) {
-      bytes = bytes :+ ((squished & (BigInt(0xFF) << (8 * i))) >> (8 * i)).toByte
-    }
-    bytes
-  }
-}
-
-/*
  * Tests non-timed differential coder block.
  */
 class DifferentialCoderTester(c: DifferentialCoder, encode: Boolean) extends PeekPokeTester(c) {
@@ -117,10 +23,7 @@ class DifferentialCoderTester(c: DifferentialCoder, encode: Boolean) extends Pee
     List(0, 0, -1, 0, -1, 0, -1, 0),
     List(4, -1, 1, 1, -1, -1, 1, 1)
   )
-  val expectedOutput: List[Byte] = if (encode)
-    CompressionUtils.differentialEncode(inputs.flatten)
-  else
-    CompressionUtils.differentialDecode(inputs.flatten)
+  val expectedOutput: List[Byte] = CompressionUtils.differential(inputs.flatten, encode)
   var last: Byte = 0
   for (i <- inputs.indices) {
     for (j <- 0 until 8)
@@ -164,10 +67,7 @@ class RunLengthCoderTester(c: RunLengthCoder, encode: Boolean) extends PeekPokeT
 
   def test(input: List[Byte]): Boolean = {
     var output: List[Byte] = List[Byte]()
-    val expectedOutput = if (encode)
-      CompressionUtils.runLengthEcode(input)
-    else
-      CompressionUtils.runLengthDecode(input)
+    val expectedOutput = CompressionUtils.runLength(input, encode)
     poke(c.io.out.ready, true)
     poke(c.io.in.valid, true)
     var i = 0
@@ -244,9 +144,9 @@ class BasicFIFOTester(c: BasicFIFO) extends PeekPokeTester(c) {
  * Test of creec-level run-length encoding
  */
 class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extends PeekPokeTester(c) {
-  require(operation == "differential" || operation == "runLength")
-  val allTestAddrs = List(611, 612, 613, 614)
-  val allTestLens = List(5, 1, 2, 9)
+  require(List("differential", "runLength", "compression").contains(operation))
+  val allTestAddrs = List(611, 612, 613, 614, 615, 616)
+  val allTestLens = List(5, 1, 2, 9, 10, 10)
   val allTestDatas = List(
     List[Byte](
       3, 4, 5, 6, 7, 8, 9, 10,
@@ -272,6 +172,30 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0
+    ),
+    List[Byte](
+      5, 5, 5, 5, 5, 5, 5, 5,
+      5, 5, 5, 5, 5, 5, 5, 5,
+      9, 7, 5, 4, 5, 4, 4, 4,
+      4, 4, 4, 4, 5, 6, 7, 8,
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 0, 0, 0, 0,
+      0, 0, 0, 0, 9, 3, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 1, 1, 1
+    ),
+    List[Byte](
+      0, 2, 0, 2, 0, 2, 0, 2,
+      0, 2, 0, 2, 0, 2, 0, 2,
+      0, 2, 0, 2, 0, 2, 0, 2,
+      0, 2, 0, 2, 0, 2, 0, 2,
+      0, 2, 0, 2, 0, 2, 0, 2,
+      2, 0, 2, 0, 2, 0, 2, 0,
+      2, 0, 2, 0, 2, 0, 2, 0,
+      2, 0, 2, 0, 2, 0, 2, 0,
+      2, 0, 2, 0, 2, 0, 2, 0,
+      2, 0, 2, 0, 2, 0, 2, 0
     )
   )
 
@@ -280,18 +204,15 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
   }
 
   def test(addr: Int, len: Int, data: List[Byte]): Boolean = {
-    var expectedData = if (encode) {
+    var expectedData = {
       if (operation == "runLength")
-        CompressionUtils.runLengthEcode(data)
+        CompressionUtils.runLength(data, encode)
+      else if (operation == "differential")
+        CompressionUtils.differential(data, encode)
       else
-        CompressionUtils.differentialEncode(data)
+        CompressionUtils.runLength(CompressionUtils.differential(data, encode), encode)
     }
-    else {
-      if (operation == "runLength")
-        CompressionUtils.runLengthDecode(data)
-      else
-        CompressionUtils.differentialDecode(data)
-    }
+
     while (expectedData.length % 8 != 0) {
       expectedData = expectedData :+ 0.toByte
     }
@@ -334,11 +255,14 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
 
       step(1)
       timeout += 1
-      if (timeout > 400) {
+      if (timeout > 1000) {
         expect(good = false, "took too long.")
         return false
       }
     }
+    println("in :" + data)
+    println("got:" + datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }))
+    println("exp:" + expectedData)
     expect(datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }) == expectedData,
       "actual output did not match expected output.")
   }
@@ -434,7 +358,8 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "CREECDifferentialCoder" should "encode" in {
-    Driver.execute(testerArgs :+ "creec_differential_encoder", () => new CREECCoder(operation = "differential")) {
+    Driver.execute(testerArgs :+ "creec_differential_encoder", () => new CREECCoder(
+      operation = "differential")) {
       c => new CREECCoderTester(c, true, "differential")
     } should be(true)
   }
@@ -447,7 +372,8 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "CREECRunLengthCoder" should "encode" in {
-    Driver.execute(testerArgs :+ "creec_run_length_encoder", () => new CREECCoder(operation = "runLength")) {
+    Driver.execute(testerArgs :+ "creec_run_length_encoder", () => new CREECCoder(
+      operation = "runLength")) {
       c => new CREECCoderTester(c, true, "runLength")
     } should be(true)
   }
@@ -466,14 +392,16 @@ class CompressionTester extends ChiselFlatSpec {
   }
 
   "Compressor" should "compress" in {
-    Driver.execute(testerArgs :+ "compressor", () => new Compressor(compress = true)) {
-      c => new CompressorTester(c)
+    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+      operation = "compression")) {
+      c => new CREECCoderTester(c, true, "compression")
     } should be(true)
   }
 
   "Compressor" should "decompress" in {
-    Driver.execute(testerArgs :+ "compressor", () => new Compressor(compress = false)) {
-      c => new CompressorTester(c)
+    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+      coderParams = new CoderParams(encode = false), operation = "compression")) {
+      c => new CREECCoderTester(c, false, "compression")
     } should be(true)
   }
 }
