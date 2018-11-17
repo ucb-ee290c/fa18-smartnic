@@ -27,17 +27,18 @@ class CREECPassthroughModel(p: BusParams) extends SoftwareModel[CREECLowLevelTra
       case t: CREECHeaderBeat => Seq(t)
       case t: CREECDataBeat =>
         // Prepend a 0 byte to make sure t.data is decoded as unsigned
+        // BigInt encodes byte arrays as big-endian (MSB -> LSB)
         // Note: BigInt(Array(0, 0, 1) = 1
         // Note: BigInt(Array(0, 1, 1) = 257
         // Note: BigInt(Array(255, 255, 255) = -1 (not what we wanted)
         // Note: BigInt(Array(0, 255, 255, 255) = 16777215 (this is better)
-        val dataAsInt = BigInt((0.asInstanceOf[Byte] +: t.data).toArray)
-        val modifiedData = (dataAsInt + 1).toByteArray
+        val dataAsInt = BigInt((t.data :+ 0.asInstanceOf[Byte]).reverse.toArray)
+        val modifiedData = (dataAsInt + 1).toByteArray.reverse
         // We may have overflow (in which case there is 1 extra byte), or fewer than 8 bytes if the original data was small
         val refinedData = if (modifiedData.length > p.dataWidth/8) {
-          modifiedData.reverse.slice(0, p.bytesPerBeat).reverse // truncate overflow
+          modifiedData.slice(0, p.bytesPerBeat) // truncate overflow
         } else if (modifiedData.length < p.bytesPerBeat) {
-          modifiedData.reverse.padTo(p.bytesPerBeat, 0.asInstanceOf[Byte]).reverse // pad with zero bytes
+          modifiedData.padTo(p.bytesPerBeat, 0.asInstanceOf[Byte]) // pad with zero bytes
         } else {
           modifiedData
         }

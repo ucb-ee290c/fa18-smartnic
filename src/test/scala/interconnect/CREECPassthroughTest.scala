@@ -4,8 +4,6 @@ import chisel3.tester._
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
 
-import scala.collection.mutable
-
 class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
   val testerArgs = Array(
     "-fiwv",
@@ -84,7 +82,7 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
     val out = composedModel.pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(0, 0, 0x1000),
-      CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 11), 0)
+      CREECDataBeat(Seq(4, 2, 3, 4, 5, 6, 7, 8), 0)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
@@ -108,8 +106,8 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
     val out = composedModel.pullTransactions()
     val outGold = Seq(
       CREECHighLevelTransaction(Seq(
-        1, 2, 3, 4, 5, 6, 7, 9,
-        10, 11, 12, 13, 14, 15, 16, 18
+        2, 2, 3, 4, 5, 6, 7, 8,
+        11, 11, 12, 13, 14, 15, 16, 17
       ), 0x1000)
     )
     println("OUTPUT TRANSACTIONS PULLED")

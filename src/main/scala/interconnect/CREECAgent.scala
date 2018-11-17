@@ -1,13 +1,10 @@
 package interconnect
 
 import chisel3._
-import chisel3.tester.TestAdapters.{ReadyValidSink, ReadyValidSource}
+import chisel3.tester.TestAdapters.{ReadyValidSource}
 import chisel3.tester._
 
 import scala.collection.mutable
-
-// TODO get rid of this boilerplate
-import chisel3.internal.firrtl.{LitArg, ULit, SLit}
 
 package object CREECAgent {
   class CREECDriver(x: CREECBus, clk: Clock) {
@@ -34,16 +31,15 @@ package object CREECAgent {
     implicit val busParams = x.p
     val low2HighModel = new CREECLowToHighModel(x.p)
     val receivedTransactions = mutable.Queue[CREECHighLevelTransaction]()
-    val headerMonitor = new ReadyValidSink(x.header, clk)
-    val dataMonitor = new ReadyValidSink(x.data, clk)
+    // Header monitor thread
     fork {
       while (true) {
+        // TODO: why is this timescope needed here?
         timescope {
           x.header.ready.poke(true.B)
-          // Header monitor thread
-          headerMonitor.waitForValid()
-          // TODO: integrate monitor-like functions in TestAdapters
-          x.header.ready.poke(true.B)
+          while (!x.header.valid.peek().litToBoolean) {
+            clk.step()
+          }
           val len = x.header.bits.len.peek().litValue().toInt
           val id = x.header.bits.id.peek().litValue().toInt
           val addr = x.header.bits.addr.peek().litValue()
@@ -55,21 +51,22 @@ package object CREECAgent {
         }
       }
     }
+
+    // Data monitor thread
     fork {
       while (true) {
-        // TODO: why is this timescope needed here?
         timescope {
           x.data.ready.poke(true.B)
-          // Data monitor thread
-          dataMonitor.waitForValid()
-          // TODO: integrate monitor-like functions in TestAdapters
-          x.data.ready.poke(true.B)
-          // TODO: usability bug, if data.peek().litValue() is replaced with
-            // data.litValue(), you get a weird looking error message
+          while (!x.data.valid.peek().litToBoolean) {
+            clk.step()
+          }
+          // TODO: usability bug, if data.peek().litValue() is replaced with data.litValue(), you get a get None error
+          // TODO: potential bug if data.toByteArray isn't padded appropriately (if 'smaller' than databus width)
           val data = x.data.bits.data.peek().litValue()
           val id = x.data.bits.id.peek().litValue().toInt
           println(data, id)
-          low2HighModel.pushTransactions(Seq(CREECDataBeat(data.toByteArray, id)))
+          // all peeked values are read as BigInt (MSB -> LSB byte format), so reverse is needed
+          low2HighModel.pushTransactions(Seq(CREECDataBeat(data.toByteArray.reverse, id)))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
           clk.step()
