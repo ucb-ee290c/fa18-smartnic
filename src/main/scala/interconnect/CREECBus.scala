@@ -74,7 +74,7 @@ class TransactionData(val p: BusParams = new CREECBusParams) extends Bundle {
   }
 }
 
-abstract class CREECBus(val p: BusParams) extends Bundle {
+class CREECBus(val p: BusParams) extends Bundle {
   val header = Decoupled(new TransactionHeader(p))
   val data = Decoupled(new TransactionData(p))
 }

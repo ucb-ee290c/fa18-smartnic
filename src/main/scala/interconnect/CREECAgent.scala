@@ -1,9 +1,7 @@
 package interconnect
 
 import chisel3._
-import chisel3.iotesters.PeekPokeTester
 import chisel3.tester.TestAdapters.{ReadyValidSink, ReadyValidSource}
-import chisel3.util._
 import chisel3.tester._
 
 import scala.collection.mutable
@@ -41,6 +39,7 @@ package object CREECAgent {
     fork {
       while (true) {
         timescope {
+          x.header.ready.poke(true.B)
           // Header monitor thread
           headerMonitor.waitForValid()
           // TODO: integrate monitor-like functions in TestAdapters
@@ -60,6 +59,7 @@ package object CREECAgent {
       while (true) {
         // TODO: why is this timescope needed here?
         timescope {
+          x.data.ready.poke(true.B)
           // Data monitor thread
           dataMonitor.waitForValid()
           // TODO: integrate monitor-like functions in TestAdapters

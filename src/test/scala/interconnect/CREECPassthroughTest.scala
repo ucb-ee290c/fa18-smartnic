@@ -45,19 +45,21 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
     implicit val busParams: BusParams = new CREECBusParams
     val model = new CREECPassthroughModel(busParams)
     model.pushTransactions(Seq(
-      CREECHeaderBeat(0, 0, 0x0),
+      CREECHeaderBeat(3, 0, 0x0),
       CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 8), 0),
       CREECDataBeat(Seq(255, 255, 255, 255, 255, 255, 255, 255).map(_.asInstanceOf[Byte]), 0),  // test overflow
-      CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 1).map(_.asInstanceOf[Byte]), 0)   // test small data
+      CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 1).map(_.asInstanceOf[Byte]), 0),  // test MSB data
+      CREECDataBeat(Seq(1, 0, 0, 0, 0, 0, 0, 0).map(_.asInstanceOf[Byte]), 0)   // test small data
     ))
     println("LAUNCHING MODEL SIMULATION")
     model.advanceSimulation(true)
     val out = model.pullTransactions()
     val outGold = Seq(
-      CREECHeaderBeat(0, 0, 0x0),
-      CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 9), 0),
+      CREECHeaderBeat(3, 0, 0x0),
+      CREECDataBeat(Seq(2, 2, 3, 4, 5, 6, 7, 8), 0),
       CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 0), 0),
-      CREECDataBeat(Seq(0, 0, 0, 0, 0, 0, 0, 2), 0)
+      CREECDataBeat(Seq(1, 0, 0, 0, 0, 0, 0, 1), 0),
+      CREECDataBeat(Seq(2, 0, 0, 0, 0, 0, 0, 0), 0)
     )
     println("OUTPUT TRANSACTIONS PULLED")
     println(out)
@@ -126,13 +128,11 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
         1, 2, 3, 4, 5, 6, 7, 8,
         100, 101, 102, 103, 104, 105, 106, 107
       ), 0x1000)
+      val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
 
-      c.io.master.header.ready.poke(true.B)
-      c.io.master.data.ready.poke(true.B)
       fork {
         // TX thread
-        val driver = new CREECDriver(c.io.slave, c.clock)
         driver.pushTransactions(Seq(tx))
       }
       fork {

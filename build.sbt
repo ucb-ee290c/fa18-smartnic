@@ -55,3 +55,4 @@ scalacOptions ++= scalacOptionsVersion(scalaVersion.value)
 scalacOptions ++= Seq("-language:reflectiveCalls", "-unchecked", "-deprecation", "-feature")
 
 javacOptions ++= javacOptionsVersion(scalaVersion.value)
+cancelable in Global := true
