@@ -79,6 +79,7 @@ case class RSParams(
       result
     }
 
+    // TODO: pipeline this operation to improve timing
     def inv(a: UInt): UInt = {
       val op = a.asTypeOf(UInt(symbolWidth.W))
       val numVals = math.pow(2, symbolWidth).toInt - 1
@@ -208,8 +209,8 @@ class PolyCompute(val p: RSParams = new RSParams(),
   val sIn :: sCompute :: sOut :: Nil = Enum(3)
   val state = RegInit(sIn)
 
-  val inCnt = RegInit(0.U(32.W))
-  val outCnt = RegInit(0.U(32.W))
+  val (inCntVal, inCntDone) = Counter(io.in.fire(), numInputs)
+  val (outCntVal, outCntDone) = Counter(io.out.fire(), numCells)
 
   io.in.ready := (state === sIn)
   io.out.valid := (state === sOut)
@@ -245,12 +246,8 @@ class PolyCompute(val p: RSParams = new RSParams(),
   switch (state) {
     is (sIn) {
       when (io.in.fire()) {
-        when (inCnt === numInputs.asUInt() - 1.U) {
+        when (inCntDone) {
           state := sCompute
-          inCnt := 0.U
-        }
-        .otherwise {
-          inCnt := inCnt + 1.U
         }
       }
     }
@@ -262,12 +259,8 @@ class PolyCompute(val p: RSParams = new RSParams(),
 
     is (sOut) {
       when (io.out.fire()) {
-        when (outCnt === numCells.asUInt() - 1.U) {
+        when (outCntDone) {
           state := sIn
-          outCnt := 0.U
-        }
-        .otherwise {
-          outCnt := outCnt + 1.U
         }
       }
     }
@@ -297,7 +290,8 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val sSyndromeCmp :: sKeyEquationSolver :: sChienSearch :: sErrorCorrection0 :: sErrorCorrection1 :: sErrorCorrection2 :: Nil = Enum(6)
   val state = RegInit(sSyndromeCmp)
 
-  val syndCmpOutCnt = RegInit(0.U(32.W))
+  val (syndCmpOutCntVal, syndCmpOutCntDone) = Counter(syndCmp.io.out.fire(),
+                                                      p.n - p.k)
 
   // Registers for the Error evaluator polynomial's coefficients
   val evalARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
@@ -331,26 +325,32 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   chienSearch.io.in.bits := Mux(state === sChienSearch, locARegs(p.n - p.k), 0.U)
   chienSearch.io.out.ready := (state === sChienSearch)
   val chienOut = RegNext(chienSearch.io.out.bits)
-  val chienSearchOutCnt = RegInit(0.U(32.W))
+  val (chienSOutCntVal, chienSOutCntDone) = Counter(chienSearch.io.out.fire(),
+                                                    chienSearch.getNumCells())
 
   // This queue stores the roots of the error location polynomial
   // formed by locARegs
   val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n - p.k))
-  chienQueue.io.enq.bits := chienSearchOutCnt + 1.U
+  chienQueue.io.enq.bits := chienSOutCntVal + 1.U
   chienQueue.io.enq.valid := (chienSearch.io.out.bits === 0.U) &&
                              (state === sChienSearch) &&
                              (chienSearch.io.out.fire())
+
+  val evalPolyCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
+  val locDerivCmp = Module(new PolyCompute(p, 1, p.n - p.k))
+
+  val startEvalPolyCmp = RegInit(false.B)
+  val startLocDerivCmp = RegInit(false.B)
 
   val locRootIdx = RegInit(0.U(32.W))
   val evalResult = RegInit(0.U(p.symbolWidth.W))
   val locDerivResult = RegInit(0.U(p.symbolWidth.W))
   val evalResultFired = RegInit(false.B)
   val locDerivResultFired = RegInit(false.B)
-  val evalInCnt = RegInit(0.U(32.W))
-  val locDerivInCnt = RegInit(0.U(32.W))
-
-  val evalPolyCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
-  val locDerivCmp = Module(new PolyCompute(p, 1, p.n - p.k))
+  val (evalInCntVal, evalInCntDone) = Counter(evalPolyCmp.io.in.fire(),
+                                              p.n - p.k + 1)
+  val (locDerivInCntVal, locDerivInCntDone) = Counter(locDerivCmp.io.in.fire(),
+                                                      p.n - p.k)
 
   val rootValIdx = numRoots.asUInt() - 1.U - (p.n.asUInt() - locRootIdx)
   val denom = p.GFOp.mul(locDerivResult, rootVals(rootValIdx))
@@ -358,23 +358,24 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
   evalPolyCmp.io.coeffs := (0 until evalPolyCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
-  evalPolyCmp.io.in.valid := (state === sErrorCorrection2 &&
-                              evalInCnt <= (p.n - p.k).asUInt())
+  evalPolyCmp.io.in.valid := startEvalPolyCmp
   evalPolyCmp.io.in.bits := evalARegs(p.n - p.k)
-  evalPolyCmp.io.out.ready := (state === sErrorCorrection2)
+  evalPolyCmp.io.out.ready := state === sErrorCorrection2
 
   locDerivCmp.io.coeffs := (0 until locDerivCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
-  locDerivCmp.io.in.valid := (state === sErrorCorrection2 &&
-                              locDerivInCnt <= (p.n - p.k - 1).asUInt())
+  locDerivCmp.io.in.valid := startLocDerivCmp
   locDerivCmp.io.in.bits := locDerivRegs(p.n - p.k - 1)
-  locDerivCmp.io.out.ready := (state === sErrorCorrection2)
+  locDerivCmp.io.out.ready := state === sErrorCorrection2
 
-  val outCnt = RegInit(0.U(32.W))
   val outValidReg = RegInit(false.B)
   val outBitsReg = RegInit(0.U)
   val correctCnd = (state === sErrorCorrection0) &&
                    (evalResultFired && locDerivResultFired)
+  // Have an extra 1 because the output valid signal is delayed by one cycle
+  // FIXME: this looks hacky
+  val (outCntVal, outCntDone) = Counter(state === sErrorCorrection1, p.k + 1)
+
   inputQueue.io.deq.ready := state === sErrorCorrection1
   io.out.valid := correctCnd || outValidReg
   io.out.bits := outBitsReg ^ errorMagReg
@@ -387,10 +388,8 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       locBRegs(0) := 1.U
 
       when (syndCmp.io.out.fire()) {
-        syndCmpOutCnt := syndCmpOutCnt + 1.U
-
         when (syndCmp.io.out.bits =/= 0.U) {
-          degB := syndCmpOutCnt
+          degB := syndCmpOutCntVal
         }
 
         evalBRegs.dropRight(1).foldRight(syndCmp.io.out.bits) {
@@ -401,7 +400,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
         }
       }
 
-      when (syndCmpOutCnt === (p.n - p.k - 1).asUInt()) {
+      when (syndCmpOutCntDone) {
         state := sKeyEquationSolver
       }
     }
@@ -498,11 +497,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
         }
       }
 
-      when (chienSearch.io.out.fire()) {
-        chienSearchOutCnt := chienSearchOutCnt + 1.U
-      }
-
-      when (chienSearchOutCnt === chienSearch.getNumCells().asUInt() - 1.U) {
+      when (chienSOutCntDone) {
         state := sErrorCorrection0
       }
     }
@@ -510,8 +505,6 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
     is (sErrorCorrection0) {
       evalResultFired := false.B
       locDerivResultFired := false.B
-      evalInCnt := 0.U
-      locDerivInCnt := 0.U
 
       when (chienQueue.io.deq.fire()) {
         locRootIdx := chienQueue.io.deq.bits
@@ -521,18 +514,17 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
     is (sErrorCorrection1) {
       errorMagReg := 0.U
-      when (outCnt === p.k.asUInt()) {
-        outCnt := 0.U
+      when (outCntDone) {
         state := sSyndromeCmp
         outValidReg := false.B
       }
-      .elsewhen (outCnt === (locRootIdx - 1.U)) {
+      .elsewhen (outCntVal === (locRootIdx - 1.U)) {
         state := sErrorCorrection2
-        outCnt := outCnt + 1.U
         outValidReg := false.B
+        startEvalPolyCmp := true.B
+        startLocDerivCmp := true.B
       }
       .otherwise {
-        outCnt := outCnt + 1.U
         outValidReg := true.B
       }
       outBitsReg := inputQueue.io.deq.bits
@@ -540,7 +532,10 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
     is (sErrorCorrection2) {
       when (evalPolyCmp.io.in.fire()) {
-        evalInCnt := evalInCnt + 1.U
+        when (evalInCntDone) {
+          startEvalPolyCmp := false.B
+        }
+
         val lastVal = evalARegs(p.n - p.k)
         evalARegs.foldLeft(lastVal) {
           (prevReg, nextReg) => {
@@ -551,7 +546,10 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       }
 
       when (locDerivCmp.io.in.fire()) {
-        locDerivInCnt := locDerivInCnt + 1.U
+        when (locDerivInCntDone) {
+          startLocDerivCmp := false.B
+        }
+
         val lastVal = locDerivRegs(p.n - p.k - 1)
         locDerivRegs.foldLeft(lastVal) {
           (prevReg, nextReg) => {
@@ -621,20 +619,19 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   io.master.data.valid := state === sDone
   io.master.data.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
 
-  val encInCnt = RegInit(0.U(32.W))
-  val encOutCnt = RegInit(0.U(32.W))
-  val itemCnt = RegInit(0.U(32.W))
-  val beatCnt = RegInit(0.U(32.W))
+  enc.io.in.valid := state === sCompute
+  enc.io.in.bits := dataInReg
+  enc.io.out.ready := state === sCompute
+
   val numBeats = RegInit(0.U(32.W))
 
-  enc.io.in.valid := (state === sCompute) && (encInCnt < rsParams.k.asUInt())
-  enc.io.in.bits := dataInReg
-  enc.io.out.ready := (state === sCompute) && (encOutCnt < rsParams.n.asUInt())
+  val (encInCntVal, encInCntDone) = Counter(enc.io.in.fire(), rsParams.k)
+  val (encOutCntVal, encOutCntDone) = Counter(enc.io.out.fire(), rsParams.n)
+  val (itemCntVal, itemCntDone) = Counter(io.master.data.fire(), numItems)
+  // Cannot use Counter for this because the maximum value is not statically known
+  val beatCnt = RegInit(0.U(32.W))
 
   when (state === sRecvHeader) {
-    encInCnt := 0.U
-    encOutCnt := 0.U
-    itemCnt := 0.U
     beatCnt := 0.U
 
     when (io.slave.header.fire()) {
@@ -653,16 +650,12 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
 
   when (state === sCompute) {
     when (enc.io.in.fire()) {
-      encInCnt := encInCnt + 1.U
       dataInReg := (dataInReg >> rsParams.symbolWidth)
     }
 
     when (enc.io.out.fire()) {
-      when (encOutCnt === rsParams.n.asUInt() - 1.U) {
+      when (encOutCntDone) {
         state := sDone
-      }
-      .otherwise {
-        encOutCnt := encOutCnt + 1.U
       }
       dataOutReg := (dataOutReg << rsParams.symbolWidth) + enc.io.out.bits
     }
@@ -673,7 +666,7 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
       dataOutReg := (dataOutReg >> busParams.dataWidth)
       // May take multiple cycles to send the output data
       // if it is larger than the bus data width
-      when (itemCnt === numItems.asUInt() - 1.U) {
+      when (itemCntDone) {
         when (beatCnt === numBeats - 1.U) {
           // If all data beats have been processed, receive the next header
           state := sRecvHeader
@@ -682,9 +675,6 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
           // Process the next data beat
           state := sRecvData
         }
-      }
-      .otherwise {
-        itemCnt := itemCnt + 1.U
       }
     }
   }
@@ -732,19 +722,18 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
   io.master.data.valid := state === sDone
   io.master.data.bits.data := dataOutReg
 
-  val decInCnt = RegInit(0.U(32.W))
-  val decOutCnt = RegInit(0.U(32.W))
-  val itemCnt = RegInit(0.U(32.W))
-  val beatCnt = RegInit(0.U(32.W))
   val numBeats = RegInit(0.U(32.W))
 
-  dec.io.in.valid := (state === sCompute) && (decInCnt < rsParams.n.asUInt())
+  val (decInCntVal, decInCntDone) = Counter(dec.io.in.fire(), rsParams.n)
+  val (decOutCntVal, decOutCntDone) = Counter(dec.io.out.fire(), rsParams.k)
+  val (itemCntVal, itemCntDone) = Counter(io.slave.data.fire(), numItems)
+  val beatCnt = RegInit(0.U(32.W))
+
+  dec.io.in.valid := state === sCompute
   dec.io.in.bits := dataInReg(rsParams.symbolWidth - 1, 0)
-  dec.io.out.ready := (state === sCompute) && (decOutCnt < rsParams.k.asUInt())
+  dec.io.out.ready := state === sCompute
 
   when (state === sRecvHeader) {
-    decInCnt := 0.U
-    decOutCnt := 0.U
     beatCnt := 0.U
 
     when (io.slave.header.fire()) {
@@ -759,28 +748,20 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
       dataInReg := (dataInReg << busParams.dataWidth) + io.slave.data.bits.data
       // May take multiple cycles to receive input data
       // if it is larger than the bus data width
-      when (itemCnt === (numItems - 1).asUInt()) {
+      when (itemCntDone) {
         state := sCompute
-        itemCnt := 0.U
-      }
-      .otherwise {
-        itemCnt := itemCnt + 1.U
       }
     }
   }
 
   when (state === sCompute) {
     when (dec.io.in.fire()) {
-      decInCnt := decInCnt + 1.U
       dataInReg := (dataInReg >> rsParams.symbolWidth)
     }
 
     when (dec.io.out.fire()) {
-      when (decOutCnt === rsParams.k.asUInt() - 1.U) {
+      when (decOutCntDone) {
         state := sDone
-      }
-      .otherwise {
-        decOutCnt := decOutCnt + 1.U
       }
       dataOutReg := (dataOutReg << rsParams.symbolWidth) + dec.io.out.bits
     }
