@@ -631,52 +631,55 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   // Cannot use Counter for this because the maximum value is not statically known
   val beatCnt = RegInit(0.U(32.W))
 
-  when (state === sRecvHeader) {
-    beatCnt := 0.U
+  switch (state) {
+    is (sRecvHeader) {
+      beatCnt := 0.U
 
-    when (io.slave.header.fire()) {
-      state := sRecvData
-      numBeats := io.slave.header.bits.len
-    }
-  }
-
-  when (state === sRecvData) {
-    when (io.slave.data.fire()) {
-      state := sCompute
-      dataInReg := io.slave.data.bits.data
-      beatCnt := beatCnt + 1.U
-    }
-  }
-
-  when (state === sCompute) {
-    when (enc.io.in.fire()) {
-      dataInReg := (dataInReg >> rsParams.symbolWidth)
-    }
-
-    when (enc.io.out.fire()) {
-      when (encOutCntDone) {
-        state := sDone
-      }
-      dataOutReg := (dataOutReg << rsParams.symbolWidth) + enc.io.out.bits
-    }
-  }
-
-  when (state === sDone) {
-    when (io.master.data.fire()) {
-      dataOutReg := (dataOutReg >> busParams.dataWidth)
-      // May take multiple cycles to send the output data
-      // if it is larger than the bus data width
-      when (itemCntDone) {
-        when (beatCnt === numBeats - 1.U) {
-          // If all data beats have been processed, receive the next header
-          state := sRecvHeader
-        }
-        .otherwise {
-          // Process the next data beat
-          state := sRecvData
-        }
+      when (io.slave.header.fire()) {
+        state := sRecvData
+        numBeats := io.slave.header.bits.len
       }
     }
+
+    is (sRecvData) {
+      when (io.slave.data.fire()) {
+        state := sCompute
+        dataInReg := io.slave.data.bits.data
+        beatCnt := beatCnt + 1.U
+      }
+    }
+
+    is (sCompute) {
+      when (enc.io.in.fire()) {
+        dataInReg := (dataInReg >> rsParams.symbolWidth)
+      }
+
+      when (enc.io.out.fire()) {
+        when (encOutCntDone) {
+          state := sDone
+        }
+        dataOutReg := (dataOutReg << rsParams.symbolWidth) + enc.io.out.bits
+      }
+    }
+
+    is (sDone) {
+      when (io.master.data.fire()) {
+        dataOutReg := (dataOutReg >> busParams.dataWidth)
+        // May take multiple cycles to send the output data
+        // if it is larger than the bus data width
+        when (itemCntDone) {
+          when (beatCnt === numBeats - 1.U) {
+            // If all data beats have been processed, receive the next header
+            state := sRecvHeader
+          }
+          .otherwise {
+            // Process the next data beat
+            state := sRecvData
+          }
+        }
+      }
+    }
+
   }
 }
 
@@ -733,51 +736,53 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
   dec.io.in.bits := dataInReg(rsParams.symbolWidth - 1, 0)
   dec.io.out.ready := state === sCompute
 
-  when (state === sRecvHeader) {
-    beatCnt := 0.U
+  switch (state) {
+    is (sRecvHeader) {
+      beatCnt := 0.U
 
-    when (io.slave.header.fire()) {
-      state := sRecvData
-      numBeats := io.slave.header.bits.len
-    }
-  }
-
-  when (state === sRecvData) {
-    when (io.slave.data.fire()) {
-      beatCnt := beatCnt + 1.U
-      dataInReg := (dataInReg << busParams.dataWidth) + io.slave.data.bits.data
-      // May take multiple cycles to receive input data
-      // if it is larger than the bus data width
-      when (itemCntDone) {
-        state := sCompute
-      }
-    }
-  }
-
-  when (state === sCompute) {
-    when (dec.io.in.fire()) {
-      dataInReg := (dataInReg >> rsParams.symbolWidth)
-    }
-
-    when (dec.io.out.fire()) {
-      when (decOutCntDone) {
-        state := sDone
-      }
-      dataOutReg := (dataOutReg << rsParams.symbolWidth) + dec.io.out.bits
-    }
-  }
-
-  when (state === sDone) {
-    when (io.master.data.fire()) {
-      when (beatCnt === numBeats - 1.U) {
-        // If all data beats have been processed, receive the next header
-        state := sRecvHeader
-      }
-      .otherwise {
-        // Process the next data beat
+      when (io.slave.header.fire()) {
         state := sRecvData
+        numBeats := io.slave.header.bits.len
       }
     }
-  }
 
+    is (sRecvData) {
+      when (io.slave.data.fire()) {
+        beatCnt := beatCnt + 1.U
+        dataInReg := (dataInReg << busParams.dataWidth) + io.slave.data.bits.data
+        // May take multiple cycles to receive input data
+        // if it is larger than the bus data width
+        when (itemCntDone) {
+          state := sCompute
+        }
+      }
+    }
+
+    is (sCompute) {
+      when (dec.io.in.fire()) {
+        dataInReg := (dataInReg >> rsParams.symbolWidth)
+      }
+
+      when (dec.io.out.fire()) {
+        when (decOutCntDone) {
+          state := sDone
+        }
+        dataOutReg := (dataOutReg << rsParams.symbolWidth) + dec.io.out.bits
+      }
+    }
+
+    is (sDone) {
+      when (io.master.data.fire()) {
+        when (beatCnt === numBeats - 1.U) {
+          // If all data beats have been processed, receive the next header
+          state := sRecvHeader
+        }
+        .otherwise {
+          // Process the next data beat
+          state := sRecvData
+        }
+      }
+    }
+
+  }
 }
