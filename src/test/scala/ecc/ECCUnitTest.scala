@@ -187,23 +187,18 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
 
       evaluatorsA(numPars) = 1
 
-      var deg = numPars
-      var ddeg = numPars - 1
       for (i <- 0 until numPars) {
         evaluatorsB(i) = syndromes(i)
-        if (evaluatorsB(i) != 0)  {
-          ddeg = i
-        }
       }
       locatorsB(0) = 1
-      for (i <- 0 until size) {
-        printf("evalB(%d) = %d\n", i, evaluatorsB(i))
-      }
 
       var degA = findDeg(evaluatorsA)
       var degB = findDeg(evaluatorsB)
       var numIters = 0
 
+      for (i <- 0 until size) {
+        printf("evalB(%d) = %d\n", i, evaluatorsB(i))
+      }
       printf("[initial] degA = %d, degB = %d\n", degA, degB)
 
       while (degA >= numPars / 2) {
@@ -359,52 +354,10 @@ class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester
   }
 
   for (i <- 0 until c.p.n) {
-    printf("hwSyms(%d) = %d\n", i, hwSyms(i))
+    printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
   }
 
-  for (i <- 0 until c.p.n) {
-    expect(hwSyms(i) == swSyms(i), "symbols do not match!")
-  }
-}
-
-class PolyComputeUnitTester(c: PolyCompute, swSyms: Seq[Int]) extends PeekPokeTester(c) {
-  poke(c.io.in.valid, true)
-  poke(c.io.out.ready, true)
-
-  for (i <- 0 until c.numCells) {
-    poke(c.io.coeffs(i), c.p.Log2Val(i))
-  }
-
-  val maxCycles = 300
-
-  var numCycles = 0
-  var outCnt = 0
-  var inCnt = 0
-
-  while (numCycles < maxCycles && outCnt < c.numCells) {
-    numCycles += 1
-    if (numCycles >= maxCycles) {
-      expect(false, "timeout!")
-    }
-
-    if (inCnt == c.numInputs) {
-      poke(c.io.in.valid, false)
-    }
-
-    if (peek(c.io.in.valid) == BigInt(1) &&
-        peek(c.io.in.ready) == BigInt(1) && inCnt < c.numInputs) {
-      poke(c.io.in.bits, swSyms(inCnt))
-      inCnt += 1
-    }
-
-    if (peek(c.io.out.valid) == BigInt(1) &&
-        peek(c.io.out.ready) == BigInt(1)) {
-      expect(c.io.out.bits, 0)
-      outCnt += 1
-    }
-
-    step(1)
-  }
+  expect(hwSyms == swSyms, "symbols do not match!")
 }
 
 class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
@@ -451,9 +404,8 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
       i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
   }
 
-  for (i <- 0 until c.p.k) {
-    expect(hwCorrectedSyms(i) == swCorrectedSyms(i), "symbols do not match!")
-  }
+  expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.p.k),
+         "symbols do not match!")
 }
 
 // This will test the RSEncoder block with the CREECBus
@@ -518,12 +470,10 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop, swSyms: Seq[Int])
   hwSyms = hwSyms ++ outputs.reverse
 
   for (i <- 0 until c.rsParams.n) {
-    printf("hwSyms(%d) = %d\n", i, hwSyms(i))
+    printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
   }
 
-  for (i <- 0 until c.rsParams.n) {
-    expect(hwSyms(i) == swSyms(i), "symbols do not match!")
-  }
+  expect(hwSyms == swSyms, "symbols do not match!")
 }
 
 class ECCDecoderTopUnitTester(c: ECCDecoderTop, inSyms: Seq[Int],
@@ -589,9 +539,8 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop, inSyms: Seq[Int],
       i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
   }
 
-  for (i <- 0 until c.rsParams.k) {
-    expect(hwCorrectedSyms(i) == swCorrectedSyms(i), "symbols do not match!")
-  }
+  expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.rsParams.k),
+         "symbols do not match!")
 }
 
 /**
@@ -662,13 +611,6 @@ class ECCTester extends ChiselFlatSpec {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSEncoder(params)) {
       c => new RSEncoderUnitTester(c, swSyms)
-    } should be(true)
-  }
-
-  "PolyCompute" should "work" in {
-    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new PolyCompute(params, numSymbols - msgs.size, numSymbols)) {
-      c => new PolyComputeUnitTester(c, swSyms)
     } should be(true)
   }
 
