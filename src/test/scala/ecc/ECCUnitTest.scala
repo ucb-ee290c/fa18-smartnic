@@ -316,96 +316,111 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
 }
 
 // This only tests the Reed-Solomon encoder
-class RSEncoderUnitTester(c: RSEncoder, swSyms: Seq[Int]) extends PeekPokeTester(c) {
-  var hwSyms = List[Int]()
+class RSEncoderUnitTester(c: RSEncoder,
+  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
 
-  poke(c.io.in.valid, true)
-  poke(c.io.out.ready, true)
+  for (i <- 0 until trials.size) {
+    printf("===TRIAL %d\n", i)
 
-  val maxCycles = 300
+    val swSyms = trials(i)._1
 
-  var numCycles = 0
-  var outCnt = 0
-  var inCnt = 0
+    var hwSyms = List[Int]()
 
-  while (numCycles < maxCycles && outCnt < c.p.n) {
-    numCycles += 1
-    if (numCycles >= maxCycles) {
-      expect(false, "timeout!")
+    poke(c.io.in.valid, true)
+    poke(c.io.out.ready, true)
+
+    val maxCycles = 300
+
+    var numCycles = 0
+    var outCnt = 0
+    var inCnt = 0
+
+    while (numCycles < maxCycles && outCnt < c.p.n) {
+      numCycles += 1
+      if (numCycles >= maxCycles) {
+        expect(false, "timeout!")
+      }
+
+      if (inCnt == c.p.k) {
+        poke(c.io.in.valid, false)
+      }
+
+      if (peek(c.io.in.valid) == BigInt(1) &&
+          peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.k) {
+        poke(c.io.in.bits, swSyms(inCnt))
+        inCnt += 1
+      }
+
+      if (peek(c.io.out.valid) == BigInt(1) &&
+          peek(c.io.out.ready) == BigInt(1)) {
+        hwSyms = hwSyms :+ peek(c.io.out.bits).toInt
+        outCnt += 1
+      }
+
+      step(1)
     }
 
-    if (inCnt == c.p.k) {
-      poke(c.io.in.valid, false)
+    for (i <- 0 until c.p.n) {
+      printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
     }
 
-    if (peek(c.io.in.valid) == BigInt(1) &&
-        peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.k) {
-      poke(c.io.in.bits, swSyms(inCnt))
-      inCnt += 1
-    }
-
-    if (peek(c.io.out.valid) == BigInt(1) &&
-        peek(c.io.out.ready) == BigInt(1)) {
-      hwSyms = hwSyms :+ peek(c.io.out.bits).toInt
-      outCnt += 1
-    }
-
-    step(1)
+    expect(hwSyms == swSyms, "symbols do not match!")
   }
-
-  for (i <- 0 until c.p.n) {
-    printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
-  }
-
-  expect(hwSyms == swSyms, "symbols do not match!")
 }
 
-class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
-                          swCorrectedSyms: Seq[Int])
-  extends PeekPokeTester(c) {
-  var hwCorrectedSyms = List[Int]()
+class RSDecoderUnitTester(c: RSDecoder,
+  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
 
-  poke(c.io.in.valid, true)
-  poke(c.io.out.ready, true)
+  for (i <- 0 until trials.size) {
+    printf("===TRIAL %d\n", i)
 
-  val maxCycles = 3000
+    val inSyms = trials(i)._2
+    val swCorrectedSyms = trials(i)._3
 
-  var numCycles = 0
-  var outCnt = 0
-  var inCnt = 0
+    var hwCorrectedSyms = List[Int]()
 
-  while (numCycles < maxCycles && outCnt < c.p.k) {
-    numCycles += 1
-    if (numCycles >= maxCycles) {
-      expect(false, "timeout!")
+    poke(c.io.in.valid, true)
+    poke(c.io.out.ready, true)
+
+    val maxCycles = 3000
+
+    var numCycles = 0
+    var outCnt = 0
+    var inCnt = 0
+
+    while (numCycles < maxCycles && outCnt < c.p.k) {
+      numCycles += 1
+      if (numCycles >= maxCycles) {
+        expect(false, "timeout!")
+      }
+
+      if (inCnt == c.p.n) {
+        poke(c.io.in.valid, false)
+      }
+
+      if (peek(c.io.in.valid) == BigInt(1) &&
+          peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.n) {
+        poke(c.io.in.bits, inSyms(inCnt))
+        inCnt += 1
+      }
+
+      if (peek(c.io.out.valid) == BigInt(1) &&
+          peek(c.io.out.ready) == BigInt(1)) {
+        hwCorrectedSyms = hwCorrectedSyms :+ peek(c.io.out.bits).toInt
+        outCnt += 1
+      }
+
+      step(1)
     }
 
-    if (inCnt == c.p.n) {
-      poke(c.io.in.valid, false)
+    for (i <- 0 until c.p.k) {
+      printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
+        i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
     }
 
-    if (peek(c.io.in.valid) == BigInt(1) &&
-        peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.n) {
-      poke(c.io.in.bits, inSyms(inCnt))
-      inCnt += 1
-    }
-
-    if (peek(c.io.out.valid) == BigInt(1) &&
-        peek(c.io.out.ready) == BigInt(1)) {
-      hwCorrectedSyms = hwCorrectedSyms :+ peek(c.io.out.bits).toInt
-      outCnt += 1
-    }
-
-    step(1)
+    expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.p.k),
+           "symbols do not match!")
   }
-
-  for (i <- 0 until c.p.k) {
-    printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
-      i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
-  }
-
-  expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.p.k),
-         "symbols do not match!")
 }
 
 // This will test the RSEncoder block with the CREECBus
@@ -420,127 +435,139 @@ class RSDecoderUnitTester(c: RSDecoder, inSyms: Seq[Int],
 // Upstream --> 64-bit slave wrData --> ECC Computation --> 128-bit master wrData --> Downstream
 // In this case, two bus transactions will be needed to send the data (of 64-bit each) to the downstream block
 // I have no idea how good this scheme is, or is it even practical.
-class ECCEncoderTopUnitTester(c: ECCEncoderTop, swSyms: Seq[Int])
-  extends PeekPokeTester(c) {
+class ECCEncoderTopUnitTester(c: ECCEncoderTop,
+  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
 
-  var hwSyms = List[Int]()
+  for (i <- 0 until trials.size) {
+    printf("===TRIAL %d\n", i)
 
-  poke(c.io.slave.header.valid, true)
-  poke(c.io.slave.data.valid, true)
-  poke(c.io.master.header.ready, true)
-  poke(c.io.master.data.ready, true)
+    val swSyms = trials(i)._1
 
-  // TODO: test with multiple data beats
-  poke(c.io.slave.header.bits.len, 1)
+    var hwSyms = List[Int]()
 
-  // Pack all input symbols into a single data item
-  // that has width == bus data width
-  var inputBits: BigInt = 0
-  for (i <- 0 until c.rsParams.k) {
-    inputBits = (inputBits << c.rsParams.symbolWidth) +
-                swSyms(c.rsParams.k - i - 1)
-  }
-  poke(c.io.slave.data.bits.data, inputBits)
+    poke(c.io.slave.header.valid, true)
+    poke(c.io.slave.data.valid, true)
+    poke(c.io.master.header.ready, true)
+    poke(c.io.master.data.ready, true)
 
-  var numCycles = 0
-  val maxCycles = 300
-  var outputs = List[Int]()
+    // TODO: test with multiple data beats
+    poke(c.io.slave.header.bits.len, 1)
 
-  // Wait until getting enough data or timeout
-  while (numCycles < maxCycles && outputs.size < swSyms.size) {
-    numCycles += 1
-    if (numCycles >= maxCycles) {
-      expect(false, "timeout!")
+    // Pack all input symbols into a single data item
+    // that has width == bus data width
+    var inputBits: BigInt = 0
+    for (i <- 0 until c.rsParams.k) {
+      inputBits = (inputBits << c.rsParams.symbolWidth) +
+                  swSyms(c.rsParams.k - i - 1)
     }
+    poke(c.io.slave.data.bits.data, inputBits)
 
-    if (peek(c.io.master.data.valid) == BigInt(1) &&
-        peek(c.io.master.data.ready) == BigInt(1)) {
-      var result: BigInt = peek(c.io.master.data.bits.data)
-      var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
-      for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
-        outputs = outputs :+ (result & mask).toInt
-        result = result >> c.rsParams.symbolWidth
+    var numCycles = 0
+    val maxCycles = 300
+    var outputs = List[Int]()
+
+    // Wait until getting enough data or timeout
+    while (numCycles < maxCycles && outputs.size < swSyms.size) {
+      numCycles += 1
+      if (numCycles >= maxCycles) {
+        expect(false, "timeout!")
       }
+
+      if (peek(c.io.master.data.valid) == BigInt(1) &&
+          peek(c.io.master.data.ready) == BigInt(1)) {
+        var result: BigInt = peek(c.io.master.data.bits.data)
+        var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
+        for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
+          outputs = outputs :+ (result & mask).toInt
+          result = result >> c.rsParams.symbolWidth
+        }
+      }
+
+      step(1)
     }
 
-    step(1)
+    // Be careful of the order of the bytes
+    hwSyms = hwSyms ++ outputs.reverse
+
+    for (i <- 0 until c.rsParams.n) {
+      printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
+    }
+
+    expect(hwSyms == swSyms, "symbols do not match!")
   }
-
-  // Be careful of the order of the bytes
-  hwSyms = hwSyms ++ outputs.reverse
-
-  for (i <- 0 until c.rsParams.n) {
-    printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
-  }
-
-  expect(hwSyms == swSyms, "symbols do not match!")
 }
 
-class ECCDecoderTopUnitTester(c: ECCDecoderTop, inSyms: Seq[Int],
-                              swCorrectedSyms: Seq[Int])
-  extends PeekPokeTester(c) {
+class ECCDecoderTopUnitTester(c: ECCDecoderTop,
+  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
 
-  var hwCorrectedSyms = List[Int]()
+  for (i <- 0 until trials.size) {
+    printf("===TRIAL %d\n", i)
 
-  poke(c.io.slave.header.valid, true)
-  poke(c.io.slave.data.valid, true)
-  poke(c.io.master.header.ready, true)
-  poke(c.io.master.data.ready, true)
+    val inSyms = trials(i)._2
+    val swCorrectedSyms = trials(i)._3
 
-  // TODO: test with multiple data beats
-  val numBeats = c.rsParams.n * c.rsParams.symbolWidth / c.busParams.dataWidth
-  poke(c.io.slave.header.bits.len, numBeats)
+    var hwCorrectedSyms = List[Int]()
 
-  val r = c.rsParams.n / numBeats
-  var beatCnt = 0
+    poke(c.io.slave.header.valid, true)
+    poke(c.io.slave.data.valid, true)
+    poke(c.io.master.header.ready, true)
+    poke(c.io.master.data.ready, true)
 
-  var numCycles = 0
-  val maxCycles = 300
-  var outputs = List[Int]()
+    // TODO: test with multiple data beats
+    val numBeats = c.rsParams.n * c.rsParams.symbolWidth / c.busParams.dataWidth
+    poke(c.io.slave.header.bits.len, numBeats)
 
-  // Wait until getting enough data or timeout
-  while (numCycles < maxCycles && outputs.size < c.rsParams.k) {
-    numCycles += 1
-    if (numCycles >= maxCycles) {
-      expect(false, "timeout!")
-    }
+    val r = c.rsParams.n / numBeats
+    var beatCnt = 0
 
-    if (peek(c.io.slave.data.valid) == BigInt(1) &&
-        peek(c.io.slave.data.ready) == BigInt(1)) {
-      var inputBits: BigInt = 0
-      for (j <- beatCnt * r until (beatCnt + 1) * r) {
-        // Pack r input symbols into a single data item
-        // that has width == bus data width
-        inputBits = (inputBits << c.rsParams.symbolWidth) +
-                     inSyms(c.rsParams.n - j - 1)
+    var numCycles = 0
+    val maxCycles = 300
+    var outputs = List[Int]()
+
+    // Wait until getting enough data or timeout
+    while (numCycles < maxCycles && outputs.size < c.rsParams.k) {
+      numCycles += 1
+      if (numCycles >= maxCycles) {
+        expect(false, "timeout!")
       }
-      poke(c.io.slave.data.bits.data, inputBits)
-      beatCnt = beatCnt + 1
-    }
 
-    if (peek(c.io.master.data.valid) == BigInt(1) &&
-        peek(c.io.master.data.ready) == BigInt(1)) {
-      var result: BigInt = peek(c.io.master.data.bits.data)
-      var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
-      for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
-        outputs = outputs :+ (result & mask).toInt
-        result = result >> c.rsParams.symbolWidth
+      if (peek(c.io.slave.data.valid) == BigInt(1) &&
+          peek(c.io.slave.data.ready) == BigInt(1)) {
+        var inputBits: BigInt = 0
+        for (j <- beatCnt * r until (beatCnt + 1) * r) {
+          // Pack r input symbols into a single data item
+          // that has width == bus data width
+          inputBits = (inputBits << c.rsParams.symbolWidth) +
+                       inSyms(c.rsParams.n - j - 1)
+        }
+        poke(c.io.slave.data.bits.data, inputBits)
+        beatCnt = beatCnt + 1
       }
+
+      if (peek(c.io.master.data.valid) == BigInt(1) &&
+          peek(c.io.master.data.ready) == BigInt(1)) {
+        var result: BigInt = peek(c.io.master.data.bits.data)
+        var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
+        for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
+          outputs = outputs :+ (result & mask).toInt
+          result = result >> c.rsParams.symbolWidth
+        }
+      }
+
+      step(1)
     }
 
-    step(1)
+    // Be careful of the order of the bytes
+    hwCorrectedSyms = hwCorrectedSyms ++ outputs.reverse
+
+    for (i <- 0 until c.rsParams.k) {
+      printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
+        i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
+    }
+
+    expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.rsParams.k),
+           "symbols do not match!")
   }
-
-  // Be careful of the order of the bytes
-  hwCorrectedSyms = hwCorrectedSyms ++ outputs.reverse
-
-  for (i <- 0 until c.rsParams.k) {
-    printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
-      i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
-  }
-
-  expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.rsParams.k),
-         "symbols do not match!")
 }
 
 /**
@@ -556,50 +583,59 @@ class ECCTester extends ChiselFlatSpec {
   val symbolWidth = 8
   val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
 
-  var msgs = Seq.fill(numMsgs) {
-    scala.util.Random.nextInt(rs.numRoots - 1)
+  val numTrials = 2
+  var trials: List[(Seq[Int], Array[Int], Seq[Int])] = List()
+
+  // Generate test code sequences
+  for (t <- 0 until numTrials) {
+    var msgs = Seq.fill(numMsgs) {
+      scala.util.Random.nextInt(rs.numRoots - 1)
+    }
+
+    // Running software RS Encoder
+    val swSyms = rs.encode(msgs)
+    for (i <- 0 until swSyms.size) {
+      printf("swSyms(%d) = %d\n", i, swSyms(i))
+    }
+
+    // Need to pass this test to go further
+    require(rs.verifySyms(swSyms), "Incorrect software RS encoder!")
+
+    var buggySyms = new Array[Int](numSymbols)
+    for (i <- 0 until numSymbols) {
+      buggySyms(i) = swSyms(i)
+    }
+
+    // Randomly pick locations for introducing error symbols
+    // It's okay if we pick the same location multiple times
+    // as long as the number of errorneous locations does not
+    // exceed *maxNumErrorSyms*
+    val maxNumErrorSyms = (numSymbols - numMsgs) / 2
+    for (i <- 0 until maxNumErrorSyms) {
+      val errorIdx = scala.util.Random.nextInt(numSymbols - 1)
+      buggySyms(errorIdx) = scala.util.Random.nextInt(rs.numRoots - 1)
+    }
+
+    for (i <- 0 until numSymbols) {
+      printf("buggySyms(%d) = %d\n", i, buggySyms(i))
+    }
+
+    // Running software RS Decoder
+    val swCorrectedSyms = rs.decode(buggySyms)
+    for (i <- 0 until swCorrectedSyms.size) {
+      printf("swCorrectedSyms(%d) = %d\n", i, swCorrectedSyms(i))
+    }
+
+    // Need to pass this test to go further
+    require(rs.verifySyms(swCorrectedSyms), "Incorrect software RS decoder!")
+
+    val item = (swSyms, buggySyms, swCorrectedSyms)
+    trials = trials :+ item
   }
-
-  // Running software RS Encoder
-  val swSyms = rs.encode(msgs)
-  for (i <- 0 until swSyms.size) {
-    printf("swSyms(%d) = %d\n", i, swSyms(i))
-  }
-
-  // Need to pass this test to go further
-  require(rs.verifySyms(swSyms), "Incorrect software RS encoder!")
-
-  var buggySyms = new Array[Int](numSymbols)
-  for (i <- 0 until numSymbols) {
-    buggySyms(i) = swSyms(i)
-  }
-
-  // Randomly pick locations for introducing error symbols
-  // It's okay if we pick the same location multiple times
-  // as long as the number of errorneous locations does not
-  // exceed *maxNumErrorSyms*
-  val maxNumErrorSyms = (numSymbols - numMsgs) / 2
-  for (i <- 0 until maxNumErrorSyms) {
-    val errorIdx = scala.util.Random.nextInt(numSymbols - 1)
-    buggySyms(errorIdx) = scala.util.Random.nextInt(rs.numRoots - 1)
-  }
-
-  for (i <- 0 until numSymbols) {
-    printf("buggySyms(%d) = %d\n", i, buggySyms(i))
-  }
-
-  // Running software RS Decoder
-  val swCorrectedSyms = rs.decode(buggySyms)
-  for (i <- 0 until swCorrectedSyms.size) {
-    printf("swCorrectedSyms(%d) = %d\n", i, swCorrectedSyms(i))
-  }
-
-  // Need to pass this test to go further
-  require(rs.verifySyms(swCorrectedSyms), "Incorrect software RS decoder!")
 
   val params = RSParams(
     n = numSymbols,
-    k = msgs.size,
+    k = numMsgs,
     symbolWidth = symbolWidth,
     gCoeffs = rs.gCoeffs,
     fConst = rs.fConst,
@@ -610,29 +646,28 @@ class ECCTester extends ChiselFlatSpec {
   "RSEncoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSEncoder(params)) {
-      c => new RSEncoderUnitTester(c, swSyms)
+      c => new RSEncoderUnitTester(c, trials)
     } should be(true)
   }
 
   "RSDecoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSDecoder(params)) {
-      c => new RSDecoderUnitTester(c, buggySyms, swCorrectedSyms)
+      c => new RSDecoderUnitTester(c, trials)
     } should be(true)
   }
 
   "ECCEncoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new ECCEncoderTop(params)) {
-      c => new ECCEncoderTopUnitTester(c, swSyms)
+      c => new ECCEncoderTopUnitTester(c, trials)
     } should be(true)
   }
 
   "ECCDecoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new ECCDecoderTop(params)) {
-      c => new ECCDecoderTopUnitTester(c, buggySyms, swCorrectedSyms)
+      c => new ECCDecoderTopUnitTester(c, trials)
     } should be(true)
   }
-
 }
