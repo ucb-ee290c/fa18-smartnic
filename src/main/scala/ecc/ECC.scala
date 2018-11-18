@@ -368,17 +368,14 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   locDerivCmp.io.in.bits := locDerivRegs(p.n - p.k - 1)
   locDerivCmp.io.out.ready := state === sErrorCorrection2
 
-  val outValidReg = RegInit(false.B)
-  val outBitsReg = RegInit(0.U)
   val correctCnd = (state === sErrorCorrection0) &&
                    (evalResultFired && locDerivResultFired)
-  // Have an extra 1 because the output valid signal is delayed by one cycle
-  // FIXME: this looks hacky
-  val (outCntVal, outCntDone) = Counter(state === sErrorCorrection1, p.k + 1)
+  val (outCntVal, outCntDone) = Counter(io.out.fire(), p.k)
 
-  inputQueue.io.deq.ready := state === sErrorCorrection1
-  io.out.valid := correctCnd || outValidReg
-  io.out.bits := outBitsReg ^ errorMagReg
+  inputQueue.io.deq.ready := correctCnd || (state === sErrorCorrection1 &&
+                                             outCntVal =/= locRootIdx - 1.U)
+  io.out.valid := inputQueue.io.deq.fire()
+  io.out.bits := inputQueue.io.deq.bits ^ errorMagReg
 
   chienQueue.io.deq.ready := (state === sErrorCorrection0)
 
@@ -505,6 +502,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
     is (sErrorCorrection0) {
       evalResultFired := false.B
       locDerivResultFired := false.B
+      errorMagReg := 0.U
 
       when (chienQueue.io.deq.fire()) {
         locRootIdx := chienQueue.io.deq.bits
@@ -514,20 +512,15 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
     is (sErrorCorrection1) {
       errorMagReg := 0.U
+
       when (outCntDone) {
         state := sSyndromeCmp
-        outValidReg := false.B
       }
       .elsewhen (outCntVal === (locRootIdx - 1.U)) {
         state := sErrorCorrection2
-        outValidReg := false.B
         startEvalPolyCmp := true.B
         startLocDerivCmp := true.B
       }
-      .otherwise {
-        outValidReg := true.B
-      }
-      outBitsReg := inputQueue.io.deq.bits
     }
 
     is (sErrorCorrection2) {
