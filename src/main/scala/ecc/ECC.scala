@@ -120,35 +120,29 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
   val inReadyReg = RegInit(true.B)
   val outValidReg = RegInit(false.B)
 
-  val inputSymbolCnt = RegInit(0.U(32.W))
-  val outputSymbolCnt = RegInit(0.U(32.W))
-
   io.in.ready := inReadyReg
   io.out.valid := outValidReg
 
-  when (inputSymbolCnt === p.k.asUInt() - 1.U) {
-    inputSymbolCnt := 0.U
+  val (inCntVal, inCntDone) = Counter(io.in.fire(), p.k)
+  val (outCntVal, outCntDone) = Counter(io.out.fire(), p.n)
+
+  when (inCntDone) {
     inReadyReg := false.B
   }
   .elsewhen (io.in.fire()) {
-    inputSymbolCnt := inputSymbolCnt + 1.U
     outValidReg := true.B
   }
 
-  when (outputSymbolCnt === p.n.asUInt() - 1.U) {
-    outputSymbolCnt := 0.U
+  when (outCntDone) {
     outValidReg := false.B
     inReadyReg := true.B
-  }
-  .elsewhen (io.out.fire()) {
-    outputSymbolCnt := outputSymbolCnt + 1.U
   }
 
   val Regs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
   val inputBitsReg = RegNext(io.in.bits, 0.U)
 
   // Make sure the arithmetic operations are correct (in Galois field)
-  val feedback = Mux(outputSymbolCnt < p.k.asUInt(),
+  val feedback = Mux(outCntVal < p.k.asUInt(),
                      inputBitsReg ^ Regs(p.n - p.k - 1), 0.U)
   Regs.zipWithIndex.foldLeft(0.U) {
     case (prevReg, (nextReg, idx)) => {
@@ -157,7 +151,7 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
     }
   }
 
-  io.out.bits := Mux(outputSymbolCnt < p.k.asUInt(),
+  io.out.bits := Mux(outCntVal < p.k.asUInt(),
                      inputBitsReg, Regs(p.n - p.k - 1))
 }
 
