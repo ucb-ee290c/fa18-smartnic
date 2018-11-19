@@ -85,7 +85,6 @@ object CREECAgent {
           val len = x.header.bits.len.peek().litValue().toInt
           val id = x.header.bits.id.peek().litValue().toInt
           val addr = x.header.bits.addr.peek().litValue()
-          println(len, id, addr)
           low2HighModel.pushTransactions(Seq(CREECHeaderBeat(len, id, addr)))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
@@ -105,7 +104,6 @@ object CREECAgent {
           // TODO: usability bug, if data.peek().litValue() is replaced with data.litValue(), you get a get None error
           val data = x.data.bits.data.peek().litValue()
           val id = x.data.bits.id.peek().litValue().toInt
-          println(data, id)
           // all peeked values are read as BigInt (MSB -> LSB byte format), so reverse is needed
           // also, since data is unsigned, additional unwanted zero
           // may be generated for the sign

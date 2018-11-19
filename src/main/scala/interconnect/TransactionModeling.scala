@@ -59,8 +59,9 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   var tickNum = 0
   val thisClass = this.getClass.getSimpleName
 
-  def pushTransactions(ts: Seq[I]): Unit = {
+  def pushTransactions(ts: Seq[I]): SoftwareModel[I, O] = {
     inputQueue.enqueue(ts:_*)
+    self
   }
 
   def pullTransactions(): Seq[O] = {
@@ -71,12 +72,13 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
     inputQueue.isEmpty && childModels.forall(m => m.nothingToProcess)
   }
 
-  def advanceSimulation(print: Boolean = false): Unit = {
+  def advanceSimulation(print: Boolean = false): SoftwareModel[I, O] = {
     while (!nothingToProcess) {
       if (print) println(s"TICK $tickNum")
       self.tick(print)
       tickNum += 1
     }
+    self
   }
 
   def process(in: I) : Seq[O]
