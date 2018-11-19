@@ -628,20 +628,23 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
     val master = new CREECBus(busParams)
   })
 
+  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
+  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
+  val state = RegInit(sRecvHeader)
+
   // TODO: handle the metadata appropriately
   io.master.header.bits.compressed := false.B
   io.master.header.bits.ecc := true.B
   io.master.header.bits.encrypted := false.B
 
   io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  io.master.header.bits.len := RegNext(io.slave.header.bits.len)
+  // Modify the beat number based on encoding specification
+  io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) *
+                                       numItems.asUInt())
   io.master.header.bits.id := RegNext(io.slave.header.bits.id)
+  io.master.header.valid := RegNext(io.slave.header.valid)
 
   io.master.data.bits.id := RegNext(io.slave.data.bits.id)
-
-  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
-  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
-  val state = RegInit(sRecvHeader)
 
   val enc = Module(new RSEncoder(rsParams))
 
@@ -649,7 +652,6 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
 
   io.slave.header.ready := state === sRecvHeader
-  io.master.header.valid := state === sRecvData
 
   io.slave.data.ready := state === sRecvData
   io.master.data.valid := state === sDone
