@@ -103,7 +103,7 @@ case class RSParams(
           Mux(rootFromOp === 1.U, rootFromOne, 0.U)
       }
 
-      val result = rootsMasked.reduce(_ ^ _)
+      val result = rootsMasked.reduce(_ | _)
       result
     }
   }
@@ -140,11 +140,18 @@ class RSEncoder(val p: RSParams = new RSParams()) extends Module {
   }
 
   val Regs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
-  val inputBitsReg = RegNext(io.in.bits, 0.U)
+  val inputBitsReg = RegInit(0.U(p.symbolWidth.W))
+  when (io.in.fire()) {
+    inputBitsReg := io.in.bits
+  }
+  .otherwise {
+    inputBitsReg := 0.U
+  }
 
   // Make sure the arithmetic operations are correct (in Galois field)
   val feedback = Mux(outCntVal < p.k.asUInt(),
                      inputBitsReg ^ Regs(p.n - p.k - 1), 0.U)
+
   Regs.zipWithIndex.foldLeft(0.U) {
     case (prevReg, (nextReg, idx)) => {
       nextReg := prevReg ^ p.GFOp.mul(feedback, p.gCoeffs(idx).asUInt())
@@ -287,9 +294,10 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val numRoots = math.pow(2, p.symbolWidth).toInt
   val chienSearch = Module(new PolyCompute(p, p.n, p.n - p.k + 1, true))
 
-  val sSyndromeCmp :: sKeyEquationSolver :: sChienSearch :: sErrorCorrection0 :: sErrorCorrection1 :: sErrorCorrection2 :: Nil = Enum(6)
-  val state = RegInit(sSyndromeCmp)
+  val sInit :: sSyndromeCmp :: sKeyEquationSolver :: sChienSearch :: sErrorCorrection0 :: sErrorCorrection1 :: sErrorCorrection2 :: Nil = Enum(7)
+  val state = RegInit(sInit)
 
+  val (inCntVal, inCntDone) = Counter(io.in.fire(), p.n)
   val (syndCmpOutCntVal, syndCmpOutCntDone) = Counter(syndCmp.io.out.fire(),
                                                       p.n - p.k)
 
@@ -309,14 +317,18 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val degA = RegInit((p.n - p.k).asUInt())
   val degB = RegInit(0.U)
 
-  // Buffer input data for later correction
-  val inputQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n))
-  inputQueue.io.enq <> io.in
+  io.in.ready := (state === sInit)
 
-  io.in.ready := (state === sSyndromeCmp)
+  // Buffer input data for later correction
+  // Note: only need to buffer up to p.k symbols -- which is the length
+  // of the original code sequence
+  val inputQueue = Module(new Queue(UInt(p.symbolWidth.W), p.k))
+  inputQueue.io.enq.bits := io.in.bits
+  inputQueue.io.enq.valid := io.in.fire() && (inCntVal < p.k.asUInt())
 
   syndCmp.io.coeffs := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
-  syndCmp.io.in <> io.in
+  syndCmp.io.in.bits := io.in.bits
+  syndCmp.io.in.valid := io.in.fire()
   syndCmp.io.out.ready := (state === sSyndromeCmp)
 
   chienSearch.io.coeffs := (0 until chienSearch.getNumCells()).map(
@@ -332,8 +344,12 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   // formed by locARegs
   val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n - p.k))
   chienQueue.io.enq.bits := chienSOutCntVal + 1.U
+  // Don't bother fixing parity symbols (up to p.k -- which is the length
+  // of the original messages is sufficient.). It does not make sense
+  // to carry parity symbols forward at this point
   chienQueue.io.enq.valid := (chienSearch.io.out.bits === 0.U) &&
                              (state === sChienSearch) &&
+                             (chienSOutCntVal + 1.U <= p.k.asUInt()) &&
                              (chienSearch.io.out.fire())
 
   val evalPolyCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
@@ -380,10 +396,31 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   chienQueue.io.deq.ready := (state === sErrorCorrection0)
 
   switch (state) {
-    is (sSyndromeCmp) {
+    is (sInit) {
+      evalARegs.foreach (_ := 0.U)
+      evalBRegs.foreach (_ := 0.U)
+      locARegs.foreach (_ := 0.U)
+      locBRegs.foreach (_ := 0.U)
+      locDerivRegs.foreach (_ := 0.U)
+
       evalARegs(p.n - p.k) := 1.U
       locBRegs(0) := 1.U
 
+      degA := (p.n - p.k).asUInt()
+      degB := 0.U
+
+      locRootIdx := 0.U
+      evalResult := 0.U
+      locDerivResult := 0.U
+      evalResultFired := false.B
+      locDerivResultFired := false.B
+      errorMagReg := 0.U
+      when (inCntDone) {
+        state := sSyndromeCmp
+      }
+    }
+
+    is (sSyndromeCmp) {
       when (syndCmp.io.out.fire()) {
         when (syndCmp.io.out.bits =/= 0.U) {
           degB := syndCmpOutCntVal
@@ -507,14 +544,20 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       when (chienQueue.io.deq.fire()) {
         locRootIdx := chienQueue.io.deq.bits
       }
-      state := sErrorCorrection1
+
+      when (outCntDone) {
+        state := sInit
+      }
+      .otherwise {
+        state := sErrorCorrection1
+      }
     }
 
     is (sErrorCorrection1) {
       errorMagReg := 0.U
 
       when (outCntDone) {
-        state := sSyndromeCmp
+        state := sInit
       }
       .elsewhen (outCntVal === (locRootIdx - 1.U)) {
         state := sErrorCorrection2
@@ -627,6 +670,8 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   switch (state) {
     is (sRecvHeader) {
       beatCnt := 0.U
+      dataInReg := 0.U
+      dataOutReg := 0.U
 
       when (io.slave.header.fire()) {
         state := sRecvData
@@ -723,6 +768,7 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
   val (decInCntVal, decInCntDone) = Counter(dec.io.in.fire(), rsParams.n)
   val (decOutCntVal, decOutCntDone) = Counter(dec.io.out.fire(), rsParams.k)
   val (itemCntVal, itemCntDone) = Counter(io.slave.data.fire(), numItems)
+  // Cannot use Counter for this because the maximum value is not statically known
   val beatCnt = RegInit(0.U(32.W))
 
   dec.io.in.valid := state === sCompute
@@ -732,6 +778,8 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
   switch (state) {
     is (sRecvHeader) {
       beatCnt := 0.U
+      dataInReg := 0.U
+      dataOutReg := 0.U
 
       when (io.slave.header.fire()) {
         state := sRecvData
@@ -766,7 +814,7 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
 
     is (sDone) {
       when (io.master.data.fire()) {
-        when (beatCnt === numBeats - 1.U) {
+        when (beatCnt === numBeats) {
           // If all data beats have been processed, receive the next header
           state := sRecvHeader
         }

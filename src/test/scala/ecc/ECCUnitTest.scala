@@ -6,7 +6,8 @@ import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 //import interconnect._
 
 // Software implementation of the Reed-Solomon encoder & decoder
-class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
+class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
+             verbose: Boolean = false) {
   val numRoots = BigInt(2).pow(symbolWidth).toInt
   val numPars = numSyms - numMsgs
   var Log2Val: Array[Int] = new Array[Int](numRoots)
@@ -196,10 +197,12 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
       var degB = findDeg(evaluatorsB)
       var numIters = 0
 
-      for (i <- 0 until size) {
-        printf("evalB(%d) = %d\n", i, evaluatorsB(i))
+      if (verbose) {
+        for (i <- 0 until size) {
+          printf("evalB(%d) = %d\n", i, evaluatorsB(i))
+        }
+        printf("[initial] degA = %d, degB = %d\n", degA, degB)
       }
-      printf("[initial] degA = %d, degB = %d\n", degA, degB)
 
       while (degA >= numPars / 2) {
         numIters = numIters + 1
@@ -269,9 +272,12 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
         }
       }
 
-      printf("Check Key Equation Solver result: done after %d iters\n", numIters)
-      for (i <- 0 until size) {
-        printf("[%d] eval=%d, loc=%d\n", i, evaluatorsA(i), locatorsA(i))
+      if (verbose) {
+        printf("Check Key Equation Solver result: done after %d iters\n",
+               numIters)
+        for (i <- 0 until size) {
+          printf("[%d] eval=%d, loc=%d\n", i, evaluatorsA(i), locatorsA(i))
+        }
       }
 
       val locatorsDeriv = new Array[Int](numPars)
@@ -290,7 +296,9 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
         val res = evaluatePoly(locatorsA, Log2Val(numRoots - 1 - i))
         if (res == 0) {
           chienRootIndices = chienRootIndices :+ (numSyms - i)
-          printf("found Chien root index: %d\n", numSyms - i)
+          if (verbose) {
+            printf("found Chien root index: %d\n", numSyms - i)
+          }
         }
 
       }
@@ -317,10 +325,13 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int) {
 
 // This only tests the Reed-Solomon encoder
 class RSEncoderUnitTester(c: RSEncoder,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
+  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {
-    printf("===TRIAL %d\n", i)
+    if (verbose) {
+      printf("===TRIAL %d\n", i)
+    }
 
     val swSyms = trials(i)._1
 
@@ -360,8 +371,10 @@ class RSEncoderUnitTester(c: RSEncoder,
       step(1)
     }
 
-    for (i <- 0 until c.p.n) {
-      printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
+    if (verbose) {
+      for (i <- 0 until c.p.n) {
+        printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
+      }
     }
 
     expect(hwSyms == swSyms, "symbols do not match!")
@@ -369,10 +382,13 @@ class RSEncoderUnitTester(c: RSEncoder,
 }
 
 class RSDecoderUnitTester(c: RSDecoder,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
+  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {
-    printf("===TRIAL %d\n", i)
+    if (verbose) {
+      printf("===TRIAL %d\n", i)
+    }
 
     val inSyms = trials(i)._2
     val swCorrectedSyms = trials(i)._3
@@ -413,9 +429,11 @@ class RSDecoderUnitTester(c: RSDecoder,
       step(1)
     }
 
-    for (i <- 0 until c.p.k) {
-      printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
-        i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
+    if (verbose) {
+      for (i <- 0 until c.p.k) {
+        printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
+          i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
+      }
     }
 
     expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.p.k),
@@ -436,10 +454,13 @@ class RSDecoderUnitTester(c: RSDecoder,
 // In this case, two bus transactions will be needed to send the data (of 64-bit each) to the downstream block
 // I have no idea how good this scheme is, or is it even practical.
 class ECCEncoderTopUnitTester(c: ECCEncoderTop,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
+  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {
-    printf("===TRIAL %d\n", i)
+    if (verbose) {
+      printf("===TRIAL %d\n", i)
+    }
 
     val swSyms = trials(i)._1
 
@@ -489,8 +510,10 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
     // Be careful of the order of the bytes
     hwSyms = hwSyms ++ outputs.reverse
 
-    for (i <- 0 until c.rsParams.n) {
-      printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
+    if (verbose) {
+      for (i <- 0 until c.rsParams.n) {
+        printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
+      }
     }
 
     expect(hwSyms == swSyms, "symbols do not match!")
@@ -498,10 +521,13 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
 }
 
 class ECCDecoderTopUnitTester(c: ECCDecoderTop,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])]) extends PeekPokeTester(c) {
+  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {
-    printf("===TRIAL %d\n", i)
+    if (verbose) {
+      printf("===TRIAL %d\n", i)
+    }
 
     val inSyms = trials(i)._2
     val swCorrectedSyms = trials(i)._3
@@ -560,9 +586,11 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
     // Be careful of the order of the bytes
     hwCorrectedSyms = hwCorrectedSyms ++ outputs.reverse
 
-    for (i <- 0 until c.rsParams.k) {
-      printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
-        i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
+    if (verbose) {
+      for (i <- 0 until c.rsParams.k) {
+        printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
+          i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
+      }
     }
 
     expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.rsParams.k),
@@ -577,25 +605,38 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
   * sbt 'testOnly ecc.ECCTester'
   */
 class ECCTester extends ChiselFlatSpec {
+  val numTrials = 10
+  var trials: List[(Seq[Int], Array[Int], Seq[Int])] = List()
+  val verbose = if (numTrials <= 10) {
+    true
+  }
+  else {
+    false
+  }
+
   // RS(16, 8)
   val numSymbols = 16
   val numMsgs = 8
   val symbolWidth = 8
-  val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
+  val rs = new RSCode(numSymbols, numMsgs, symbolWidth, verbose)
 
-  val numTrials = 2
-  var trials: List[(Seq[Int], Array[Int], Seq[Int])] = List()
 
   // Generate test code sequences
   for (t <- 0 until numTrials) {
+    if (verbose) {
+      printf("===TRIAL %d\n", t)
+    }
+
     var msgs = Seq.fill(numMsgs) {
       scala.util.Random.nextInt(rs.numRoots - 1)
     }
 
     // Running software RS Encoder
     val swSyms = rs.encode(msgs)
-    for (i <- 0 until swSyms.size) {
-      printf("swSyms(%d) = %d\n", i, swSyms(i))
+    if (verbose) {
+      for (i <- 0 until swSyms.size) {
+        printf("swSyms(%d) = %d\n", i, swSyms(i))
+      }
     }
 
     // Need to pass this test to go further
@@ -616,14 +657,18 @@ class ECCTester extends ChiselFlatSpec {
       buggySyms(errorIdx) = scala.util.Random.nextInt(rs.numRoots - 1)
     }
 
-    for (i <- 0 until numSymbols) {
-      printf("buggySyms(%d) = %d\n", i, buggySyms(i))
+    if (verbose) {
+      for (i <- 0 until numSymbols) {
+        printf("buggySyms(%d) = %d\n", i, buggySyms(i))
+      }
     }
 
     // Running software RS Decoder
     val swCorrectedSyms = rs.decode(buggySyms)
-    for (i <- 0 until swCorrectedSyms.size) {
-      printf("swCorrectedSyms(%d) = %d\n", i, swCorrectedSyms(i))
+    if (verbose) {
+      for (i <- 0 until swCorrectedSyms.size) {
+        printf("swCorrectedSyms(%d) = %d\n", i, swCorrectedSyms(i))
+      }
     }
 
     // Need to pass this test to go further
@@ -646,28 +691,28 @@ class ECCTester extends ChiselFlatSpec {
   "RSEncoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSEncoder(params)) {
-      c => new RSEncoderUnitTester(c, trials)
+      c => new RSEncoderUnitTester(c, trials, verbose)
     } should be(true)
   }
 
   "RSDecoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSDecoder(params)) {
-      c => new RSDecoderUnitTester(c, trials)
+      c => new RSDecoderUnitTester(c, trials, verbose)
     } should be(true)
   }
 
   "ECCEncoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new ECCEncoderTop(params)) {
-      c => new ECCEncoderTopUnitTester(c, trials)
+      c => new ECCEncoderTopUnitTester(c, trials,verbose)
     } should be(true)
   }
 
   "ECCDecoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new ECCDecoderTop(params)) {
-      c => new ECCDecoderTopUnitTester(c, trials)
+      c => new ECCDecoderTopUnitTester(c, trials, verbose)
     } should be(true)
   }
 }
