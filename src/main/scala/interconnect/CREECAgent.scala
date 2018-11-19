@@ -10,9 +10,13 @@ object CREECAgent {
   // TODO: usability bug in testers... binding ReadyValidSource to c.io.master.header compiled even though the directionality is wrong
   class CREECDriver(x: CREECBus, clk: Clock) {
     val high2LowModel = new CREECHighToLowModel(x.p)
+    // TODO: this queue is being read from 2 threads, it should be synchronized (message passing looks like a much better idea now)
+      // but testers2 prevents multiple threads executing simultaneously so data races aren't a problem, but off-by-one-clock queue latency is
     val transactionsToDrive = mutable.Queue[CREECLowLevelTransaction]()
     val headerDriver = new ReadyValidSource(x.header, clk)
     val dataDriver = new ReadyValidSource(x.data, clk)
+    // We need a way to sequence data beats to only appear 1 or more cycles after the respective header beat
+    val inFlight = mutable.Map[Int, CREECHeaderBeat]()
 
     def pushTransactions(ts: Seq[CREECHighLevelTransaction]): Unit = {
       high2LowModel.pushTransactions(ts)
@@ -32,6 +36,7 @@ object CREECAgent {
           }.map(_.asInstanceOf[CREECHeaderBeat])
           headerTx.foreach { t =>
             headerDriver.enqueue(new TransactionHeader().Lit(t.len.U, t.id.U, false.B, false.B, false.B, t.addr.U))
+            inFlight.update(t.id, t)
           }
           clk.step()
         }
@@ -44,11 +49,19 @@ object CREECAgent {
         timescope {
           // TODO: this looks like a hack
           val dataTx = transactionsToDrive.dequeueFirst {
-            case _: CREECDataBeat => true
+            // Only fetch a data beat whose header has already been accepted by the slave
+            case t: CREECDataBeat => inFlight.contains(t.id)
             case _ => false
           }.map(_.asInstanceOf[CREECDataBeat])
           dataTx.foreach { t =>
             dataDriver.enqueue(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
+            // Update the inflight transaction and remove it from inFlight if it is done now
+            val header = inFlight(t.id)
+            if (header.len == 0) {
+              inFlight.remove(t.id)
+            } else {
+              inFlight.update(t.id, CREECHeaderBeat(header.len - 1, header.id, header.addr)(x.p))
+            }
           }
           clk.step()
         }

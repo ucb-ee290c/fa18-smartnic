@@ -2,15 +2,13 @@ package interconnect
 
 import chisel3._
 
-class CREECWidthConverter(p: BusParams) extends Module {
+class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   val io = IO(new Bundle {
-    val slave = new CREECBus(p)
-    val master = new CREECBus(p)
+    val in = Flipped(new CREECBus(p1))
+    val out = new CREECBus(p2)
   })
-  io.master.header <> Reg(io.slave.header)
-  io.master.data <> Reg(io.slave.data)
-  // Let's add a little logic here
-  io.master.data.bits.data := Reg(io.slave.data.bits.data + 1.U)
+  io.out.header <> Reg(io.in.header)
+  io.out.data <> Reg(io.in.data)
 }
 
 /**
@@ -21,7 +19,9 @@ class CREECWidthConverter(p: BusParams) extends Module {
   * @param ratio Width ratio of inWidth:outWidth. Must be power of 2
   * @param expand Set to true if outWidth > inWidth.
   */
-class CREECWidthConverterModel(ratio: Int, expand: Boolean, allowPadding: Boolean)(p: BusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
+//class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boolean) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
+  /*
+  val ratio = p1.dataWidth / p2.dataWidth
   override def process(in: CREECLowLevelTransaction): Seq[CREECLowLevelTransaction] = {
     in match {
       case t: CREECHeaderBeat =>
@@ -39,4 +39,5 @@ class CREECWidthConverterModel(ratio: Int, expand: Boolean, allowPadding: Boolea
         }
     }
   }
-}
+  */
+//}
