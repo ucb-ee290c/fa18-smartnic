@@ -35,7 +35,7 @@ case class CREECHeaderBeat(len: Int, id: Int, addr: BigInt)(implicit p: BusParam
 case class CREECDataBeat(data: Seq[Byte], id: Int)(implicit p: BusParams) extends CREECLowLevelTransaction {
   require(id <= p.maxBeats)
   // data.length = 64 bits, 128 bits, 256 bits, etc... = data width of CREECBus
-  require((data.length * 8) == p.dataWidth)
+  require(data.length == p.bytesPerBeat)
 }
 
 // Can define custom transactions below the CREECBus level for each block's testing and
@@ -126,8 +126,8 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   */
 class CREECHighToLowModel(p: BusParams) extends SoftwareModel[CREECHighLevelTransaction, CREECLowLevelTransaction] {
   override def process(in: CREECHighLevelTransaction) : Seq[CREECLowLevelTransaction] = {
-    assert(in.data.length % (p.dataWidth / 8) == 0, "CREEC high transaction must have data with length = multiple of bus width")
-    val beats = in.data.grouped(p.dataWidth / 8).toSeq
+    assert(in.data.length % p.bytesPerBeat == 0, "CREEC high transaction must have data with length = multiple of bus width")
+    val beats = in.data.grouped(p.bytesPerBeat).toSeq
     assert((beats.length - 1) <= p.maxBeats, "CREEC high transaction has more beats than bus can support")
     val header = Seq(CREECHeaderBeat(beats.length - 1, 0, in.addr)(p))
     val dataBeats = beats.map(dataBeat => CREECDataBeat(dataBeat, 0)(p))

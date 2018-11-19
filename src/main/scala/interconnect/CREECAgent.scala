@@ -7,15 +7,35 @@ import chisel3.tester._
 import scala.collection.mutable
 
 object CREECAgent {
+  // Take a Seq[Byte] in the format [LS-byte, ..., MS-byte] and convert to unsigned BigInt
+  // BigInt decodes byte arrays as big-endian (MSB -> LSB)
+  //  so, prepend a 0 byte on the MSB side to make sure arr is decoded as unsigned
+  // Note: BigInt(Array(0, 0, 1)) = 1
+  // Note: BigInt(Array(0, 1, 1)) = 257
+  // Note: BigInt(Array(255, 255, 255)) = -1 (not what we wanted)
+  // Note: BigInt(Array(0, 255, 255, 255)) = 16777215 (this is better)
+  def bytesToBigInt(arr: Seq[Byte]): BigInt = {
+    BigInt((0.asInstanceOf[Byte] +: arr.reverse).toArray)
+  }
+
+  /**
+    * Converts a BigInt to a byte array in [LS-byte, ..., MS-byte] format
+    * @param bint The BigInt to convert
+    * @param numBytes The returned byte array will contain this many bytes
+    * @return
+    */
+  def bigIntToBytes(bint: BigInt, numBytes: Int = 8): Seq[Byte] = {
+    assert(bint <= BigInt(2).pow(numBytes*8) - 1, s"Can't construct byte array of length $numBytes from BigInt $bint")
+    // BigInt.toByteArray returns a byteArray in MS-byte -> LS-byte format, so reverse is needed
+    bint.toByteArray.reverse.padTo(numBytes, 0.asInstanceOf[Byte]).slice(0, numBytes)
+  }
+
   // TODO: usability bug in testers... binding ReadyValidSource to c.io.master.header compiled even though the directionality is wrong
   class CREECDriver(x: CREECBus, clk: Clock) {
     val high2LowModel = new CREECHighToLowModel(x.p)
-    // TODO: this queue is being read from 2 threads, it should be synchronized (message passing looks like a much better idea now)
-      // but testers2 prevents multiple threads executing simultaneously so data races aren't a problem, but off-by-one-clock queue latency is
     val headersToDrive = mutable.Queue[CREECHeaderBeat]()
     val dataToDrive = mutable.Queue[CREECDataBeat]()
     val headerDriver = new ReadyValidSource(x.header, clk)
-    //val dataDriver = new ReadyValidSource(x.data, clk)
     // We need a way to sequence data beats to only appear 1 or more cycles after the respective header beat
     val inFlight = mutable.Map[Int, CREECHeaderBeat]()
 
@@ -50,15 +70,14 @@ object CREECAgent {
           val data = dataToDrive.dequeueFirst(t => inFlight.contains(t.id))
           data.foreach { t =>
             timescope {
-              x.data.bits.poke(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
+              x.data.bits.poke(new TransactionData().Lit(bytesToBigInt(t.data).U, t.id.U))
               x.data.valid.poke(true.B)
-              do {
+              while (!x.data.ready.peek().litToBoolean) {
                 clk.step(1)
-              } while (x.data.ready.peek().litToBoolean == false)
+              }
+              clk.step(1)
               x.data.valid.poke(false.B)
-              //clk.step(1)
             }
-            //dataDriver.enqueue(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
             // Update the inflight transaction and remove it from inFlight if it is done now
             val header = inFlight(t.id)
             if (header.len == 0) {
@@ -67,7 +86,6 @@ object CREECAgent {
               inFlight.update(t.id, CREECHeaderBeat(header.len - 1, header.id, header.addr)(x.p))
             }
           }
-          //clk.step()
           if (data.isEmpty) {
             timescope {
               clk.step(1)
@@ -114,12 +132,9 @@ object CREECAgent {
           // TODO: usability bug, if data.peek().litValue() is replaced with data.litValue(), you get a get None error
           val data = x.data.bits.data.peek().litValue()
           val id = x.data.bits.id.peek().litValue().toInt
-          // all peeked values are read as BigInt (MSB -> LSB byte format), so reverse is needed
-          // also, since data is unsigned, additional unwanted zero
-          // may be generated for the sign
           println(data, id)
           low2HighModel.pushTransactions(Seq(
-            CREECDataBeat(data.toByteArray.reverse.padTo(busParams.bytesPerBeat, 0.asInstanceOf[Byte]).slice(0, busParams.bytesPerBeat), id)))
+            CREECDataBeat(bigIntToBytes(data, x.p.bytesPerBeat), id)))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
           clk.step()
