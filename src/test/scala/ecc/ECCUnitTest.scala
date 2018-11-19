@@ -583,11 +583,13 @@ class ECCTester extends ChiselFlatSpec {
   val symbolWidth = 8
   val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
 
-  val numTrials = 2
+  val numTrials = 100
   var trials: List[(Seq[Int], Array[Int], Seq[Int])] = List()
 
   // Generate test code sequences
   for (t <- 0 until numTrials) {
+    printf("===TRIAL %d\n", t)
+
     var msgs = Seq.fill(numMsgs) {
       scala.util.Random.nextInt(rs.numRoots - 1)
     }
