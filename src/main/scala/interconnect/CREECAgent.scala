@@ -94,8 +94,10 @@ object CREECAgent {
           val id = x.data.bits.id.peek().litValue().toInt
           println(data, id)
           // all peeked values are read as BigInt (MSB -> LSB byte format), so reverse is needed
+          // also, since data is unsigned, additional unwanted zero
+          // may be generated for the sign
           low2HighModel.pushTransactions(Seq(
-            CREECDataBeat(data.toByteArray.reverse.padTo(busParams.bytesPerBeat, 0.asInstanceOf[Byte]), id)))
+            CREECDataBeat(data.toByteArray.reverse.padTo(busParams.bytesPerBeat, 0.asInstanceOf[Byte]).slice(0, busParams.bytesPerBeat), id)))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
           clk.step()
