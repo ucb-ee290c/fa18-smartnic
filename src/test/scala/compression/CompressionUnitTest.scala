@@ -391,17 +391,17 @@ class CompressionTester extends ChiselFlatSpec {
     } should be(true)
   }
 
-  "Compressor" should "compress" in {
-    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-      operation = "compression")) {
-      c => new CREECCoderTester(c, true, "compression")
-    } should be(true)
-  }
-
-  "Compressor" should "decompress" in {
-    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-      coderParams = new CoderParams(encode = false), operation = "compression")) {
-      c => new CREECCoderTester(c, false, "compression")
-    } should be(true)
-  }
+//  "Compressor" should "compress" in {
+//    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+//      operation = "compression")) {
+//      c => new CREECCoderTester(c, true, "compression")
+//    } should be(true)
+//  }
+//
+//  "Compressor" should "decompress" in {
+//    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+//      coderParams = new CoderParams(encode = false), operation = "compression")) {
+//      c => new CREECCoderTester(c, false, "compression")
+//    } should be(true)
+//  }
 }

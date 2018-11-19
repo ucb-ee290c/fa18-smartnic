@@ -193,7 +193,7 @@ class DifferentialCoder(numElements: Int = 8, byteWidth: Int = 8, p: CoderParams
 class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
                              coderParams: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = new CREECBus(creecParams)
+    val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
   })
   //States
@@ -350,7 +350,7 @@ class BasicFIFO(width: Int, length: Int) extends Module {
 class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
                           coderParams: CoderParams = new CoderParams) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = new CREECBus(creecParams)
+    val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
   })
   //create state machine definitions
@@ -514,7 +514,7 @@ class CREECCoder(creecParams: CREECBusParams = new CREECBusParams,
                  coderParams: CoderParams = new CoderParams,
                  operation: String) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = new CREECBus(creecParams)
+    val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
   })
 
