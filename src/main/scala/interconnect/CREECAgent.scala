@@ -12,29 +12,27 @@ object CREECAgent {
     val high2LowModel = new CREECHighToLowModel(x.p)
     // TODO: this queue is being read from 2 threads, it should be synchronized (message passing looks like a much better idea now)
       // but testers2 prevents multiple threads executing simultaneously so data races aren't a problem, but off-by-one-clock queue latency is
-    val transactionsToDrive = mutable.Queue[CREECLowLevelTransaction]()
+    val headersToDrive = mutable.Queue[CREECHeaderBeat]()
+    val dataToDrive = mutable.Queue[CREECDataBeat]()
     val headerDriver = new ReadyValidSource(x.header, clk)
     val dataDriver = new ReadyValidSource(x.data, clk)
     // We need a way to sequence data beats to only appear 1 or more cycles after the respective header beat
     val inFlight = mutable.Map[Int, CREECHeaderBeat]()
 
     def pushTransactions(ts: Seq[CREECHighLevelTransaction]): Unit = {
-      high2LowModel.pushTransactions(ts)
-      high2LowModel.advanceSimulation()
-      val lowTransactions = high2LowModel.pullTransactions()
-      transactionsToDrive.enqueue(lowTransactions:_*)
+      val lowTransactions = high2LowModel.pushTransactions(ts).advanceSimulation().pullTransactions()
+      lowTransactions.foreach {
+        case t: CREECHeaderBeat => headersToDrive.enqueue(t)
+        case t: CREECDataBeat => dataToDrive.enqueue(t)
+      }
     }
 
     // Header driver thread
     fork {
       while (true) {
         timescope {
-          // TODO: this looks like a hack
-          val headerTx = transactionsToDrive.dequeueFirst {
-            case _: CREECHeaderBeat => true
-            case _ => false
-          }.map(_.asInstanceOf[CREECHeaderBeat])
-          headerTx.foreach { t =>
+          val header = headersToDrive.dequeueFirst(_ => true)
+          header.foreach { t =>
             headerDriver.enqueue(new TransactionHeader().Lit(t.len.U, t.id.U, false.B, false.B, false.B, t.addr.U))
             inFlight.update(t.id, t)
           }
@@ -47,13 +45,8 @@ object CREECAgent {
     fork {
       while (true) {
         timescope {
-          // TODO: this looks like a hack
-          val dataTx = transactionsToDrive.dequeueFirst {
-            // Only fetch a data beat whose header has already been accepted by the slave
-            case t: CREECDataBeat => inFlight.contains(t.id)
-            case _ => false
-          }.map(_.asInstanceOf[CREECDataBeat])
-          dataTx.foreach { t =>
+          val data = dataToDrive.dequeueFirst(t => inFlight.contains(t.id))
+          data.foreach { t =>
             dataDriver.enqueue(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
             // Update the inflight transaction and remove it from inFlight if it is done now
             val header = inFlight(t.id)
