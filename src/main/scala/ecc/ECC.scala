@@ -640,7 +640,7 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
   // Modify the beat number based on encoding specification
   io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) *
-                                       numItems.asUInt())
+                                       numItems.asUInt() - 1.U)
   io.master.header.bits.id := RegNext(io.slave.header.bits.id)
   io.master.header.valid := RegNext(io.slave.header.valid)
 
