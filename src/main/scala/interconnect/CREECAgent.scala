@@ -15,7 +15,7 @@ object CREECAgent {
     val headersToDrive = mutable.Queue[CREECHeaderBeat]()
     val dataToDrive = mutable.Queue[CREECDataBeat]()
     val headerDriver = new ReadyValidSource(x.header, clk)
-    val dataDriver = new ReadyValidSource(x.data, clk)
+    //val dataDriver = new ReadyValidSource(x.data, clk)
     // We need a way to sequence data beats to only appear 1 or more cycles after the respective header beat
     val inFlight = mutable.Map[Int, CREECHeaderBeat]()
 
@@ -43,11 +43,22 @@ object CREECAgent {
 
     // Data driver thread
     fork {
-      while (true) {
-        timescope {
+      timescope {
+        x.data.valid.poke(false.B)
+        x.data.bits.poke(new TransactionData().Lit(0.U, 0.U))
+        while (true) {
           val data = dataToDrive.dequeueFirst(t => inFlight.contains(t.id))
           data.foreach { t =>
-            dataDriver.enqueue(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
+            timescope {
+              x.data.bits.poke(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
+              x.data.valid.poke(true.B)
+              do {
+                clk.step(1)
+              } while (x.data.ready.peek().litToBoolean == false)
+              x.data.valid.poke(false.B)
+              //clk.step(1)
+            }
+            //dataDriver.enqueue(new TransactionData().Lit(BigInt((0.asInstanceOf[Byte] +: t.data.reverse).toArray).U, t.id.U))
             // Update the inflight transaction and remove it from inFlight if it is done now
             val header = inFlight(t.id)
             if (header.len == 0) {
@@ -56,7 +67,12 @@ object CREECAgent {
               inFlight.update(t.id, CREECHeaderBeat(header.len - 1, header.id, header.addr)(x.p))
             }
           }
-          clk.step()
+          //clk.step()
+          if (data.isEmpty) {
+            timescope {
+              clk.step(1)
+            }
+          }
         }
       }
     }
@@ -78,6 +94,7 @@ object CREECAgent {
           val len = x.header.bits.len.peek().litValue().toInt
           val id = x.header.bits.id.peek().litValue().toInt
           val addr = x.header.bits.addr.peek().litValue()
+          println(len, id, addr)
           low2HighModel.pushTransactions(Seq(CREECHeaderBeat(len, id, addr)))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
@@ -88,9 +105,9 @@ object CREECAgent {
 
     // Data monitor thread
     fork {
-      while (true) {
-        timescope {
-          x.data.ready.poke(true.B)
+      timescope {
+        x.data.ready.poke(true.B)
+        while (true) {
           while (!x.data.valid.peek().litToBoolean) {
             clk.step()
           }
@@ -100,6 +117,7 @@ object CREECAgent {
           // all peeked values are read as BigInt (MSB -> LSB byte format), so reverse is needed
           // also, since data is unsigned, additional unwanted zero
           // may be generated for the sign
+          println(data, id)
           low2HighModel.pushTransactions(Seq(
             CREECDataBeat(data.toByteArray.reverse.padTo(busParams.bytesPerBeat, 0.asInstanceOf[Byte]).slice(0, busParams.bytesPerBeat), id)))
           low2HighModel.advanceSimulation()
