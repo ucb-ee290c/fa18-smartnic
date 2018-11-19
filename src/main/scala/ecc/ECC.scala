@@ -4,7 +4,7 @@ package ecc
 
 import chisel3._
 import chisel3.util._
-import interconnect.{CREECBus, CREECBusParams}
+import interconnect._
 
 // References:
 // [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
@@ -825,5 +825,27 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
       }
     }
 
+  }
+}
+
+class ECCEncoderTopModel(val rsParams: RSParams = new RSParams(),
+                         val busParams: CREECBusParams = new CREECBusParams()
+  ) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
+    val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
+    val inputMsgs = in.data.map(_.toInt)
+    val encodedMsgs = rs.encode(inputMsgs).map(_.toByte)
+    Seq(CREECHighLevelTransaction(encodedMsgs, in.addr))
+  }
+}
+
+class ECCDecoderTopModel(val rsParams: RSParams = new RSParams(),
+                         val busParams: CREECBusParams = new CREECBusParams()
+  ) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
+    val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
+    val inputMsgs = in.data.map(_.toInt)
+    val decodedMsgs = rs.decode(inputMsgs).map(_.toByte)
+    Seq(CREECHighLevelTransaction(decodedMsgs, in.addr))
   }
 }
