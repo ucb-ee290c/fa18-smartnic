@@ -87,11 +87,13 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
     val master = new CREECBus(busParams)
   })
 
-  // *numItems* denotes the number of output items to be fired
-  // due to the generated parity symbols
-  // For example, if we generate a 16-symbol sequence (8 original symbol
-  // messages, 8 parity symbols), and the bus width is 64, we need to
-  // fire *two* 64-bit output to the master port
+  // *numItems* denotes the number of master outputs to be fired
+  // One master output represents *dataWidth* / *symbolWidth* symbols
+  // If the encoder produces more symbols than one master output can represent,
+  // we need to fire multiple master outputs
+  // For example, if we have RS(16, 8, 8), meaning 16 symbols with 8 original
+  // symbols of 8-bit, we need to fire *two* 64-bit output at the master port
+  // after encoding
   val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
 
   // There are four states
