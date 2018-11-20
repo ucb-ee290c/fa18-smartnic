@@ -27,18 +27,18 @@ class RSEncoderUnitTester(c: RSEncoder,
     var outCnt = 0
     var inCnt = 0
 
-    while (numCycles < maxCycles && outCnt < c.p.n) {
+    while (numCycles < maxCycles && outCnt < c.rsParams.n) {
       numCycles += 1
       if (numCycles >= maxCycles) {
         expect(false, "timeout!")
       }
 
-      if (inCnt == c.p.k) {
+      if (inCnt == c.rsParams.k) {
         poke(c.io.in.valid, false)
       }
 
       if (peek(c.io.in.valid) == BigInt(1) &&
-          peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.k) {
+          peek(c.io.in.ready) == BigInt(1) && inCnt < c.rsParams.k) {
         poke(c.io.in.bits, swSyms(inCnt))
         inCnt += 1
       }
@@ -53,7 +53,7 @@ class RSEncoderUnitTester(c: RSEncoder,
     }
 
     if (verbose) {
-      for (i <- 0 until c.p.n) {
+      for (i <- 0 until c.rsParams.n) {
         printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
       }
     }

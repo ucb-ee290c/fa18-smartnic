@@ -6,11 +6,13 @@ import chisel3._
 import chisel3.util._
 import interconnect._
 
+// This module evaluates a polynomial at *eVal*
+// The coefficients are supplied via SIn in successive clock cycles
 class PolyCell(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val running = Input(Bool())
     val SIn = Input(UInt(p.symbolWidth.W))
-    val coeff = Input(UInt(p.symbolWidth.W))
+    val eVal = Input(UInt(p.symbolWidth.W))
     val Rx = Input(UInt(p.symbolWidth.W))
 
     val SOut = Output(UInt(p.symbolWidth.W))
@@ -22,21 +24,24 @@ class PolyCell(val p: RSParams = new RSParams()) extends Module {
 
   when (io.running) {
     Reg0 := io.Rx
-    Reg1 := p.GFOp.mul((Reg0 ^ Reg1), io.coeff)
+    Reg1 := p.GFOp.mul((Reg0 ^ Reg1), io.eVal)
   }
   .otherwise {
+    // The registers should not be updated when the cell is not running
     Reg0 := 0.U
     Reg1 := 0.U
   }
 
+  // If not runnning, the cell just forwards the input to the output
   Reg2 := Mux(io.running, (Reg0 ^ Reg1), io.SIn)
 
   io.SOut := Reg2
 }
 
-// This class computes one or many polynomials in a systolic-array fashion.
+// This module evaluates a polynomial at multiple evaluation values
+// in a systolic-array fashion.
 // The number of polynomials is configured via the parameter *numCells*.
-// Each cell has an assigned root value.
+// Each cell has an assigned *eVal* for evaluation
 // The coefficients of each polynomial are supplied by the input signal
 // in successive clock cycles.
 // This implementation is based on Horner's method
@@ -46,7 +51,7 @@ class PolyCompute(val p: RSParams = new RSParams(),
                   val reverse: Boolean = false)
   extends Module {
   val io = IO(new Bundle {
-    val coeffs = Vec(numCells, Input(UInt(p.symbolWidth.W)))
+    val eVals = Vec(numCells, Input(UInt(p.symbolWidth.W)))
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
@@ -56,9 +61,14 @@ class PolyCompute(val p: RSParams = new RSParams(),
   }
 
   val cells = Seq.fill(numCells)(Module(new PolyCell(p)))
+  // There are 3 states:
+  //   - sIn: stream the inputs to the cells
+  //   - sCompute: simply a buffer state to complete the computation
+  //   - sOut: stream the outputs out of the cells
   val sIn :: sCompute :: sOut :: Nil = Enum(3)
   val state = RegInit(sIn)
 
+  // Counters to keep track of the progress
   val (inCntVal, inCntDone) = Counter(io.in.fire(), numInputs)
   val (outCntVal, outCntDone) = Counter(io.out.fire(), numCells)
 
@@ -85,11 +95,11 @@ class PolyCompute(val p: RSParams = new RSParams(),
     }
   }
 
-  cells.zip(io.coeffs) map {
-    case (c, coeff) => {
+  cells.zip(io.eVals) map {
+    case (c, eVal) => {
       c.io.running := (state === sIn && io.in.fire()) || (state === sCompute)
       c.io.Rx := io.in.bits
-      c.io.coeff := coeff
+      c.io.eVal := eVal
     }
   }
 
@@ -169,12 +179,12 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   inputQueue.io.enq.bits := io.in.bits
   inputQueue.io.enq.valid := io.in.fire() && (inCntVal < p.k.asUInt())
 
-  syndCmp.io.coeffs := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
+  syndCmp.io.eVals := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
   syndCmp.io.in.bits := io.in.bits
   syndCmp.io.in.valid := io.in.fire()
   syndCmp.io.out.ready := (state === sSyndromeCmp)
 
-  chienSearch.io.coeffs := (0 until chienSearch.getNumCells()).map(
+  chienSearch.io.eVals := (0 until chienSearch.getNumCells()).map(
                            x => rootVals(numRoots - 1 - x))
   chienSearch.io.in.valid := (state === sChienSearch)
   chienSearch.io.in.bits := Mux(state === sChienSearch, locARegs(p.n - p.k), 0.U)
@@ -215,13 +225,13 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val denom = p.GFOp.mul(locDerivResult, rootVals(rootValIdx))
   val errorMagReg = RegNext(p.GFOp.mul(evalResult, p.GFOp.inv(denom)))
 
-  evalPolyCmp.io.coeffs := (0 until evalPolyCmp.getNumCells()).map(
+  evalPolyCmp.io.eVals := (0 until evalPolyCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
   evalPolyCmp.io.in.valid := startEvalPolyCmp
   evalPolyCmp.io.in.bits := evalARegs(p.n - p.k)
   evalPolyCmp.io.out.ready := state === sErrorCorrection2
 
-  locDerivCmp.io.coeffs := (0 until locDerivCmp.getNumCells()).map(
+  locDerivCmp.io.eVals := (0 until locDerivCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
   locDerivCmp.io.in.valid := startLocDerivCmp
   locDerivCmp.io.in.bits := locDerivRegs(p.n - p.k - 1)

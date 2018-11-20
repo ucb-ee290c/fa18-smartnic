@@ -58,7 +58,7 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
       driver.pushTransactions(Seq(txDec))
 
-      c.clock.step(1000)
+      c.clock.step(3000)
 
       val out = monitor.receivedTransactions.dequeueAll(_ => true)
       assert(out == outGoldDec)

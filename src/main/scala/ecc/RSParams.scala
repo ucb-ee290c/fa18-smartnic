@@ -45,6 +45,8 @@ case class RSParams(
 
   // GF Arithmetic operations
   object GFOp {
+
+    // TODO: pipeline this operation to improve timing.
     def mul(a: UInt, b: UInt): UInt = {
       val op1 = a.asTypeOf(UInt(symbolWidth.W))
       val op2 = b.asTypeOf(UInt(symbolWidth.W))
@@ -78,7 +80,11 @@ case class RSParams(
       result
     }
 
-    // TODO: pipeline this operation to improve timing
+    // Inversion can be implemented simply by powering
+    // the input by 2**(symbolWidth) thanks to GF.
+    // However, this leads to a very cumbersome hardware logic
+    // and potentially worsen the critical path.
+    // TODO: pipeline this operation to improve timing.
     def inv(a: UInt): UInt = {
       val op = a.asTypeOf(UInt(symbolWidth.W))
       val numVals = math.pow(2, symbolWidth).toInt - 1
