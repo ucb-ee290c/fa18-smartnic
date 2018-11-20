@@ -59,11 +59,13 @@ class ECCDecoderTopModel(val rsParams: RSParams = new RSParams(),
               e
           })
 
+          // Clear data to process next input
+          data = Nil
+
           // FIXME: why is 'reverse' needed here?
           val decodedMsgs = rs.decode(inputMsgs).slice(0, rsParams.k).
             map(_.toByte).reverse
           val decodedMsgsGrp = decodedMsgs.grouped(busParams.bytesPerBeat).toSeq
-          println(decodedMsgsGrp)
           decodedMsgsGrp.map (x => CREECDataBeat(x, 0)(busParams)).toSeq
         }
         else {
