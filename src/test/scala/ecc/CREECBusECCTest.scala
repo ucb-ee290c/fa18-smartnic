@@ -17,13 +17,11 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
   // Encoder testing
   val inputsEnc = trials.map(x =>
-    Seq() ++ x._1.slice(0, rsParams.k).map(_.toByte)).flatten.reverse
+    Seq() ++ x._1.slice(0, rsParams.k).map(_.toByte)).flatten
 
   // Software golden model
   val txEnc = CREECHighLevelTransaction(inputsEnc, 0x1000)
-  val modelEnc = new CREECHighToLowModel(busParams) ->
-                   new ECCEncoderTopModel(rsParams) ->
-                     new CREECLowToHighModel(busParams)
+  val modelEnc = new ECCEncoderTopModel(rsParams)
   val outGoldEnc = modelEnc.pushTransactions(Seq(txEnc)).
                      advanceSimulation(true).pullTransactions()
 
@@ -35,9 +33,7 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
       driver.pushTransactions(Seq(tx))
 
-      fork {
-        c.clock.step(1000)
-      } .join()
+      c.clock.step(1000)
 
       val out = monitor.receivedTransactions.dequeueAll(_ => true)
       assert(out == outGoldEnc)
@@ -46,13 +42,11 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
   // Decoder testing
   val inputsDec = trials.map(x =>
-    Seq() ++ x._2.slice(0, rsParams.n).map(_.toByte)).flatten.reverse
+    Seq() ++ x._2.slice(0, rsParams.n).map(_.toByte)).flatten
 
   // Software golden model
   val txDec = CREECHighLevelTransaction(inputsDec, 0x1000)
-  val modelDec = new CREECHighToLowModel(busParams) ->
-                   new ECCDecoderTopModel(rsParams) ->
-                     new CREECLowToHighModel(busParams)
+  val modelDec = new ECCDecoderTopModel(rsParams)
   val outGoldDec = modelDec.pushTransactions(Seq(txDec)).
                      advanceSimulation(true).pullTransactions()
 
@@ -64,10 +58,7 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
       driver.pushTransactions(Seq(txDec))
 
-      // This needs more cycles than I thought ...
-      fork {
-        c.clock.step(1000)
-      } .join()
+      c.clock.step(1000)
 
       val out = monitor.receivedTransactions.dequeueAll(_ => true)
       assert(out == outGoldDec)

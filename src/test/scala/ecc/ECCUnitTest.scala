@@ -188,8 +188,7 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
       step(1)
     }
 
-    // Be careful of the order of the bytes
-    hwSyms = hwSyms ++ outputs.reverse
+    hwSyms = hwSyms ++ outputs
 
     if (verbose) {
       for (i <- 0 until c.rsParams.n) {
@@ -225,7 +224,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
     poke(c.io.slave.header.bits.len, numBeats)
 
     val r = c.rsParams.n / numBeats
-    var beatCnt = 0
+    var beatCnt = 1
 
     var numCycles = 0
     val maxCycles = 300
@@ -248,7 +247,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
                        inSyms(c.rsParams.n - j - 1)
         }
         poke(c.io.slave.data.bits.data, inputBits)
-        beatCnt = beatCnt + 1
+        beatCnt = beatCnt - 1
       }
 
       if (peek(c.io.master.data.valid) == BigInt(1) &&
@@ -264,8 +263,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
       step(1)
     }
 
-    // Be careful of the order of the bytes
-    hwCorrectedSyms = hwCorrectedSyms ++ outputs.reverse
+    hwCorrectedSyms = hwCorrectedSyms ++ outputs
 
     if (verbose) {
       for (i <- 0 until c.rsParams.k) {

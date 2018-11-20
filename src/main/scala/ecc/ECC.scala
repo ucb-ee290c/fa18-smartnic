@@ -699,7 +699,9 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
         when (encOutCntDone) {
           state := sDone
         }
-        dataOutReg := (dataOutReg << rsParams.symbolWidth) + enc.io.out.bits
+        val shiftAmt = rsParams.n * rsParams.symbolWidth - rsParams.symbolWidth
+        dataOutReg := (dataOutReg >> rsParams.symbolWidth) |
+          (enc.io.out.bits << shiftAmt)
       }
     }
 
@@ -800,7 +802,9 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
     is (sRecvData) {
       when (io.slave.data.fire()) {
         beatCnt := beatCnt + 1.U
-        dataInReg := (dataInReg << busParams.dataWidth) + io.slave.data.bits.data
+        val shiftAmt = rsParams.n * rsParams.symbolWidth - busParams.dataWidth
+        dataInReg := (dataInReg >> busParams.dataWidth) |
+          (io.slave.data.bits.data << shiftAmt)
         // May take multiple cycles to receive input data
         // if it is larger than the bus data width
         when (itemCntDone) {
@@ -818,7 +822,9 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
         when (decOutCntDone) {
           state := sDone
         }
-        dataOutReg := (dataOutReg << rsParams.symbolWidth) + dec.io.out.bits
+        val shiftAmt = busParams.dataWidth - rsParams.symbolWidth
+        dataOutReg := (dataOutReg >> rsParams.symbolWidth) |
+          (dec.io.out.bits << shiftAmt)
       }
     }
 
