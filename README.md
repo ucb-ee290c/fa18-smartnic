@@ -75,4 +75,10 @@ Module files are in `src/main/scala/aes`. Tests are in `src/test/scala/aes`.
 [Test Details](src/test/scala/aes/README.md)
 
 ### ECC (Reed-Solomon)
+Module files are in `src/main/scala/ecc`. Tests are in `src/test/scala/ecc`.
+
+[Module Details](src/main/scala/ecc/README.md)
+
+[Test Details](src/test/scala/ecc/README.md)
+
 ### Interconnect

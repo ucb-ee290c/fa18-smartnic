@@ -56,3 +56,5 @@ scalacOptions ++= Seq("-language:reflectiveCalls", "-unchecked", "-deprecation",
 
 javacOptions ++= javacOptionsVersion(scalaVersion.value)
 cancelable in Global := true
+
+libraryDependencies ++= Seq("commons-codec" % "commons-codec" % "1.9")

@@ -27,18 +27,18 @@ class RSEncoderUnitTester(c: RSEncoder,
     var outCnt = 0
     var inCnt = 0
 
-    while (numCycles < maxCycles && outCnt < c.p.n) {
+    while (numCycles < maxCycles && outCnt < c.rsParams.n) {
       numCycles += 1
       if (numCycles >= maxCycles) {
         expect(false, "timeout!")
       }
 
-      if (inCnt == c.p.k) {
+      if (inCnt == c.rsParams.k) {
         poke(c.io.in.valid, false)
       }
 
       if (peek(c.io.in.valid) == BigInt(1) &&
-          peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.k) {
+          peek(c.io.in.ready) == BigInt(1) && inCnt < c.rsParams.k) {
         poke(c.io.in.bits, swSyms(inCnt))
         inCnt += 1
       }
@@ -53,7 +53,7 @@ class RSEncoderUnitTester(c: RSEncoder,
     }
 
     if (verbose) {
-      for (i <- 0 until c.p.n) {
+      for (i <- 0 until c.rsParams.n) {
         printf("swSyms(%d) = %d, hwSyms(%d) = %d\n", i, swSyms(i), i, hwSyms(i))
       }
     }
@@ -188,8 +188,7 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
       step(1)
     }
 
-    // Be careful of the order of the bytes
-    hwSyms = hwSyms ++ outputs.reverse
+    hwSyms = hwSyms ++ outputs
 
     if (verbose) {
       for (i <- 0 until c.rsParams.n) {
@@ -225,7 +224,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
     poke(c.io.slave.header.bits.len, numBeats)
 
     val r = c.rsParams.n / numBeats
-    var beatCnt = 0
+    var beatCnt = 1
 
     var numCycles = 0
     val maxCycles = 300
@@ -248,7 +247,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
                        inSyms(c.rsParams.n - j - 1)
         }
         poke(c.io.slave.data.bits.data, inputBits)
-        beatCnt = beatCnt + 1
+        beatCnt = beatCnt - 1
       }
 
       if (peek(c.io.master.data.valid) == BigInt(1) &&
@@ -264,8 +263,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
       step(1)
     }
 
-    // Be careful of the order of the bytes
-    hwCorrectedSyms = hwCorrectedSyms ++ outputs.reverse
+    hwCorrectedSyms = hwCorrectedSyms ++ outputs
 
     if (verbose) {
       for (i <- 0 until c.rsParams.k) {

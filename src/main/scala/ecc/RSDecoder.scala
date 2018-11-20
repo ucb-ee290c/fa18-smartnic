@@ -6,168 +6,13 @@ import chisel3._
 import chisel3.util._
 import interconnect._
 
-// References:
-// [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
-// [2] https://downloads.bbc.co.uk/rd/pubs/whp/whp-pdf-files/WHP031.pdf
-// Here is a brief description on one example of Reed-Solomon encoder
-// Reed-Solomon(7, 3) with 3-bit symbol
-// #symbols: n=7, #message symbols: k=3, #parity symbols: n-k=4
-// With symbolWidth = 3 (or GF(2^3))
-// a^0 --> 1
-// a^1 --> 2
-// a^2 --> 4
-// a^3 --> 3
-// a^4 --> 6
-// a^5 --> 7
-// a^6 --> 5
-// a^7 --> 1
-// We need two things:
-// Primitive polynomial f(X) = X^3 + X^1 + 1 --> 1011(2) --> 11(10)
-// Generator polynomial g(X) = a^3 * X^0 + a^1 * X^1 + a^0 * X^2 + a^3 * X^3 + X^4
-//                      g(X) =   3 * X^0 +   2 * X^1 +   1 * X^2 +   3 * X^3 + X^4
-// output(X) = message(X) * X^(n - k) + (message(X) * X^(n - k) % g(X))
-// Note that the arithmetic operations in GF(2^m) are different from the conven-
-// tional ones
-// Addition is simply bit-wise XOR
-// Multiplication is slightly more complicated. The result needs to be mod by
-// the value representing the primitive polynomial (in this case, 11)
-// In general, a GF operations of two m-bit operands results to a m-bit value
-//
-case class RSParams(
-  // Sample configuration of RS(7, 3) with 3-bit symbol
-  val n: Int = 7,
-  val k: Int = 3,
-  val symbolWidth: Int = 3,
-  val gCoeffs: Seq[Int] = Seq(3, 2, 1, 3),
-  val fConst: Int = 11,
-  val Log2Val: Seq[Int] = Seq(1, 2, 4, 3, 6, 7, 5, 1),
-  val Val2Log: Seq[Int] = Seq(0, 7, 1, 3, 2, 6, 4, 5)
-) {
-
-  // GF Arithmetic operations
-  object GFOp {
-    def mul(a: UInt, b: UInt): UInt = {
-      val op1 = a.asTypeOf(UInt(symbolWidth.W))
-      val op2 = b.asTypeOf(UInt(symbolWidth.W))
-
-      val result = Seq.fill(symbolWidth)(
-        Wire(UInt((2 * symbolWidth - 1).W))
-      ).zipWithIndex.foldRight(0.U) {
-        case ((nextWire, idx), prevWire) => {
-          val currentMultResult = prevWire ^ Mux(op2(idx), op1 << idx, 0.U)
-
-          if (idx == 0) {
-            nextWire := currentMultResult
-          }
-          else {
-            nextWire := Mux(currentMultResult(idx + symbolWidth - 1),
-                          currentMultResult ^ (fConst.asUInt() << (idx - 1)),
-                          currentMultResult)
-          }
-          nextWire
-        }
-      }
-      result
-    }
-
-    def shlByOne(a: UInt): UInt = {
-      val mask = math.pow(2, symbolWidth).toInt - 1
-      val aShifted = a.asTypeOf(UInt((symbolWidth + 1).W)) << 1
-      val result = Mux(aShifted(symbolWidth),
-        (aShifted & mask.asUInt()) ^ (fConst.asUInt() & mask.asUInt()),
-        aShifted)
-      result
-    }
-
-    // TODO: pipeline this operation to improve timing
-    def inv(a: UInt): UInt = {
-      val op = a.asTypeOf(UInt(symbolWidth.W))
-      val numVals = math.pow(2, symbolWidth).toInt - 1
-
-      val rootsFromOp = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(op) {
-        (prevWire, nextWire) => {
-          nextWire := shlByOne(prevWire)
-          nextWire
-        }
-      }
-
-      val rootsFromOne = Seq.fill(numVals)(Wire(UInt(symbolWidth.W))).scan(1.U) {
-        (prevWire, nextWire) => {
-          nextWire := shlByOne(prevWire)
-          nextWire
-        }
-      }
-
-      val rootsMasked = rootsFromOp.zip(rootsFromOne).map {
-        case (rootFromOp, rootFromOne) =>
-          Mux(rootFromOp === 1.U, rootFromOne, 0.U)
-      }
-
-      val result = rootsMasked.reduce(_ | _)
-      result
-    }
-  }
-}
-
-// This module will accept k symbols (io.in.fire() === true.B until received k symbols)
-// It will emit n symbols (io.out.fire() === true.B until sent n symbols)
-// Each symbol has a width of *symbolWidth*
-class RSEncoder(val p: RSParams = new RSParams()) extends Module {
-  val io = IO(new Bundle {
-    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
-    val out = new DecoupledIO(UInt(p.symbolWidth.W))
-  })
-
-  val inReadyReg = RegInit(true.B)
-  val outValidReg = RegInit(false.B)
-
-  io.in.ready := inReadyReg
-  io.out.valid := outValidReg
-
-  val (inCntVal, inCntDone) = Counter(io.in.fire(), p.k)
-  val (outCntVal, outCntDone) = Counter(io.out.fire(), p.n)
-
-  when (inCntDone) {
-    inReadyReg := false.B
-  }
-  .elsewhen (io.in.fire()) {
-    outValidReg := true.B
-  }
-
-  when (outCntDone) {
-    outValidReg := false.B
-    inReadyReg := true.B
-  }
-
-  val Regs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
-  val inputBitsReg = RegInit(0.U(p.symbolWidth.W))
-  when (io.in.fire()) {
-    inputBitsReg := io.in.bits
-  }
-  .otherwise {
-    inputBitsReg := 0.U
-  }
-
-  // Make sure the arithmetic operations are correct (in Galois field)
-  val feedback = Mux(outCntVal < p.k.asUInt(),
-                     inputBitsReg ^ Regs(p.n - p.k - 1), 0.U)
-
-  Regs.zipWithIndex.foldLeft(0.U) {
-    case (prevReg, (nextReg, idx)) => {
-      nextReg := prevReg ^ p.GFOp.mul(feedback, p.gCoeffs(idx).asUInt())
-      nextReg
-    }
-  }
-
-  io.out.bits := Mux(outCntVal < p.k.asUInt(),
-                     inputBitsReg, Regs(p.n - p.k - 1))
-}
-
+// This module evaluates a polynomial at *eVal*
+// The coefficients are supplied via SIn in successive clock cycles
 class PolyCell(val p: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
     val running = Input(Bool())
     val SIn = Input(UInt(p.symbolWidth.W))
-    val coeff = Input(UInt(p.symbolWidth.W))
+    val eVal = Input(UInt(p.symbolWidth.W))
     val Rx = Input(UInt(p.symbolWidth.W))
 
     val SOut = Output(UInt(p.symbolWidth.W))
@@ -179,21 +24,24 @@ class PolyCell(val p: RSParams = new RSParams()) extends Module {
 
   when (io.running) {
     Reg0 := io.Rx
-    Reg1 := p.GFOp.mul((Reg0 ^ Reg1), io.coeff)
+    Reg1 := p.GFOp.mul((Reg0 ^ Reg1), io.eVal)
   }
   .otherwise {
+    // The registers should not be updated when the cell is not running
     Reg0 := 0.U
     Reg1 := 0.U
   }
 
+  // If not runnning, the cell just forwards the input to the output
   Reg2 := Mux(io.running, (Reg0 ^ Reg1), io.SIn)
 
   io.SOut := Reg2
 }
 
-// This class computes one or many polynomials in a systolic-array fashion.
+// This module evaluates a polynomial at multiple evaluation values
+// in a systolic-array fashion.
 // The number of polynomials is configured via the parameter *numCells*.
-// Each cell has an assigned root value.
+// Each cell has an assigned *eVal* for evaluation
 // The coefficients of each polynomial are supplied by the input signal
 // in successive clock cycles.
 // This implementation is based on Horner's method
@@ -203,7 +51,7 @@ class PolyCompute(val p: RSParams = new RSParams(),
                   val reverse: Boolean = false)
   extends Module {
   val io = IO(new Bundle {
-    val coeffs = Vec(numCells, Input(UInt(p.symbolWidth.W)))
+    val eVals = Vec(numCells, Input(UInt(p.symbolWidth.W)))
     val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
@@ -213,9 +61,14 @@ class PolyCompute(val p: RSParams = new RSParams(),
   }
 
   val cells = Seq.fill(numCells)(Module(new PolyCell(p)))
+  // There are 3 states:
+  //   - sIn: stream the inputs to the cells
+  //   - sCompute: simply a buffer state to complete the computation
+  //   - sOut: stream the outputs out of the cells
   val sIn :: sCompute :: sOut :: Nil = Enum(3)
   val state = RegInit(sIn)
 
+  // Counters to keep track of the progress
   val (inCntVal, inCntDone) = Counter(io.in.fire(), numInputs)
   val (outCntVal, outCntDone) = Counter(io.out.fire(), numCells)
 
@@ -242,11 +95,11 @@ class PolyCompute(val p: RSParams = new RSParams(),
     }
   }
 
-  cells.zip(io.coeffs) map {
-    case (c, coeff) => {
+  cells.zip(io.eVals) map {
+    case (c, eVal) => {
       c.io.running := (state === sIn && io.in.fire()) || (state === sCompute)
       c.io.Rx := io.in.bits
-      c.io.coeff := coeff
+      c.io.eVal := eVal
     }
   }
 
@@ -326,12 +179,12 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   inputQueue.io.enq.bits := io.in.bits
   inputQueue.io.enq.valid := io.in.fire() && (inCntVal < p.k.asUInt())
 
-  syndCmp.io.coeffs := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
+  syndCmp.io.eVals := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
   syndCmp.io.in.bits := io.in.bits
   syndCmp.io.in.valid := io.in.fire()
   syndCmp.io.out.ready := (state === sSyndromeCmp)
 
-  chienSearch.io.coeffs := (0 until chienSearch.getNumCells()).map(
+  chienSearch.io.eVals := (0 until chienSearch.getNumCells()).map(
                            x => rootVals(numRoots - 1 - x))
   chienSearch.io.in.valid := (state === sChienSearch)
   chienSearch.io.in.bits := Mux(state === sChienSearch, locARegs(p.n - p.k), 0.U)
@@ -372,13 +225,13 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   val denom = p.GFOp.mul(locDerivResult, rootVals(rootValIdx))
   val errorMagReg = RegNext(p.GFOp.mul(evalResult, p.GFOp.inv(denom)))
 
-  evalPolyCmp.io.coeffs := (0 until evalPolyCmp.getNumCells()).map(
+  evalPolyCmp.io.eVals := (0 until evalPolyCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
   evalPolyCmp.io.in.valid := startEvalPolyCmp
   evalPolyCmp.io.in.bits := evalARegs(p.n - p.k)
   evalPolyCmp.io.out.ready := state === sErrorCorrection2
 
-  locDerivCmp.io.coeffs := (0 until locDerivCmp.getNumCells()).map(
+  locDerivCmp.io.eVals := (0 until locDerivCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
   locDerivCmp.io.in.valid := startLocDerivCmp
   locDerivCmp.io.in.bits := locDerivRegs(p.n - p.k - 1)
@@ -613,116 +466,6 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
   }
 }
 
-// CREECBus integration with the RSEncoder module
-// What to do:
-// *** Encoder
-//   + Receive write header from upstream block (slave)
-//   + Send write header to downstream block (master)
-//   + Receive write data from upstream block (slave)
-//   + Send *encoded* write data to downstream block (master)
-class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
-                    val busParams: CREECBusParams = new CREECBusParams()
-  ) extends Module {
-  val io = IO(new Bundle {
-    val slave = Flipped(new CREECBus(busParams))
-    val master = new CREECBus(busParams)
-  })
-
-  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
-  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
-  val state = RegInit(sRecvHeader)
-
-  // TODO: handle the metadata appropriately
-  io.master.header.bits.compressed := false.B
-  io.master.header.bits.ecc := true.B
-  io.master.header.bits.encrypted := false.B
-
-  io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  // Modify the beat number based on encoding specification
-  io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) *
-                                       numItems.asUInt() - 1.U)
-  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
-  io.master.header.valid := RegNext(io.slave.header.valid)
-
-  io.master.data.bits.id := RegNext(io.slave.data.bits.id)
-
-  val enc = Module(new RSEncoder(rsParams))
-
-  val dataInReg = RegInit(0.U(busParams.dataWidth.W))
-  val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
-
-  io.slave.header.ready := state === sRecvHeader
-
-  io.slave.data.ready := state === sRecvData
-  io.master.data.valid := state === sDone
-  io.master.data.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
-
-  enc.io.in.valid := state === sCompute
-  enc.io.in.bits := dataInReg
-  enc.io.out.ready := state === sCompute
-
-  val numBeats = RegInit(0.U(32.W))
-
-  val (encInCntVal, encInCntDone) = Counter(enc.io.in.fire(), rsParams.k)
-  val (encOutCntVal, encOutCntDone) = Counter(enc.io.out.fire(), rsParams.n)
-  val (itemCntVal, itemCntDone) = Counter(io.master.data.fire(), numItems)
-  // Cannot use Counter for this because the maximum value is not statically known
-  val beatCnt = RegInit(0.U(32.W))
-
-  switch (state) {
-    is (sRecvHeader) {
-      beatCnt := 0.U
-      dataInReg := 0.U
-      dataOutReg := 0.U
-
-      when (io.slave.header.fire()) {
-        state := sRecvData
-        numBeats := io.slave.header.bits.len
-      }
-    }
-
-    is (sRecvData) {
-      when (io.slave.data.fire()) {
-        state := sCompute
-        dataInReg := io.slave.data.bits.data
-        beatCnt := beatCnt + 1.U
-      }
-    }
-
-    is (sCompute) {
-      when (enc.io.in.fire()) {
-        dataInReg := (dataInReg >> rsParams.symbolWidth)
-      }
-
-      when (enc.io.out.fire()) {
-        when (encOutCntDone) {
-          state := sDone
-        }
-        dataOutReg := (dataOutReg << rsParams.symbolWidth) + enc.io.out.bits
-      }
-    }
-
-    is (sDone) {
-      when (io.master.data.fire()) {
-        dataOutReg := (dataOutReg >> busParams.dataWidth)
-        // May take multiple cycles to send the output data
-        // if it is larger than the bus data width
-        when (itemCntDone) {
-          when (beatCnt === numBeats - 1.U) {
-            // If all data beats have been processed, receive the next header
-            state := sRecvHeader
-          }
-          .otherwise {
-            // Process the next data beat
-            state := sRecvData
-          }
-        }
-      }
-    }
-
-  }
-}
-
 // CREECBus integration with the RSDecoder module
 // What to do:
 // *** Decoder
@@ -738,20 +481,28 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
     val master = new CREECBus(busParams)
   })
 
+  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
+  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
+  val state = RegInit(sRecvHeader)
+
   // TODO: handle the metadata appropriately
   io.master.header.bits.compressed := false.B
   io.master.header.bits.ecc := true.B
   io.master.header.bits.encrypted := false.B
 
   io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  io.master.header.bits.len := RegNext(io.slave.header.bits.len)
+  // Modify the beat number based on Reed-Solomon code configuration
+  // OMG division!!
+  // Hopefully numItems will always be a power of two
+  // TODO: Dealing with odd number of beats. Hopefully never
+  io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) /
+                                       numItems.asUInt() - 1.U)
+  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
+  io.master.header.valid := RegNext(io.slave.header.valid)
+
   io.master.header.bits.id := RegNext(io.slave.header.bits.id)
 
   io.master.data.bits.id := RegNext(io.slave.data.bits.id)
-
-  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
-  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
-  val state = RegInit(sRecvHeader)
 
   val dec = Module(new RSDecoder(rsParams))
 
@@ -759,7 +510,6 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
   val dataOutReg = RegInit(0.U(busParams.dataWidth.W))
 
   io.slave.header.ready := state === sRecvHeader
-  io.master.header.valid := state === sRecvData
 
   io.slave.data.ready := state === sRecvData
   io.master.data.valid := state === sDone
@@ -792,7 +542,9 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
     is (sRecvData) {
       when (io.slave.data.fire()) {
         beatCnt := beatCnt + 1.U
-        dataInReg := (dataInReg << busParams.dataWidth) + io.slave.data.bits.data
+        val shiftAmt = rsParams.n * rsParams.symbolWidth - busParams.dataWidth
+        dataInReg := (dataInReg >> busParams.dataWidth) |
+          (io.slave.data.bits.data << shiftAmt)
         // May take multiple cycles to receive input data
         // if it is larger than the bus data width
         when (itemCntDone) {
@@ -810,7 +562,9 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
         when (decOutCntDone) {
           state := sDone
         }
-        dataOutReg := (dataOutReg << rsParams.symbolWidth) + dec.io.out.bits
+        val shiftAmt = busParams.dataWidth - rsParams.symbolWidth
+        dataOutReg := (dataOutReg >> rsParams.symbolWidth) |
+          (dec.io.out.bits << shiftAmt)
       }
     }
 
@@ -827,27 +581,5 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
       }
     }
 
-  }
-}
-
-class ECCEncoderTopModel(val rsParams: RSParams = new RSParams(),
-                         val busParams: CREECBusParams = new CREECBusParams()
-  ) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
-  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
-    val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
-    val inputMsgs = in.data.map(_.toInt)
-    val encodedMsgs = rs.encode(inputMsgs).map(_.toByte)
-    Seq(CREECHighLevelTransaction(encodedMsgs, in.addr))
-  }
-}
-
-class ECCDecoderTopModel(val rsParams: RSParams = new RSParams(),
-                         val busParams: CREECBusParams = new CREECBusParams()
-  ) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
-  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
-    val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
-    val inputMsgs = in.data.map(_.toInt)
-    val decodedMsgs = rs.decode(inputMsgs).map(_.toByte)
-    Seq(CREECHighLevelTransaction(decodedMsgs, in.addr))
   }
 }
