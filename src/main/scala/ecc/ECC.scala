@@ -638,7 +638,8 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   io.master.header.bits.encrypted := false.B
 
   io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  // Modify the beat number based on encoding specification
+  // Modify the beat number based on Reed-Solomon code configuration
+  // TODO: Dealing with odd number of beats. Hopefully never
   io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) *
                                        numItems.asUInt() - 1.U)
   io.master.header.bits.id := RegNext(io.slave.header.bits.id)
@@ -738,20 +739,28 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
     val master = new CREECBus(busParams)
   })
 
+  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
+  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
+  val state = RegInit(sRecvHeader)
+
   // TODO: handle the metadata appropriately
   io.master.header.bits.compressed := false.B
   io.master.header.bits.ecc := true.B
   io.master.header.bits.encrypted := false.B
 
   io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  io.master.header.bits.len := RegNext(io.slave.header.bits.len)
+  // Modify the beat number based on Reed-Solomon code configuration
+  // OMG division!!
+  // Hopefully numItems will always be a power of two
+  // TODO: Dealing with odd number of beats. Hopefully never
+  io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) /
+                                       numItems.asUInt() - 1.U)
+  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
+  io.master.header.valid := RegNext(io.slave.header.valid)
+
   io.master.header.bits.id := RegNext(io.slave.header.bits.id)
 
   io.master.data.bits.id := RegNext(io.slave.data.bits.id)
-
-  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
-  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
-  val state = RegInit(sRecvHeader)
 
   val dec = Module(new RSDecoder(rsParams))
 
@@ -759,7 +768,6 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
   val dataOutReg = RegInit(0.U(busParams.dataWidth.W))
 
   io.slave.header.ready := state === sRecvHeader
-  io.master.header.valid := state === sRecvData
 
   io.slave.data.ready := state === sRecvData
   io.master.data.valid := state === sDone

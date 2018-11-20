@@ -17,7 +17,7 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
   // Encoder testing
   val inputsEnc = trials.map(x =>
-    Seq() ++ x._1.slice(0, rsParams.k).map(_.toByte)).flatten
+    Seq() ++ x._1.slice(0, rsParams.k).map(_.toByte)).flatten.reverse
 
   // Software golden model
   val txEnc = CREECHighLevelTransaction(inputsEnc, 0x1000)
@@ -36,7 +36,7 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
       driver.pushTransactions(Seq(tx))
 
       fork {
-        c.clock.step(100)
+        c.clock.step(1000)
       } .join()
 
       val out = monitor.receivedTransactions.dequeueAll(_ => true)
@@ -46,7 +46,7 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
   // Decoder testing
   val inputsDec = trials.map(x =>
-    Seq() ++ x._2.slice(0, rsParams.n).map(_.toByte)).flatten
+    Seq() ++ x._2.slice(0, rsParams.n).map(_.toByte)).flatten.reverse
 
   // Software golden model
   val txDec = CREECHighLevelTransaction(inputsDec, 0x1000)
@@ -56,22 +56,22 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
   val outGoldDec = modelDec.pushTransactions(Seq(txDec)).
                      advanceSimulation(true).pullTransactions()
 
-  println(outGoldDec)
+  "ECCDecoderTop" should "be testable with testers2" in {
+    test(new ECCDecoderTop(rsParams)) { c =>
+      val tx = CREECHighLevelTransaction(inputsDec, 0x1000)
+      val driver = new CREECDriver(c.io.slave, c.clock)
+      val monitor = new CREECMonitor(c.io.master, c.clock)
 
-//  "ECCDecoderTop" should "be testable with testers2" in {
-//    test(new ECCDecoderTop(rsParams)) { c =>
-//      val tx = CREECHighLevelTransaction(trials(0)._2.map(_.toByte), 0x1000)
-//      val driver = new CREECDriver(c.io.slave, c.clock)
-//      val monitor = new CREECMonitor(c.io.master, c.clock)
-//
-//      driver.pushTransactions(Seq(tx))
-//
-//      fork {
-//        c.clock.step(100)
-//      } .join()
-//
-//      println(monitor.receivedTransactions.dequeueAll(_ => true))
-//    }
-//  }
+      driver.pushTransactions(Seq(txDec))
+
+      // This needs more cycles than I thought ...
+      fork {
+        c.clock.step(1000)
+      } .join()
+
+      val out = monitor.receivedTransactions.dequeueAll(_ => true)
+      assert(out == outGoldDec)
+    }
+  }
 
 }
