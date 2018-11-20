@@ -22,6 +22,7 @@ Testers:
 - `SubCipherTester`: Sanity check for a complete encryption cipher (SubBytes, ShiftRows, MixColumns, AddRoundKey)
 - `SubStageTester`: Sanity check for the above cipher with KeyExpansion
 - `SubKeyScheduleTimeInterleaveTester`: Sanity check for time interleaved key generation
+- `CREECBusAESTest`: Sanity check for the software model used for CREECBus
 
 Note that the `SubStageTester` does not have a reasonable analog in the decryption side, as all the round keys
 must be generated before even the first decryption stage.

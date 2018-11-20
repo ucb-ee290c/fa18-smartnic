@@ -16,6 +16,7 @@ Files:
 - InvAES.scala: Modules for AES decryption
 - AESTop.scala: Full AES encryption and decryption modules
 - AESApp.scala: Helper class to output Verilog.
+- AESSWModel.scala: AES Interconnect Software Model for CREECBus
 
 
 ## Useful information
@@ -50,3 +51,8 @@ Without delving too deeply into each module, the relevant "top" level modules ar
         Uses a decoupled interface for data input and output.
 - `AESTopFullTimeInterleave`: Pure time-interleaved system
         Uses a decoupled interface for data input, output, and key input.
+
+
+### AESSWModel.scala
+Contains CREECEncryptModel and CREECDecryptModel, which consume CREECBus transaction and process them
+using the Javax implementation of AES.
