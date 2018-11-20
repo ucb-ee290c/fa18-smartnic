@@ -15,20 +15,21 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
   val busParams = new CREECBusParams
 
-  val inputs = trials.map(x =>
+  // Encoder testing
+  val inputsEnc = trials.map(x =>
     Seq() ++ x._1.slice(0, rsParams.k).map(_.toByte)).flatten
 
   // Software golden model
-  val tx = CREECHighLevelTransaction(inputs, 0x1000)
-  val model = new CREECHighToLowModel(busParams) ->
-                new ECCEncoderTopModel(rsParams) ->
-                  new CREECLowToHighModel(busParams)
-  val outGold = model.pushTransactions(Seq(tx)).
-                 advanceSimulation(true).pullTransactions()
+  val txEnc = CREECHighLevelTransaction(inputsEnc, 0x1000)
+  val modelEnc = new CREECHighToLowModel(busParams) ->
+                   new ECCEncoderTopModel(rsParams) ->
+                     new CREECLowToHighModel(busParams)
+  val outGoldEnc = modelEnc.pushTransactions(Seq(txEnc)).
+                     advanceSimulation(true).pullTransactions()
 
   "ECCEncoderTop" should "be testable with testers2" in {
     test(new ECCEncoderTop(rsParams)) { c =>
-      val tx = CREECHighLevelTransaction(inputs, 0x1000)
+      val tx = CREECHighLevelTransaction(inputsEnc, 0x1000)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
 
@@ -39,9 +40,23 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
       } .join()
 
       val out = monitor.receivedTransactions.dequeueAll(_ => true)
-      assert(out == outGold)
+      assert(out == outGoldEnc)
     }
   }
+
+  // Decoder testing
+  val inputsDec = trials.map(x =>
+    Seq() ++ x._2.slice(0, rsParams.n).map(_.toByte)).flatten
+
+  // Software golden model
+  val txDec = CREECHighLevelTransaction(inputsDec, 0x1000)
+  val modelDec = new CREECHighToLowModel(busParams) ->
+                   new ECCDecoderTopModel(rsParams) ->
+                     new CREECLowToHighModel(busParams)
+  val outGoldDec = modelDec.pushTransactions(Seq(txDec)).
+                     advanceSimulation(true).pullTransactions()
+
+  println(outGoldDec)
 
 //  "ECCDecoderTop" should "be testable with testers2" in {
 //    test(new ECCDecoderTop(rsParams)) { c =>
