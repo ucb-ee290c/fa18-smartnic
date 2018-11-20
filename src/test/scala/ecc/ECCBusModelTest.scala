@@ -13,8 +13,18 @@ class ECCBusModelTest extends ECCSpec with ChiselScalatestTester {
     "--target-dir", "test_run_dir/creec",
     "--top-name")
 
+  val busParams = new CREECBusParams
+
   val inputs = trials.map(x =>
     Seq() ++ x._1.slice(0, rsParams.k).map(_.toByte)).flatten
+
+  // Software golden model
+  val tx = CREECHighLevelTransaction(inputs, 0x1000)
+  val model = new CREECHighToLowModel(busParams) ->
+                new ECCEncoderTopModel(rsParams) ->
+                  new CREECLowToHighModel(busParams)
+  val outGold = model.pushTransactions(Seq(tx)).
+                 advanceSimulation(true).pullTransactions()
 
   "ECCEncoderTop" should "be testable with testers2" in {
     test(new ECCEncoderTop(rsParams)) { c =>
@@ -28,7 +38,8 @@ class ECCBusModelTest extends ECCSpec with ChiselScalatestTester {
         c.clock.step(100)
       } .join()
 
-      println(monitor.receivedTransactions.dequeueAll(_ => true))
+      val out = monitor.receivedTransactions.dequeueAll(_ => true)
+      assert(out == outGold)
     }
   }
 
