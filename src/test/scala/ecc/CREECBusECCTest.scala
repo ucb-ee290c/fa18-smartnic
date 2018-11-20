@@ -5,7 +5,7 @@ import interconnect._
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
 
-class ECCBusModelTest extends ECCSpec with ChiselScalatestTester {
+class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
   val testerArgs = Array(
     "-fiwv",
     "--backend-name", "treadle",
