@@ -307,6 +307,7 @@ class CREECDifferentialCoder(creecParams: CREECBusParams = new CREECBusParams,
  * valid, so pop must be set to high if the output is used in order to
  * advance the pointer. There is no bound checking.
  * //TODO: allow taking multiple out of the queue at once and/or putting multiple in
+ * //TODO: turn this into a Mem or a SyncReadMem (++) or a Queue.
  */
 class BasicFIFO(width: Int, length: Int) extends Module {
   val io = IO(new Bundle {
