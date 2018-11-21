@@ -2,7 +2,7 @@ package aes
 import chisel3._
 import chisel3.tester._
 import interconnect.CREECAgent._
-import interconnect.{SoftwareModel, CREECLowLevelTransaction, BusParams, CREECHeaderBeat, CREECDataBeat}
+import interconnect.{SoftwareModel, CREECHighLevelTransaction, CREECLowLevelTransaction, BusParams, CREECHeaderBeat, CREECDataBeat}
 import org.scalatest.FlatSpec
 
 class CREECBusAESTest extends FlatSpec with ChiselScalatestTester {
@@ -16,9 +16,9 @@ class CREECBusAESTest extends FlatSpec with ChiselScalatestTester {
   //Key is fixed in the SW model
   //TODO: Consider how to provide the model the key at time of test
 
-  "AESSWModel" should "encrypt" in {
+  "AESSWModel" should "encrypt low" in {
     implicit val busParams: BusParams = new AESBusParams
-    val model = new CREECEncryptModel(busParams)
+    val enlowmodel = new CREECEncryptLowModel(busParams)
     val id = 0
     //Index 0 of the seq is the LSB
     val data = Seq(1, 1, 1, 1, 1, 1, 1, 1,
@@ -29,7 +29,7 @@ class CREECBusAESTest extends FlatSpec with ChiselScalatestTester {
                         0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
                         _.asInstanceOf[Byte])
 
-    val out = model.pushTransactions(Seq(
+    val out = enlowmodel.pushTransactions(Seq(
       CREECHeaderBeat(len=1, id=id, addr=0x0),
       CREECDataBeat(data= data, id=id),
     )).advanceSimulation(true).pullTransactions()
@@ -40,9 +40,9 @@ class CREECBusAESTest extends FlatSpec with ChiselScalatestTester {
     assert(outGold == out)
   }
 
-  "AESSWModel" should "decrypt" in {
+  "AESSWModel" should "decrypt low" in {
     implicit val busParams: BusParams = new AESBusParams
-    val model = new CREECDecryptModel(busParams)
+    val delowmodel = new CREECDecryptLowModel(busParams)
     val id = 0
     //Index 0 of the seq is the LSB
     val decrypted_data = Seq(1, 1, 1, 1, 1, 1, 1, 1,
@@ -53,13 +53,71 @@ class CREECBusAESTest extends FlatSpec with ChiselScalatestTester {
       0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
       _.asInstanceOf[Byte])
 
-    val out = model.pushTransactions(Seq(
+    val out = delowmodel.pushTransactions(Seq(
       CREECHeaderBeat(len=1, id=id, addr=0x0),
       CREECDataBeat(data= data, id=id),
     )).advanceSimulation(true).pullTransactions()
     val outGold = Seq(
       CREECHeaderBeat(len=1, id=id, addr=0x0),
       CREECDataBeat(data=decrypted_data, id=id),
+    )
+    assert(outGold == out)
+  }
+
+  "AESSWModel" should "encrypt high" in {
+    implicit val busParams: BusParams = new AESBusParams
+    val enhighmodel = new CREECEncryptHighModel(busParams)
+    val id = 0
+    //Index 0 of the seq is the LSB
+    val data = Seq(1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 3, 3, 2,
+      1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 3, 3, 2).map(
+      _.asInstanceOf[Byte])
+
+    val encrypted_data = Seq(0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c,
+      0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
+      _.asInstanceOf[Byte])
+
+    val out = enhighmodel.pushTransactions(Seq(
+      CREECHighLevelTransaction(
+        data, 0x0
+      ))).advanceSimulation(true).pullTransactions()
+    val outGold = Seq(
+      CREECHighLevelTransaction(
+        encrypted_data, 0x0
+      )
+    )
+    assert(outGold == out)
+  }
+
+  "AESSWModel" should "decrypt high" in {
+    implicit val busParams: BusParams = new AESBusParams
+    val dehighmodel = new CREECDecryptHighModel(busParams)
+    val id = 0
+    //Index 0 of the seq is the LSB
+    val decrypted_data = Seq(1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 3, 3, 2,
+      1, 1, 1, 1, 1, 1, 1, 1,
+      1, 1, 1, 1, 1, 3, 3, 2).map(
+      _.asInstanceOf[Byte])
+
+    val data = Seq(0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c,
+      0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
+      _.asInstanceOf[Byte])
+
+    val out = dehighmodel.pushTransactions(Seq(
+      CREECHighLevelTransaction(
+        data, 0x0
+      ))).advanceSimulation(true).pullTransactions()
+    val outGold = Seq(
+      CREECHighLevelTransaction(
+        decrypted_data, 0x0
+      )
     )
     assert(outGold == out)
   }
