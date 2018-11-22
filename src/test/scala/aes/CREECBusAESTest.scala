@@ -5,7 +5,7 @@ import interconnect.CREECAgent._
 import interconnect.{SoftwareModel, CREECHighLevelTransaction, CREECLowLevelTransaction, BusParams, CREECHeaderBeat, CREECDataBeat}
 import org.scalatest.FlatSpec
 
-class CREECBusAESTest extends FlatSpec with ChiselScalatestTester {
+class CREECBusAESSWTest extends FlatSpec with ChiselScalatestTester {
   val testerArgs = Array(
     "-fiwv",
     "--backend-name", "treadle",
@@ -121,4 +121,75 @@ class CREECBusAESTest extends FlatSpec with ChiselScalatestTester {
     )
     assert(outGold == out)
   }
+
+  "AESSWModel" should "compose" in {
+    implicit val busParams: BusParams = new AESBusParams
+
+    val data = Seq(0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c,
+      0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
+      _.asInstanceOf[Byte])
+
+    //Composed model
+    val composedmodel =
+      new CREECEncryptHighModel(busParams) ->
+        new CREECDecryptHighModel(busParams)
+
+    val out = composedmodel.pushTransactions(Seq(
+      CREECHighLevelTransaction(
+        data, 0x0
+      ))).advanceSimulation(true).pullTransactions()
+    val outGold = Seq(
+      CREECHighLevelTransaction(
+        data, 0x0
+      )
+    )
+    assert(outGold == out)
+
+  }
+}
+
+
+class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
+  val testerArgs = Array(
+    "-fiwv",
+    "--backend-name", "verilator",
+    "--tr-write-vcd",
+    "--target-dir", "test_run_dir/creec",
+    "--top-name")
+
+  //Key is fixed in the SW model
+  //TODO: Consider how to provide the model the key at time of test
+
+  "AESHWModel" should "match encryption with HLT" in {
+    implicit val busParams: BusParams = new AESBusParams
+
+    val data = Seq(0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c,
+      0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
+      _.asInstanceOf[Byte])
+    val txaction = Seq(CREECHighLevelTransaction(data, 0x0))
+
+    //SW golden model
+    val swModel = new CREECEncryptHighModel(busParams)
+    val outGold = swModel.pushTransactions(Seq(
+      CREECHighLevelTransaction(
+        data, 0x0
+      ))).advanceSimulation(false).pullTransactions()
+
+    test(new AESTopCREECBus(busParams)) { c=>
+      val driver = new CREECDriver(c.io.encrypt_slave, c.clock)
+      val monitor = new CREECMonitor(c.io.encrypt_master, c.clock)
+
+      driver.pushTransactions(txaction)
+
+      c.clock.step(1000) //Arbitrary length
+
+      val out = monitor.receivedTransactions.dequeueAll(_ => true)
+      assert(outGold == out)
+    }
+  }
+
 }

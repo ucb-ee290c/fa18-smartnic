@@ -2,7 +2,7 @@ package aes
 
 import chisel3._
 import chisel3.util._
-import interconnect.{CREECBusParams, CREECBus}
+import interconnect.{BusParams, CREECBusParams, CREECBus}
 //import freechips.rocketchip.subsystem.BaseSubsystem
 //import freechips.rocketchip.config.{Parameters, Field}
 //import freechips.rocketchip.diplomacy._
@@ -125,25 +125,167 @@ class AESTopFullTimeInterleave extends Module {
     decrypt.io.key_valid    := keygen.io.key_valid
 }
 
-//TODO: Add passthrough support
+//------------------------------------
+
+// CREECBus integration with the AESTop module
+//Based on RSEncoderTop
+// What to do:
+// *** Encrypter
+//   + Receive write header from upstream block (slave)
+//   + Forward write header to downstream block (master)
+//   + Then Receive write data from upstream block (slave)
+//   + Send *encrypted* write data to downstream block (master)
 //TODO: Add input and output sync FIFOs
 //TODO: Add width conversion
-class AESTopCREECBusWrapper extends Module {
-    val io = IO(new Bundle {
-        val encrypt_slave = new CREECBus(new CREECBusParams)
-        val encrypt_master = Flipped(new CREECBus(new CREECBusParams))
 
-        val decrypt_slave = new CREECBus(new CREECBusParams)
-        val decrypt_master = Flipped(new CREECBus(new CREECBusParams))
+//Decrypt and Encrypt use the same state machine
+class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Module {
+    val io = IO(new Bundle {
+        val slave = Flipped(new CREECBus(busParams))
+        val master = new CREECBus(busParams)
+
+        val aes_data_in     = Decoupled(UInt(128.W))
+        val aes_data_out    = Flipped(Decoupled(UInt(128.W)))
     })
+
+    //State Definitions
+    //Chisel Enum syntax requires the 's' at the beginning
+    val sIDLE :: sDATA_WAIT :: sCOMPUTE :: sDONE :: Nil = Enum(4)
+    val state = RegInit(sIDLE)
+
+    //IO Wrapper Reg for Module
+    //TODO: Handle width conversion?
+    require(busParams.dataWidth == 128)
+    val dataInReg  = Reg(UInt(128.W))
+    val dataOutReg = Reg(UInt(128.W))
+    val dataIDReg  = Reg(UInt(busParams.idBits.W))
+
+    //Decoupled IO
+    io.slave.header.ready := state === sIDLE
+    io.slave.data.ready   := state === sDATA_WAIT
+
+    // Forward the header
+    // TODO: wait for fire?
+    io.master.header.valid      := RegNext(io.slave.header.valid)
+    io.master.header.bits.len   := RegNext(io.slave.header.bits.len)
+    io.master.header.bits.addr  := RegNext(io.slave.header.bits.addr)
+    io.master.header.bits.id    := RegNext(io.slave.header.bits.id)
+
+    // TODO: Handle Metadata better
+    io.master.header.bits.compressed := RegNext(io.slave.header.bits.compressed)
+    io.master.header.bits.ecc        := RegNext(io.slave.header.bits.ecc)
+    io.master.header.bits.encrypted  := RegNext(io.slave.header.bits.encrypted)
+
+    // TODO: Handle id better
+    io.master.data.valid     := state === sDONE
+    io.master.data.bits.id   := dataIDReg
+    io.master.data.bits.data := dataOutReg
+
+    //Track data beats processed
+    val totalBeats = Reg(UInt(busParams.beatBits.W))
+    val beatsDone  = Reg(UInt(busParams.beatBits.W))
+    val allBeatsDone = beatsDone >= totalBeats
+
+    // Trigger the encoding process when sCOMPUTE
+    io.aes_data_in.valid := state === sCOMPUTE
+    io.aes_data_in.bits  := dataInReg
+    io.aes_data_out.ready := state === sCOMPUTE
+
+    //State Machine
+    switch (state) {
+        //Waiting for Header
+        //On header fire, transition to wait for data
+        is (sIDLE) {
+            // Properly reset registers to prepare for the next input
+            beatsDone := 0.U
+            dataInReg := 0.U
+            dataOutReg := 0.U
+            dataIDReg := 0.U
+
+            when (io.slave.header.fire()) {
+                state := sDATA_WAIT
+                totalBeats := (io.slave.header.bits.len + 1.U) // length is 0-indexed
+            }
+        }
+        //Waiting for data
+        //On data fire, transition to compute
+        is (sDATA_WAIT) {
+            when (io.slave.data.fire()) { //start encryption
+                state := sCOMPUTE
+                dataInReg := io.slave.data.bits.data
+                dataIDReg := io.slave.data.bits.id
+            }
+        }
+        //Run compute
+        //On done fire, transition to done check
+        is (sCOMPUTE) {
+            //Feed the data to AES and wait for end
+            when (io.aes_data_out.fire()) {
+                state := sDONE
+                beatsDone := beatsDone + 1.U
+                dataOutReg := io.aes_data_out.bits
+            }
+        }
+        //done check
+        //If no more work, reset. Otherwise, wait for data
+        is (sDONE) {
+            when (io.master.data.fire()) {
+                state := Mux(allBeatsDone, sIDLE, sDATA_WAIT)
+            }
+        }
+    }
+}
+
+class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Module
+    with HWKey {
+    val io = IO(new Bundle {
+        val encrypt_slave = Flipped(new CREECBus(busParams))
+        val encrypt_master = new CREECBus(busParams)
+
+        val decrypt_slave = Flipped(new CREECBus(busParams))
+        val decrypt_master = new CREECBus(busParams)
+    })
+
+    def connectDecoupled(master: DecoupledIO[Data], slave: DecoupledIO[Data]) = {
+        slave.bits := master.bits
+        slave.valid := master.valid
+        master.ready := slave.ready
+    }
 
     val AESTop = Module(new AESTopFullTimeInterleave)
 
-    val encrypt_bypass = io.encrypt_master.header.bits.encrypted
-    io.encrypt_slave.header.ready := false.B
-    io.encrypt_master.header.valid := false.B
+    // Key ----------------------------------------
+    // TODO: Add support for external key
 
-    val decrypt_bypass = io.decrypt_master.header.bits.encrypted
-    io.encrypt_slave.header.ready := false.B
-    io.encrypt_master.header.valid := false.B
+    val myKey = keyAsBigInt().U(128.W)
+    AESTop.io.key_in.bits := myKey
+    // HACK: Reset logic
+    val keyValidReg = RegInit(false.B)
+    val keyDoneReg = RegInit(false.B)
+    AESTop.io.key_in.valid := keyValidReg
+
+    keyValidReg := !keyDoneReg && AESTop.io.key_in.ready
+    keyDoneReg := !keyDoneReg && AESTop.io.key_in.fire()
+
+    // Encrypt ------------------------------------
+
+    val encrypt_FSM = Module(new AESCREECBusFSM(busParams))
+    connectDecoupled(io.encrypt_slave.header, encrypt_FSM.io.slave.header)
+    connectDecoupled(io.encrypt_slave.data, encrypt_FSM.io.slave.data)
+    connectDecoupled(encrypt_FSM.io.master.header, io.encrypt_master.header)
+    connectDecoupled(encrypt_FSM.io.master.data, io.encrypt_master.data)
+
+    connectDecoupled(encrypt_FSM.io.aes_data_in, AESTop.io.encrypt_data_in)
+    connectDecoupled(AESTop.io.encrypt_data_out, encrypt_FSM.io.aes_data_out)
+
+    // Decrypt ------------------------------------
+
+    val decrypt_FSM = Module(new AESCREECBusFSM(busParams))
+    connectDecoupled(io.decrypt_slave.header, decrypt_FSM.io.slave.header)
+    connectDecoupled(io.decrypt_slave.data, decrypt_FSM.io.slave.data)
+    connectDecoupled(decrypt_FSM.io.master.header, io.decrypt_master.header)
+    connectDecoupled(decrypt_FSM.io.master.data, io.decrypt_master.data)
+
+    connectDecoupled(decrypt_FSM.io.aes_data_in, AESTop.io.decrypt_data_in)
+    connectDecoupled(AESTop.io.decrypt_data_out, decrypt_FSM.io.aes_data_out)
 }

@@ -35,12 +35,6 @@ class AESEncryption {
 
 class AESBusParams extends BusParams(maxBeats = 128, maxInFlight=1, dataWidth=128)
 
-trait HWKey {
-  val key = Seq(1, 1, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 3, 3, 2).map(
-    _.asInstanceOf[Byte])
-}
-
 //Note: a combined encrypt-decrypt SW unit is not necessary since
 // the decrypt and encrypt are isolated at the bus level
 

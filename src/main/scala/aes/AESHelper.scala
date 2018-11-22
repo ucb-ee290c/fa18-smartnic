@@ -268,21 +268,21 @@ class DataBundleTop extends Bundle {
 }
 
 class DataBundleTopDebug extends Bundle {
-  val data_in  = Input(UInt(128.W))
-  val data_out = Output(UInt(128.W))
-  val key_in   = Input(UInt(128.W))
-  val stage1out = Output(UInt(128.W))
-  val stage2out = Output(UInt(128.W))
-  val stage2key = Output(UInt(128.W))
-  val stage3out = Output(UInt(128.W))
-  val stage3key = Output(UInt(128.W))
-  val stage3rcon = Output(UInt(8.W))
-  val stage4out = Output(UInt(128.W))
-  val stage5out = Output(UInt(128.W))
-  val stage6out = Output(UInt(128.W))
-  val stage7out = Output(UInt(128.W))
-  val stage8out = Output(UInt(128.W))
-  val stage9out = Output(UInt(128.W))
+    val data_in  = Input(UInt(128.W))
+    val data_out = Output(UInt(128.W))
+    val key_in   = Input(UInt(128.W))
+    val stage1out = Output(UInt(128.W))
+    val stage2out = Output(UInt(128.W))
+    val stage2key = Output(UInt(128.W))
+    val stage3out = Output(UInt(128.W))
+    val stage3key = Output(UInt(128.W))
+    val stage3rcon = Output(UInt(8.W))
+    val stage4out = Output(UInt(128.W))
+    val stage5out = Output(UInt(128.W))
+    val stage6out = Output(UInt(128.W))
+    val stage7out = Output(UInt(128.W))
+    val stage8out = Output(UInt(128.W))
+    val stage9out = Output(UInt(128.W))
 }
 
 class DataBundleTopDecoupled extends Bundle {
@@ -309,4 +309,18 @@ class DataBundleKeyScheduleDecoupledDebug extends DataBundleKeyScheduleDecoupled
     val running     = Output(Bool())
     val peek_stage  = Output(UInt(128.W))
     val counter     = Output(UInt(4.W))
+}
+
+trait HWKey {
+    val key = Seq(1, 1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 3, 3, 2).map(
+        _.asInstanceOf[Byte])
+
+    def keyAsBigInt(): BigInt = {
+        var rr : BigInt = 0
+        for (i <- 0 until key.length) {
+            rr = (rr << 8) + BigInt(key(i))
+        }
+        rr
+    }
 }
