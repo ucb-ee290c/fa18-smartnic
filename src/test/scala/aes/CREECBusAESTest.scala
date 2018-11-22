@@ -177,11 +177,11 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
     val swModel = new CREECEncryptHighModel(busParams)
     val outGold = swModel.pushTransactions(txaction).advanceSimulation(true).pullTransactions()
 
+    //Encryption
     test(new AESTopCREECBus(busParams)) { c=>
       val driver = new CREECDriver(c.io.encrypt_slave, c.clock)
       val monitor = new CREECMonitor(c.io.encrypt_master, c.clock)
         
-      //c.clock.step(15) //let setup complete
       driver.pushTransactions(txaction)
       
       c.clock.step(60) 
@@ -191,4 +191,61 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
     }
   }
 
+  "AESHWModel" should "match decryption with HLT" in {
+    implicit val busParams: BusParams = new AESBusParams
+    
+    
+    val data = Seq(0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c,
+      0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
+      _.asInstanceOf[Byte])
+    val txaction = Seq(CREECHighLevelTransaction(data, 0x0))
+        
+    //SW golden model
+    val swModel = new CREECDecryptHighModel(busParams)
+    val outGold = swModel.pushTransactions(txaction).advanceSimulation(true).pullTransactions()
+
+    test(new AESTopCREECBus(busParams)) { c=>
+      val driver = new CREECDriver(c.io.decrypt_slave, c.clock)
+      val monitor = new CREECMonitor(c.io.decrypt_master, c.clock)
+        
+      driver.pushTransactions(txaction)
+      
+      c.clock.step(60) 
+
+      val out = monitor.receivedTransactions.dequeueAll(_ => true)
+      assert(outGold == out)
+    }
+  }
+  
+  "AESHWModel" should "loop" in {
+    implicit val busParams: BusParams = new AESBusParams 
+    
+    val data = Seq(0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c,
+      0x14, 0x23, 0x6b, 0xd1, 0xce, 0x59, 0x26, 0xe1,
+      0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(
+      _.asInstanceOf[Byte])
+    val txaction = Seq(CREECHighLevelTransaction(data, 0x0))
+        
+    test(new AESTopCREECBus(busParams)) { c=>
+      val e_driver = new CREECDriver(c.io.encrypt_slave, c.clock)
+      val e_monitor = new CREECMonitor(c.io.encrypt_master, c.clock)
+
+      val d_driver = new CREECDriver(c.io.decrypt_slave, c.clock)
+      val d_monitor = new CREECMonitor(c.io.decrypt_master, c.clock)
+        
+      e_driver.pushTransactions(txaction)
+      
+      c.clock.step(60) 
+
+      val mid  = e_monitor.receivedTransactions.dequeueAll(_ => true)
+      d_driver.pushTransactions(mid)
+
+      c.clock.step(60)
+      val out = d_monitor.receivedTransactions.dequeueAll(_ => true)
+      assert(out == txaction)
+    }
+  }
 }
