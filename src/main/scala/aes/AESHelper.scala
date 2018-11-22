@@ -200,17 +200,21 @@ class KeyScheduleTimeInterleave extends Module {
     val numStages = 10 //for AES128
 
     val start = io.key_in.fire
-    val counter = RegInit(0.U(4.W))
+    val counter = RegInit(numStages.U(4.W))
     val running = counter < numStages.U
 
     counter := Mux(running, counter+1.U,
         Mux(start, 0.U, counter))
 
     val mux_select = start
+    
+    //reset logic
+    val first_key = RegInit(true.B)
+    first_key := first_key && !running
 
     // Ready Valid
     io.key_in.ready   := !running
-    io.key_valid      := !running
+    io.key_valid      := !running && !first_key
 
     //Compute ----------------------------------------------
     val rcon_reg    = Reg(UInt(8.W))
@@ -319,7 +323,7 @@ trait HWKey {
     def keyAsBigInt(): BigInt = {
         var rr : BigInt = 0
         for (i <- 0 until key.length) {
-            rr = (rr << 8) + BigInt(key(i))
+            rr = (rr << 8) + BigInt(key(key.length -1 - i))
         }
         rr
     }

@@ -150,7 +150,7 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
 
     //State Definitions
     //Chisel Enum syntax requires the 's' at the beginning
-    val sIDLE :: sDATA_WAIT :: sCOMPUTE :: sDONE :: Nil = Enum(4)
+    val sIDLE :: sDATA_WAIT :: sCOMP_WAIT :: sCOMPUTE :: sDONE :: Nil = Enum(5)
     val state = RegInit(sIDLE)
 
     //IO Wrapper Reg for Module
@@ -186,10 +186,10 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
     val beatsDone  = Reg(UInt(busParams.beatBits.W))
     val allBeatsDone = beatsDone >= totalBeats
 
-    // Trigger the encoding process when sCOMPUTE
-    io.aes_data_in.valid := state === sCOMPUTE
+    // Trigger the encoding process when compute is ready
     io.aes_data_in.bits  := dataInReg
-    io.aes_data_out.ready := state === sCOMPUTE
+    io.aes_data_in.valid := state === sCOMP_WAIT
+    io.aes_data_out.ready := state === sDONE
 
     //State Machine
     switch (state) {
@@ -208,19 +208,26 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
             }
         }
         //Waiting for data
-        //On data fire, transition to compute
+        //On data fire, wait for compute to be ready
         is (sDATA_WAIT) {
             when (io.slave.data.fire()) { //start encryption
-                state := sCOMPUTE
+                state := sCOMP_WAIT
                 dataInReg := io.slave.data.bits.data
                 dataIDReg := io.slave.data.bits.id
             }
         }
+        //Wait for compute to be ready
+        is (sCOMP_WAIT) {
+            when (io.aes_data_in.fire()) {
+                state := sCOMPUTE
+            }
+        }
+        //TODO: cut out this stage
         //Run compute
         //On done fire, transition to done check
         is (sCOMPUTE) {
             //Feed the data to AES and wait for end
-            when (io.aes_data_out.fire()) {
+            when (io.aes_data_out.valid) {
                 state := sDONE
                 beatsDone := beatsDone + 1.U
                 dataOutReg := io.aes_data_out.bits
@@ -258,6 +265,7 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
     // TODO: Add support for external key
 
     val myKey = keyAsBigInt().U(128.W)
+     
     AESTop.io.key_in.bits := myKey
     // HACK: Reset logic
     val keyValidReg = RegInit(false.B)
@@ -265,8 +273,8 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
     AESTop.io.key_in.valid := keyValidReg
 
     keyValidReg := !keyDoneReg && AESTop.io.key_in.ready
-    keyDoneReg := !keyDoneReg && AESTop.io.key_in.fire()
-
+    keyDoneReg  := keyDoneReg || AESTop.io.key_in.fire()
+    
     // Encrypt ------------------------------------
 
     val encrypt_FSM = Module(new AESCREECBusFSM(busParams))
@@ -277,7 +285,7 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
 
     connectDecoupled(encrypt_FSM.io.aes_data_in, AESTop.io.encrypt_data_in)
     connectDecoupled(AESTop.io.encrypt_data_out, encrypt_FSM.io.aes_data_out)
-
+    
     // Decrypt ------------------------------------
 
     val decrypt_FSM = Module(new AESCREECBusFSM(busParams))
@@ -289,3 +297,4 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
     connectDecoupled(decrypt_FSM.io.aes_data_in, AESTop.io.decrypt_data_in)
     connectDecoupled(AESTop.io.decrypt_data_out, decrypt_FSM.io.aes_data_out)
 }
+
