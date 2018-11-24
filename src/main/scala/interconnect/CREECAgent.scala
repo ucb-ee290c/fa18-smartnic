@@ -7,14 +7,18 @@ import chisel3.tester._
 import scala.collection.mutable
 
 object CREECAgent {
-  // Take a Seq[Byte] in the format [LS-byte, ..., MS-byte] and convert to unsigned BigInt
-  // BigInt decodes byte arrays as big-endian (MSB -> LSB)
-  //  so, prepend a 0 byte on the MSB side to make sure arr is decoded as unsigned
-  // Note: BigInt(Array(0, 0, 1)) = 1
-  // Note: BigInt(Array(0, 1, 1)) = 257
-  // Note: BigInt(Array(255, 255, 255)) = -1 (not what we wanted)
-  // Note: BigInt(Array(0, 255, 255, 255)) = 16777215 (this is better)
+  /**
+    * Converts a Seq[Byte] in [LS-byte, ..., MS-byte] format to an unsigned BitInt
+    * @param arr The byte array to convert
+    * @return An BigInt constructed assuming the Seq[Byte] is interpreted as unsigned
+    */
   def bytesToBigInt(arr: Seq[Byte]): BigInt = {
+    // BigInt decodes byte arrays as big-endian (MSB -> LSB)
+    //  so, prepend a 0 byte on the MSB side to make sure arr is decoded as unsigned
+    // Note: BigInt(Array(0, 0, 1)) = 1
+    // Note: BigInt(Array(0, 1, 1)) = 257
+    // Note: BigInt(Array(255, 255, 255)) = -1 (not what we wanted)
+    // Note: BigInt(Array(0, 255, 255, 255)) = 16777215 (this is better)
     BigInt((0.asInstanceOf[Byte] +: arr.reverse).toArray)
   }
 
@@ -73,10 +77,9 @@ object CREECAgent {
               x.data.bits.poke(new TransactionData().Lit(bytesToBigInt(t.data).U, t.id.U))
               x.data.valid.poke(true.B)
               while (!x.data.ready.peek().litToBoolean) {
-                clk.step(1)
+                clk.step()
               }
-              clk.step(1)
-              x.data.valid.poke(false.B)
+              clk.step()
             }
             // Update the inflight transaction and remove it from inFlight if it is done now
             val header = inFlight(t.id)
@@ -112,7 +115,6 @@ object CREECAgent {
           val len = x.header.bits.len.peek().litValue().toInt
           val id = x.header.bits.id.peek().litValue().toInt
           val addr = x.header.bits.addr.peek().litValue()
-          println(len, id, addr)
           low2HighModel.pushTransactions(Seq(CREECHeaderBeat(len, id, addr)))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
@@ -132,7 +134,6 @@ object CREECAgent {
           // TODO: usability bug, if data.peek().litValue() is replaced with data.litValue(), you get a get None error
           val data = x.data.bits.data.peek().litValue()
           val id = x.data.bits.id.peek().litValue().toInt
-          println(data, id)
           low2HighModel.pushTransactions(Seq(
             CREECDataBeat(bigIntToBytes(data, x.p.bytesPerBeat), id)))
           low2HighModel.advanceSimulation()

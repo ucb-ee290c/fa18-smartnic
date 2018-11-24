@@ -19,9 +19,16 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   * @param ratio Width ratio of inWidth:outWidth. Must be power of 2
   * @param expand Set to true if outWidth > inWidth.
   */
-//class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boolean) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
-  /*
-  val ratio = p1.dataWidth / p2.dataWidth
+/*
+class CREECWidthConverterModel(p1: BusParams, p2: BusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
+
+}
+  val ratio, expand = if (p1.dataWidth > p2.dataWidth) {
+    assert(p1.dataWidth)
+    p1.dataWidth
+  } else {
+    2
+  }
   override def process(in: CREECLowLevelTransaction): Seq[CREECLowLevelTransaction] = {
     in match {
       case t: CREECHeaderBeat =>
@@ -39,5 +46,5 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
         }
     }
   }
-  */
 //}
+*/

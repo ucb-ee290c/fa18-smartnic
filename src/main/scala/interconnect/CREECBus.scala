@@ -19,6 +19,7 @@ class BlockDeviceIOBusParams extends BusParams(64, 1, 64)
 
 // Used internally to connect (compression -> parity/ECC -> encryption -> mapping/MMU unit)
 class CREECBusParams extends BusParams(128, 1, 64)
+class CREECBusParamsInterleave extends BusParams(128, 32, 64)
 
 trait CREECMetadata {
 }
