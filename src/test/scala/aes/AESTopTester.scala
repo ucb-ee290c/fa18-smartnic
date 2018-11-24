@@ -244,7 +244,7 @@ class AESTopFullTimeInterleaveTester(dut: AESTopFullTimeInterleave, trial: AESTo
 
 object AESTopFullTimeInterleaveTester {
   def apply(trial: AESTopTrial): Boolean = {
-    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AESTopFullTimeInterleave()) {
+    chisel3.iotesters.Driver.execute(Array("-tbn", "treadle", "-fiwv"), () => new AESTopFullTimeInterleave()) {
       c => new AESTopFullTimeInterleaveTester(c, trial)
     }
   }
