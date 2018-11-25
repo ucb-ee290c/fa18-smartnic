@@ -1,6 +1,7 @@
 package compression
 
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
+import interconnect.CREECBusParams
 
 /*
  * Tests non-timed differential coder block.
@@ -331,21 +332,25 @@ class CompressionTester extends ChiselFlatSpec {
     "--target-dir", "test_run_dir/creec",
     "--top-name")
 
+  implicit val creecParams = new CREECBusParams
+
   "DifferentialCoder" should "encode" in {
-    Driver.execute(testerArgs :+ "differential_encoder", () => new DifferentialCoder) {
+    Driver.execute(testerArgs :+ "differential_encoder", () => new DifferentialCoder(
+      coderParams = CoderParams(encode = true))) {
       c => new DifferentialCoderTester(c, true)
     } should be(true)
   }
 
   "DifferentialCoder" should "decode" in {
     Driver.execute(testerArgs :+ "differential_decoder", () => new DifferentialCoder(
-      p = CoderParams(encode = false))) {
+      coderParams = CoderParams(encode = false))) {
       c => new DifferentialCoderTester(c, false)
     } should be(true)
   }
 
   "RunLengthEncoder" should "encode" in {
-    Driver.execute(testerArgs :+ "run_length_encoder", () => new RunLengthCoder) {
+    Driver.execute(testerArgs :+ "run_length_encoder", () => new RunLengthCoder(
+      coderParams = CoderParams(encode = true))) {
       c => new RunLengthCoderTester(c, true)
     } should be(true)
   }
@@ -359,7 +364,7 @@ class CompressionTester extends ChiselFlatSpec {
 
   "CREECDifferentialCoder" should "encode" in {
     Driver.execute(testerArgs :+ "creec_differential_encoder", () => new CREECCoder(
-      operation = "differential")) {
+      coderParams = CoderParams(encode = true), operation = "differential")) {
       c => new CREECCoderTester(c, true, "differential")
     } should be(true)
   }
@@ -373,7 +378,7 @@ class CompressionTester extends ChiselFlatSpec {
 
   "CREECRunLengthCoder" should "encode" in {
     Driver.execute(testerArgs :+ "creec_run_length_encoder", () => new CREECCoder(
-      operation = "runLength")) {
+      coderParams = CoderParams(encode = true), operation = "runLength")) {
       c => new CREECCoderTester(c, true, "runLength")
     } should be(true)
   }
@@ -391,17 +396,17 @@ class CompressionTester extends ChiselFlatSpec {
     } should be(true)
   }
 
-//  "Compressor" should "compress" in {
-//    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-//      operation = "compression")) {
-//      c => new CREECCoderTester(c, true, "compression")
-//    } should be(true)
-//  }
-//
-//  "Compressor" should "decompress" in {
-//    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-//      coderParams = new CoderParams(encode = false), operation = "compression")) {
-//      c => new CREECCoderTester(c, false, "compression")
-//    } should be(true)
-//  }
+  //  "Compressor" should "compress" in {
+  //    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+  //      operation = "compression")) {
+  //      c => new CREECCoderTester(c, true, "compression")
+  //    } should be(true)
+  //  }
+  //
+  //  "Compressor" should "decompress" in {
+  //    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+  //      coderParams = new CoderParams(encode = false), operation = "compression")) {
+  //      c => new CREECCoderTester(c, false, "compression")
+  //    } should be(true)
+  //  }
 }
