@@ -4,7 +4,7 @@ import chisel3.tester.ChiselScalatestTester
 import interconnect.{BusParams, CREECBusParams, CREECHighLevelTransaction, SoftwareModel}
 import org.scalatest.FlatSpec
 
-class CREECCompressionTest extends FlatSpec with ChiselScalatestTester {
+class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
   def verifyModel[T <: SoftwareModel[CREECHighLevelTransaction,
     CREECHighLevelTransaction]](DUTFactory: Boolean => T,
                                 uncodedGold: Seq[CREECHighLevelTransaction],
@@ -14,9 +14,9 @@ class CREECCompressionTest extends FlatSpec with ChiselScalatestTester {
     val decodeModel = DUTFactory(false)
     val encoded = encodeModel.pushTransactions(uncodedGold)
       .advanceSimulation(true).pullTransactions()
+    assert(encodedGold == encoded)
     val decoded = decodeModel.pushTransactions(encodedGold)
       .advanceSimulation(true).pullTransactions()
-    assert(encodedGold == encoded)
     assert(decoded == uncodedGold)
   }
 
