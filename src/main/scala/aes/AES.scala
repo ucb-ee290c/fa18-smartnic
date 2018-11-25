@@ -272,10 +272,10 @@ class AES128TimeInterleaveCompute extends Module {
     //State Machine ---------------------------------------
     val numStages = 10 //for AES128
 
-    val start = io.data_in.fire && io.data_out.fire && io.key_valid
+    val start = io.data_in.fire && io.key_valid
     val counter = RegInit(0.U(4.W))
     val running = counter > 0.U
-
+    
     counter := Mux(running, counter-1.U,
         Mux(start, numStages.U, counter))
 

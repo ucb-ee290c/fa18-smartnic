@@ -155,8 +155,8 @@ class AESTopFullTimeInterleaveTester(dut: AESTopFullTimeInterleave, trial: AESTo
 
   //Setup key first
   expect(dut.io.key_in.ready, 1, "dut should be ready for new key")
-  expect(dut.io.encrypt_data_in.ready, 1, "dut should be ready for new data")
-  expect(dut.io.encrypt_data_out.valid, 1, "dut output should be valid")
+  //expect(dut.io.encrypt_data_in.ready, 1, "dut should be ready for new data")
+  //expect(dut.io.encrypt_data_out.valid, 1, "dut output should be valid")
 
   poke(dut.io.key_in.bits, trial.key_in)
   poke(dut.io.key_in.valid, 1)
@@ -183,6 +183,9 @@ class AESTopFullTimeInterleaveTester(dut: AESTopFullTimeInterleave, trial: AESTo
   expect(dut.io.encrypt_data_out.valid, 1, "dut output should be valid")
   expect(dut.io.encrypt_data_in.ready, 1, "dut should be ready for new data")
 
+  expect(dut.io.decrypt_data_out.valid, 1, "dut output should be valid")
+  expect(dut.io.decrypt_data_in.ready, 1, "dut should be ready for new data")
+
   poke(dut.io.encrypt_data_in.bits, trial.data_in)
   poke(dut.io.encrypt_data_out.ready, 1)
   poke(dut.io.encrypt_data_in.valid, 1)
@@ -190,8 +193,8 @@ class AESTopFullTimeInterleaveTester(dut: AESTopFullTimeInterleave, trial: AESTo
   poke(dut.io.encrypt_data_out.ready, 0)
   poke(dut.io.encrypt_data_in.valid, 0)
 
-  expect(dut.io.decrypt_data_out.valid, 1, "dut output should be valid")
-  expect(dut.io.decrypt_data_in.ready, 1, "dut should be ready for new data")
+  expect(dut.io.decrypt_data_out.valid, 1, "decrypt output should remain valid")
+  expect(dut.io.decrypt_data_in.ready, 1, "decrypt should remain ready for new data")
 
   poke(dut.io.decrypt_data_in.bits, trial.inv_data_in)
   poke(dut.io.decrypt_data_out.ready, 1)
@@ -241,7 +244,7 @@ class AESTopFullTimeInterleaveTester(dut: AESTopFullTimeInterleave, trial: AESTo
 
 object AESTopFullTimeInterleaveTester {
   def apply(trial: AESTopTrial): Boolean = {
-    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AESTopFullTimeInterleave()) {
+    chisel3.iotesters.Driver.execute(Array("-tbn", "treadle", "-fiwv"), () => new AESTopFullTimeInterleave()) {
       c => new AESTopFullTimeInterleaveTester(c, trial)
     }
   }

@@ -107,10 +107,16 @@ object creec extends Cross[CREECModule](crossVersions: _*) {
 class CREECModule(val crossScalaVersion: String) extends CommonModule {
   override def artifactName = "creec"
 
+  def repositories = super.repositories ++ Seq(
+    coursier.maven.MavenRepository("https://oss.sonatype.org/content/repositories/snapshots/")
+  )
+
   override def ivyDeps = Agg(
     ivy"edu.berkeley.cs::chisel3:3.2-SNAPSHOT",
     ivy"edu.berkeley.cs::chisel-iotesters:1.2.+",
-    ivy"org.typelevel::squants:1.3.0"
+    ivy"edu.berkeley.cs::chisel-testers2:0.1-SNAPSHOT",
+    ivy"org.typelevel::squants:1.3.0",
+    ivy"commons-codec:commons-codec:1.9"
   )
 
   // uTest works great with mill!

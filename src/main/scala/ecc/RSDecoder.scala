@@ -18,8 +18,13 @@ class PolyCell(val p: RSParams = new RSParams()) extends Module {
     val SOut = Output(UInt(p.symbolWidth.W))
   })
 
+  // Reg0 is for registering the input coefficient
   val Reg0 = RegInit(0.U(p.symbolWidth.W))
+
+  // Reg1 is for accumulating the result
   val Reg1 = RegInit(0.U(p.symbolWidth.W))
+
+  // Reg 2 is for output
   val Reg2 = RegInit(0.U(p.symbolWidth.W))
 
   when (io.running) {
@@ -56,11 +61,13 @@ class PolyCompute(val p: RSParams = new RSParams(),
     val out = new DecoupledIO(UInt(p.symbolWidth.W))
   })
 
+  // Helper function to improve readability
   def getNumCells(): Int = {
     numCells
   }
 
   val cells = Seq.fill(numCells)(Module(new PolyCell(p)))
+
   // There are 3 states:
   //   - sIn: stream the inputs to the cells
   //   - sCompute: simply a buffer state to complete the computation
@@ -75,8 +82,11 @@ class PolyCompute(val p: RSParams = new RSParams(),
   io.in.ready := (state === sIn)
   io.out.valid := (state === sOut)
 
-  // Systolic array of PolyCells
+  // 1D Systolic array of PolyCells
+  // The cells are connected in a chain
+  // We can specify the direction of the output flow with *reverse*
   if (reverse) {
+    // The first output is from the last cell
     io.out.bits := cells(numCells - 1).io.SOut
     cells.foldLeft(0.U) {
       (prev, next) => {
@@ -86,6 +96,7 @@ class PolyCompute(val p: RSParams = new RSParams(),
     }
   }
   else {
+    // The first output is from the first cell
     io.out.bits := cells(0).io.SOut
     cells.foldRight(0.U) {
       (next, prev) => {
@@ -128,6 +139,19 @@ class PolyCompute(val p: RSParams = new RSParams(),
 
 }
 
+// RSDecoder accepts n symbols
+// It produces k *corrected* symbols (dropping (n - k) parity symbols)
+// Each symbol has a width of *symbolWidth*
+// RSDecoder has the following computational blocks:
+//   (1) Syndrome Computation
+//   (2) Key Equation Solver
+//   (3) Chien Search
+//   (4) Error Correction
+// (1), (3), and (4) requires evaluating some polynomials, hence the PolyCompute
+// module is used. For (2), we implement the Modified Euclidean Algorithm to find
+// the error location and error evaluation values. The design tries to avoid
+// using GF division/inversion as much as possible, but instead cross
+// multiplication. We end up with a single inversion used in (4)
 // TODO:
 //  - Bypass this module if the input symbol sequence does not contain
 //    any error (syndromes are all zeroes)
@@ -135,59 +159,85 @@ class PolyCompute(val p: RSParams = new RSParams(),
 //  - Support unrolling if it makes sense
 //  - Improve the performance of Key Equation solver
 //  - Consider moving parts of the decoder into separate modules
-class RSDecoder(val p: RSParams = new RSParams()) extends Module {
+class RSDecoder(val rsParams: RSParams = new RSParams()) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(new DecoupledIO(UInt(p.symbolWidth.W)))
-    val out = new DecoupledIO(UInt(p.symbolWidth.W))
+    val in = Flipped(new DecoupledIO(UInt(rsParams.symbolWidth.W)))
+    val out = new DecoupledIO(UInt(rsParams.symbolWidth.W))
   })
 
-  val rootVals = VecInit(p.Log2Val.map(_.U))
+  // a^0, a^1, a^2, ..., a^(2**symbolWidth - 1)
+  val rootVals = VecInit(rsParams.Log2Val.map(_.U))
+  val numRoots = math.pow(2, rsParams.symbolWidth).toInt
 
-  val syndCmp = Module(new PolyCompute(p, p.n - p.k, p.n))
-  val numRoots = math.pow(2, p.symbolWidth).toInt
-  val chienSearch = Module(new PolyCompute(p, p.n, p.n - p.k + 1, true))
+  // This PolyCompute is for syndrome computation
+  // It has n - k cells with n inputs
+  val syndCmp = Module(new PolyCompute(rsParams, rsParams.n - rsParams.k,
+                                       rsParams.n))
 
+  // This PolyCompute is for Chien Search
+  // It has n cells with n - k + 1 inputs
+  // Note the reverse here -- because we want to read the result
+  // from the high index to the low index symbol
+  val chienSearch = Module(new PolyCompute(rsParams, rsParams.n,
+                                           rsParams.n - rsParams.k + 1, true))
+
+  // There are 7 states
+  //   - sInit: for reading input data
+  //   - sSyndromeCmp: for computing n syndromes
+  //   - sKeyEquationSolver: for solving the key equation using M.E.A
+  //   - sChienSearch: for the Chien search process
+  //   - sErrorCorrection{0-2}: for correcting the output symbols
   val sInit :: sSyndromeCmp :: sKeyEquationSolver :: sChienSearch :: sErrorCorrection0 :: sErrorCorrection1 :: sErrorCorrection2 :: Nil = Enum(7)
   val state = RegInit(sInit)
 
-  val (inCntVal, inCntDone) = Counter(io.in.fire(), p.n)
+  val (inCntVal, inCntDone) = Counter(io.in.fire(), rsParams.n)
   val (syndCmpOutCntVal, syndCmpOutCntDone) = Counter(syndCmp.io.out.fire(),
-                                                      p.n - p.k)
+                                                      rsParams.n - rsParams.k)
 
   // Registers for the Error evaluator polynomial's coefficients
-  val evalARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
-  val evalBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  val evalARegs = RegInit(VecInit(Seq.fill(rsParams.n - rsParams.k + 1)(
+                    0.U(rsParams.symbolWidth.W))))
+  val evalBRegs = RegInit(VecInit(Seq.fill(rsParams.n - rsParams.k + 1)(
+                    0.U(rsParams.symbolWidth.W))))
 
   // Registers for the Error locator polynomial's coefficients
-  val locARegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
-  val locBRegs = RegInit(VecInit(Seq.fill(p.n - p.k + 1)(0.U(p.symbolWidth.W))))
+  val locARegs = RegInit(VecInit(Seq.fill(rsParams.n - rsParams.k + 1)(
+                   0.U(rsParams.symbolWidth.W))))
+  val locBRegs = RegInit(VecInit(Seq.fill(rsParams.n - rsParams.k + 1)(
+                   0.U(rsParams.symbolWidth.W))))
   // Registers for the derivative of Error locator polynomial's coefficients
-  val locDerivRegs = RegInit(VecInit(Seq.fill(p.n - p.k)(0.U(p.symbolWidth.W))))
+  val locDerivRegs = RegInit(VecInit(Seq.fill(rsParams.n - rsParams.k)(
+                       0.U(rsParams.symbolWidth.W))))
 
-  val theta = evalBRegs(p.n - p.k)
-  val gamma = evalARegs(p.n - p.k)
+  val theta = evalBRegs(rsParams.n - rsParams.k)
+  val gamma = evalARegs(rsParams.n - rsParams.k)
 
-  val degA = RegInit((p.n - p.k).asUInt())
+  // The degree of the polynomial formed by evalARegs
+  val degA = RegInit((rsParams.n - rsParams.k).asUInt())
+  // The degree of the polynomial formed by eValBRegs
   val degB = RegInit(0.U)
 
   io.in.ready := (state === sInit)
 
   // Buffer input data for later correction
-  // Note: only need to buffer up to p.k symbols -- which is the length
+  // Note: only need to buffer up to k symbols -- which is the length
   // of the original code sequence
-  val inputQueue = Module(new Queue(UInt(p.symbolWidth.W), p.k))
+  val inputQueue = Module(new Queue(UInt(rsParams.symbolWidth.W), rsParams.k))
   inputQueue.io.enq.bits := io.in.bits
-  inputQueue.io.enq.valid := io.in.fire() && (inCntVal < p.k.asUInt())
+  inputQueue.io.enq.valid := io.in.fire() && (inCntVal < rsParams.k.asUInt())
 
+  // We are going to evaluate the syndrome polynomial with the rootVals
   syndCmp.io.eVals := (0 until syndCmp.getNumCells()).map(x => rootVals(x))
   syndCmp.io.in.bits := io.in.bits
   syndCmp.io.in.valid := io.in.fire()
   syndCmp.io.out.ready := (state === sSyndromeCmp)
 
+  // We are going to evaluate the syndrome polynomial with the rootVals
   chienSearch.io.eVals := (0 until chienSearch.getNumCells()).map(
                            x => rootVals(numRoots - 1 - x))
   chienSearch.io.in.valid := (state === sChienSearch)
-  chienSearch.io.in.bits := Mux(state === sChienSearch, locARegs(p.n - p.k), 0.U)
+  chienSearch.io.in.bits := Mux(state === sChienSearch,
+                              locARegs(rsParams.n - rsParams.k), 0.U)
   chienSearch.io.out.ready := (state === sChienSearch)
   val chienOut = RegNext(chienSearch.io.out.bits)
   val (chienSOutCntVal, chienSOutCntDone) = Counter(chienSearch.io.out.fire(),
@@ -195,54 +245,80 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
   // This queue stores the roots of the error location polynomial
   // formed by locARegs
-  val chienQueue = Module(new Queue(UInt(p.symbolWidth.W), p.n - p.k))
+  val chienQueue = Module(new Queue(UInt(rsParams.symbolWidth.W),
+                     rsParams.n - rsParams.k))
   chienQueue.io.enq.bits := chienSOutCntVal + 1.U
-  // Don't bother fixing parity symbols (up to p.k -- which is the length
+  // Don't bother fixing parity symbols (up to k -- which is the length
   // of the original messages is sufficient.). It does not make sense
   // to carry parity symbols forward at this point
   chienQueue.io.enq.valid := (chienSearch.io.out.bits === 0.U) &&
                              (state === sChienSearch) &&
-                             (chienSOutCntVal + 1.U <= p.k.asUInt()) &&
+                             (chienSOutCntVal + 1.U <= rsParams.k.asUInt()) &&
                              (chienSearch.io.out.fire())
 
-  val evalPolyCmp = Module(new PolyCompute(p, 1, p.n - p.k + 1))
-  val locDerivCmp = Module(new PolyCompute(p, 1, p.n - p.k))
+  // This PolCompute is used for evaluating the polynomial
+  // formed by evalARegs
+  // It has one cell (because we only need to evaluate it
+  // at a rootVal corresponding to the error location at a time)
+  // It has n - k + 1 inputs -- which is the number of evalARegs
+  val evalPolyCmp = Module(new PolyCompute(rsParams, 1,
+                                           rsParams.n - rsParams.k + 1))
 
+  // This PolCompute is used for evaluating the polynomial
+  // formed by locDerivRegs
+  // It has one cell (because we only need to evaluate it
+  // at a rootVal corresponding to the error location at a time)
+  // It has n - k inputs -- which is the number of locDerivRegs
+  val locDerivCmp = Module(new PolyCompute(rsParams, 1,
+                                           rsParams.n - rsParams.k))
+
+  // Keeping track of when the poly computation starts
   val startEvalPolyCmp = RegInit(false.B)
   val startLocDerivCmp = RegInit(false.B)
 
-  val locRootIdx = RegInit(0.U(32.W))
-  val evalResult = RegInit(0.U(p.symbolWidth.W))
-  val locDerivResult = RegInit(0.U(p.symbolWidth.W))
+  val errorLoc = RegInit(0.U(32.W))
+  val evalResult = RegInit(0.U(rsParams.symbolWidth.W))
+  val locDerivResult = RegInit(0.U(rsParams.symbolWidth.W))
   val evalResultFired = RegInit(false.B)
   val locDerivResultFired = RegInit(false.B)
   val (evalInCntVal, evalInCntDone) = Counter(evalPolyCmp.io.in.fire(),
-                                              p.n - p.k + 1)
+                                              rsParams.n - rsParams.k + 1)
   val (locDerivInCntVal, locDerivInCntDone) = Counter(locDerivCmp.io.in.fire(),
-                                                      p.n - p.k)
+                                                      rsParams.n - rsParams.k)
 
-  val rootValIdx = numRoots.asUInt() - 1.U - (p.n.asUInt() - locRootIdx)
-  val denom = p.GFOp.mul(locDerivResult, rootVals(rootValIdx))
-  val errorMagReg = RegNext(p.GFOp.mul(evalResult, p.GFOp.inv(denom)))
+  val rootValIdx = numRoots.asUInt() - 1.U - (rsParams.n.asUInt() - errorLoc)
+
+  // error magnitude = (eval) / (locDeriv * root)
+  // This can introduce a long critical path
+  val denom = rsParams.GFOp.mul(locDerivResult, rootVals(rootValIdx))
+  val errorMagReg = RegNext(rsParams.GFOp.mul(evalResult,
+                                              rsParams.GFOp.inv(denom)))
 
   evalPolyCmp.io.eVals := (0 until evalPolyCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
   evalPolyCmp.io.in.valid := startEvalPolyCmp
-  evalPolyCmp.io.in.bits := evalARegs(p.n - p.k)
+  evalPolyCmp.io.in.bits := evalARegs(rsParams.n - rsParams.k)
   evalPolyCmp.io.out.ready := state === sErrorCorrection2
 
   locDerivCmp.io.eVals := (0 until locDerivCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
   locDerivCmp.io.in.valid := startLocDerivCmp
-  locDerivCmp.io.in.bits := locDerivRegs(p.n - p.k - 1)
+  locDerivCmp.io.in.bits := locDerivRegs(rsParams.n - rsParams.k - 1)
   locDerivCmp.io.out.ready := state === sErrorCorrection2
 
+  // This condition is true when the eval polynomial and the locDeriv polynomial
+  // have been computed
   val correctCnd = (state === sErrorCorrection0) &&
                    (evalResultFired && locDerivResultFired)
-  val (outCntVal, outCntDone) = Counter(io.out.fire(), p.k)
+  val (outCntVal, outCntDone) = Counter(io.out.fire(), rsParams.k)
 
+  // Here we try to emit the output and correct them if needed
+  // At each cycle, a new output is fired. If it is correct
+  // (determined by index position not matching errorLoc), it is
+  // fired as is. If not, we will halt the output generation until
+  // we can compute the error magnitude and fix the output
   inputQueue.io.deq.ready := correctCnd || (state === sErrorCorrection1 &&
-                                             outCntVal =/= locRootIdx - 1.U)
+                                             outCntVal =/= errorLoc - 1.U)
   io.out.valid := inputQueue.io.deq.fire()
   io.out.bits := inputQueue.io.deq.bits ^ errorMagReg
 
@@ -256,13 +332,13 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       locBRegs.foreach (_ := 0.U)
       locDerivRegs.foreach (_ := 0.U)
 
-      evalARegs(p.n - p.k) := 1.U
+      evalARegs(rsParams.n - rsParams.k) := 1.U
       locBRegs(0) := 1.U
 
-      degA := (p.n - p.k).asUInt()
+      degA := (rsParams.n - rsParams.k).asUInt()
       degB := 0.U
 
-      locRootIdx := 0.U
+      errorLoc := 0.U
       evalResult := 0.U
       locDerivResult := 0.U
       evalResultFired := false.B
@@ -279,6 +355,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
           degB := syndCmpOutCntVal
         }
 
+        // Store the results of syndrome computation to evalBRegs
         evalBRegs.dropRight(1).foldRight(syndCmp.io.out.bits) {
           case (nextReg, prevReg) => {
             nextReg := prevReg
@@ -292,8 +369,10 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       }
     }
 
+    // This is based on the Modified Euclidean Algorithm
+    // The final results are stored in evalARegs and locARegs
     is (sKeyEquationSolver) {
-      when (degA < ((p.n - p.k) / 2).asUInt()) {
+      when (degA < ((rsParams.n - rsParams.k) / 2).asUInt()) {
         state := sChienSearch
         // odd-th coefficients are zeros due to finite-field
         locDerivRegs.zipWithIndex.filter(_._2 % 2 == 1).map { x => 0.U }
@@ -303,7 +382,16 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
           zipWithIndex.filter(_._2 % 2 == 0).map { x => x._1._1 := x._1._2 }
       }
       .otherwise {
+        // This simply computes the polynomial division
+        // using cross multiplications. Avoid inversion
+        // because it is costly
+        // Note that right now this implmentation requires
+        // variant cycles based on the input; it may be
+        // susceptible to infinite loop
+        // TODO: ensure that it won't happen
+        // TODO: A better solution is to use an latency-invariant algorithm
 
+        // Swap the dividend and divisor
         when (degA < degB && theta =/= 0.U && gamma =/= 0.U) {
           evalARegs.zip(evalBRegs).map {
             case (aReg, bReg) => {
@@ -326,13 +414,15 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
           when (theta =/= 0.U && gamma =/= 0.U) {
             evalARegs.zip(evalBRegs).map {
               case (aReg, bReg) => {
-                aReg := p.GFOp.mul(theta, aReg) ^ p.GFOp.mul(gamma, bReg)
+                aReg := rsParams.GFOp.mul(theta, aReg) ^
+                        rsParams.GFOp.mul(gamma, bReg)
               }
             }
 
             locARegs.zip(locBRegs).map {
               case (aReg, bReg) => {
-                aReg := p.GFOp.mul(theta, aReg) ^ p.GFOp.mul(gamma, bReg)
+                aReg := rsParams.GFOp.mul(theta, aReg) ^
+                        rsParams.GFOp.mul(gamma, bReg)
               }
             }
           }
@@ -355,7 +445,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
         when (gamma === 0.U) {
           degA := degA - 1.U
-          when (degA - 1.U >= ((p.n - p.k) / 2).asUInt()) {
+          when (degA - 1.U >= ((rsParams.n - rsParams.k) / 2).asUInt()) {
             evalARegs.foldLeft(0.U) {
               case (prev, next) => {
                 next := prev
@@ -375,7 +465,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
 
     is (sChienSearch) {
       when (chienSearch.io.in.fire()) {
-        val lastVal = locARegs(p.n - p.k)
+        val lastVal = locARegs(rsParams.n - rsParams.k)
         locARegs.foldLeft(lastVal) {
           (prevReg, nextReg) => {
             nextReg := prevReg
@@ -395,7 +485,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       errorMagReg := 0.U
 
       when (chienQueue.io.deq.fire()) {
-        locRootIdx := chienQueue.io.deq.bits
+        errorLoc := chienQueue.io.deq.bits
       }
 
       when (outCntDone) {
@@ -406,26 +496,28 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
       }
     }
 
+    // Check whether the current output index matches the error location
     is (sErrorCorrection1) {
       errorMagReg := 0.U
 
       when (outCntDone) {
         state := sInit
       }
-      .elsewhen (outCntVal === (locRootIdx - 1.U)) {
+      .elsewhen (outCntVal === (errorLoc - 1.U)) {
         state := sErrorCorrection2
         startEvalPolyCmp := true.B
         startLocDerivCmp := true.B
       }
     }
 
+    // Ignite the polynomial computation of eval and locDeriv
     is (sErrorCorrection2) {
       when (evalPolyCmp.io.in.fire()) {
         when (evalInCntDone) {
           startEvalPolyCmp := false.B
         }
 
-        val lastVal = evalARegs(p.n - p.k)
+        val lastVal = evalARegs(rsParams.n - rsParams.k)
         evalARegs.foldLeft(lastVal) {
           (prevReg, nextReg) => {
             nextReg := prevReg
@@ -439,7 +531,7 @@ class RSDecoder(val p: RSParams = new RSParams()) extends Module {
           startLocDerivCmp := false.B
         }
 
-        val lastVal = locDerivRegs(p.n - p.k - 1)
+        val lastVal = locDerivRegs(rsParams.n - rsParams.k - 1)
         locDerivRegs.foldLeft(lastVal) {
           (prevReg, nextReg) => {
             nextReg := prevReg
@@ -481,27 +573,41 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
     val master = new CREECBus(busParams)
   })
 
+  // *numItems* denotes the number of slave inputs to be accepted
+  // One slave input represents *dataWidth* / *symbolWidth* symbols
+  // If the decoder requires more symbols than one slave input can represent,
+  // we need to accept multiple slave inputs
+  // For example, if we have RS(16, 8, 8), meaning 16 symbols with 8 original
+  // symbols of 8-bit, we need to accept *two* 64-bit input at the slave port
+  // for decoding
   val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
+
+  // There are four states
+  //  - sRecvHeader: for accepting the header from the slave port
+  //  - sRecvData: for accepting the data from the slave port
+  //  - sCompute: RS deconding
+  //  - sDone: send the decoded data to the master port
   val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
   val state = RegInit(sRecvHeader)
 
-  // TODO: handle the metadata appropriately
+  // TODO: Don't know how to handle metadata for now
   io.master.header.bits.compressed := false.B
   io.master.header.bits.ecc := true.B
   io.master.header.bits.encrypted := false.B
 
-  io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  // Modify the beat number based on Reed-Solomon code configuration
-  // OMG division!!
-  // Hopefully numItems will always be a power of two
-  // TODO: Dealing with odd number of beats. Hopefully never
+  // For the header, simply forward it to the master port.
+  // However, we need to modify the beat length based on RSParams
+  // because of the newly generated parity symbols.
+  // TODO: Dealing with odd number of beats. Hopefully never.
+  // Quirk: plus 1 (minus 1) because of the CREECBus convention
+  // we are following (e.g., *len* - 1 means a beat length of *len*)
   io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) /
                                        numItems.asUInt() - 1.U)
   io.master.header.bits.id := RegNext(io.slave.header.bits.id)
+  io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
   io.master.header.valid := RegNext(io.slave.header.valid)
 
-  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
-
+  // TODO: Don't know how to handle id for now
   io.master.data.bits.id := RegNext(io.slave.data.bits.id)
 
   val dec = Module(new RSDecoder(rsParams))
@@ -517,6 +623,7 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
 
   val numBeats = RegInit(0.U(32.W))
 
+  // Various counters for keeping track of progress
   val (decInCntVal, decInCntDone) = Counter(dec.io.in.fire(), rsParams.n)
   val (decOutCntVal, decOutCntDone) = Counter(dec.io.out.fire(), rsParams.k)
   val (itemCntVal, itemCntDone) = Counter(io.slave.data.fire(), numItems)
@@ -529,6 +636,7 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
 
   switch (state) {
     is (sRecvHeader) {
+      // Properly reset registers to prepare for the next input
       beatCnt := 0.U
       dataInReg := 0.U
       dataOutReg := 0.U
@@ -548,12 +656,15 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
         // May take multiple cycles to receive input data
         // if it is larger than the bus data width
         when (itemCntDone) {
+          // start the decoding process once we receive enough input data
           state := sCompute
         }
       }
     }
 
     is (sCompute) {
+      // Slice the dataInReg register into smaller chunks of size
+      // *symbolWidth* for the decoding process
       when (dec.io.in.fire()) {
         dataInReg := (dataInReg >> rsParams.symbolWidth)
       }
@@ -562,6 +673,10 @@ class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
         when (decOutCntDone) {
           state := sDone
         }
+
+        // Note the endianness
+        // The first decoding output is the LSB
+        // The last decoding output is the MSB
         val shiftAmt = busParams.dataWidth - rsParams.symbolWidth
         dataOutReg := (dataOutReg >> rsParams.symbolWidth) |
           (dec.io.out.bits << shiftAmt)

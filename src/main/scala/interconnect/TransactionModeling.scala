@@ -59,20 +59,30 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   var tickNum = 0
   val thisClass = this.getClass.getSimpleName
 
-  def pushTransactions(ts: Seq[I]): SoftwareModel[I, O] = {
+  /**
+    * Queue up transactions internally, but don't process them.
+    * @param ts Input transactions to queue
+    * @return This software model to chain with other functions
+    */
+  final def pushTransactions(ts: Seq[I]): SoftwareModel[I, O] = {
     inputQueue.enqueue(ts:_*)
     self
   }
 
-  def pullTransactions(): Seq[O] = {
+  /**
+    * Pull output transactions that have been processed by this software model.
+    * @return Output transactions
+    */
+  final def pullTransactions(): Seq[O] = {
     outputQueue.dequeueAll(_ => true)
   }
 
-  def nothingToProcess: Boolean = {
-    inputQueue.isEmpty && childModels.forall(m => m.nothingToProcess)
-  }
-
-  def advanceSimulation(print: Boolean = false): SoftwareModel[I, O] = {
+  /**
+    * Process all the input transactions queued up in this software model and write to the outputQueue
+    * @param print Prints out tick numbers and received/sent transactions for all childModels
+    * @return This software model to chain with other functions
+    */
+  final def advanceSimulation(print: Boolean = false): SoftwareModel[I, O] = {
     while (!nothingToProcess) {
       if (print) println(s"TICK $tickNum")
       self.tick(print)
@@ -81,7 +91,27 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
     self
   }
 
-  def process(in: I) : Seq[O]
+  def nothingToProcess: Boolean = {
+    inputQueue.isEmpty && childModels.forall(m => m.nothingToProcess)
+  }
+
+  /**
+    * Shorthand for pushTransactions -> advanceSimulation -> pullTransactions
+    * @return The output transactions produced by the model after queuing $ts and advancing simulation
+    */
+  final def processTransactions(ts: Seq[I], print: Boolean = false): Seq[O] = {
+    self.pushTransactions(ts).advanceSimulation(print).pullTransactions()
+  }
+
+  /**
+    * Implement this function to create a concrete SoftwareModel
+    * A software model should accept an input transaction of type I, perform some computation.
+    * and return a sequence of none, one, or many output transactions that were produced on this tick.
+    * It is acceptable to maintain internal mutable state in a SoftwareModel
+    * @param in The input transaction to process
+    * @return The processed output of your model
+    */
+  protected def process(in: I) : Seq[O]
 
   // TODO: This def should ideally be final
   def tick(print: Boolean = false): Unit = {

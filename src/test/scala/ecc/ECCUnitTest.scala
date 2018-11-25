@@ -4,7 +4,9 @@ import scala.math
 import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
-// This only tests the Reed-Solomon encoder
+// These PeekPoke unit testers are for simple functional verification
+// For more advanced tests, check out the CREECBusECC test
+
 class RSEncoderUnitTester(c: RSEncoder,
   trials: List[(Seq[Int], Array[Int], Seq[Int])],
   verbose: Boolean = false) extends PeekPokeTester(c) {
@@ -28,11 +30,6 @@ class RSEncoderUnitTester(c: RSEncoder,
     var inCnt = 0
 
     while (numCycles < maxCycles && outCnt < c.rsParams.n) {
-      numCycles += 1
-      if (numCycles >= maxCycles) {
-        expect(false, "timeout!")
-      }
-
       if (inCnt == c.rsParams.k) {
         poke(c.io.in.valid, false)
       }
@@ -49,7 +46,12 @@ class RSEncoderUnitTester(c: RSEncoder,
         outCnt += 1
       }
 
+      numCycles += 1
       step(1)
+    }
+
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
     }
 
     if (verbose) {
@@ -85,18 +87,13 @@ class RSDecoderUnitTester(c: RSDecoder,
     var outCnt = 0
     var inCnt = 0
 
-    while (numCycles < maxCycles && outCnt < c.p.k) {
-      numCycles += 1
-      if (numCycles >= maxCycles) {
-        expect(false, "timeout!")
-      }
-
-      if (inCnt == c.p.n) {
+    while (numCycles < maxCycles && outCnt < c.rsParams.k) {
+      if (inCnt == c.rsParams.n) {
         poke(c.io.in.valid, false)
       }
 
       if (peek(c.io.in.valid) == BigInt(1) &&
-          peek(c.io.in.ready) == BigInt(1) && inCnt < c.p.n) {
+          peek(c.io.in.ready) == BigInt(1) && inCnt < c.rsParams.n) {
         poke(c.io.in.bits, inSyms(inCnt))
         inCnt += 1
       }
@@ -107,33 +104,26 @@ class RSDecoderUnitTester(c: RSDecoder,
         outCnt += 1
       }
 
+      numCycles += 1
       step(1)
     }
 
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
+    }
+
     if (verbose) {
-      for (i <- 0 until c.p.k) {
+      for (i <- 0 until c.rsParams.k) {
         printf("inSyms(%d) = %d swCorrectedSyms(%d) = %d hwCorrectedSyms(%d) = %d\n",
           i, inSyms(i), i, swCorrectedSyms(i), i, hwCorrectedSyms(i))
       }
     }
 
-    expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.p.k),
+    expect(hwCorrectedSyms == swCorrectedSyms.slice(0, c.rsParams.k),
            "symbols do not match!")
   }
 }
 
-// This will test the RSEncoder block with the CREECBus
-// This test assumes that the upstream block sends a
-// write request to the ECC block. The ECC block generates
-// the parity symbols and then sends a write request to
-// the downstream block.
-// Apparently, RS(16, 8) of 8-bit symbols is chosen. It means
-// the data bus of 64-bit will be decomposed into eight 8-bit symbols
-// We need to generate 8 parity symbols, which is another 64-bit data
-// The flow goes like this:
-// Upstream --> 64-bit slave wrData --> ECC Computation --> 128-bit master wrData --> Downstream
-// In this case, two bus transactions will be needed to send the data (of 64-bit each) to the downstream block
-// I have no idea how good this scheme is, or is it even practical.
 class ECCEncoderTopUnitTester(c: ECCEncoderTop,
   trials: List[(Seq[Int], Array[Int], Seq[Int])],
   verbose: Boolean = false) extends PeekPokeTester(c) {
@@ -153,6 +143,8 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
     poke(c.io.master.data.ready, true)
 
     // TODO: test with multiple data beats
+    // Note: multiple-beat test should be taken care of by the CREECBus
+    // Transaction modeling test
     poke(c.io.slave.header.bits.len, 1)
 
     // Pack all input symbols into a single data item
@@ -170,11 +162,6 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
 
     // Wait until getting enough data or timeout
     while (numCycles < maxCycles && outputs.size < swSyms.size) {
-      numCycles += 1
-      if (numCycles >= maxCycles) {
-        expect(false, "timeout!")
-      }
-
       if (peek(c.io.master.data.valid) == BigInt(1) &&
           peek(c.io.master.data.ready) == BigInt(1)) {
         var result: BigInt = peek(c.io.master.data.bits.data)
@@ -185,7 +172,12 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
         }
       }
 
+      numCycles += 1
       step(1)
+    }
+
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
     }
 
     hwSyms = hwSyms ++ outputs
@@ -220,6 +212,8 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
     poke(c.io.master.data.ready, true)
 
     // TODO: test with multiple data beats
+    // Note: multiple-beat test should be taken care of by the CREECBus
+    // Transaction modeling test
     val numBeats = c.rsParams.n * c.rsParams.symbolWidth / c.busParams.dataWidth
     poke(c.io.slave.header.bits.len, numBeats)
 
@@ -232,11 +226,6 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
 
     // Wait until getting enough data or timeout
     while (numCycles < maxCycles && outputs.size < c.rsParams.k) {
-      numCycles += 1
-      if (numCycles >= maxCycles) {
-        expect(false, "timeout!")
-      }
-
       if (peek(c.io.slave.data.valid) == BigInt(1) &&
           peek(c.io.slave.data.ready) == BigInt(1)) {
         var inputBits: BigInt = 0
@@ -260,7 +249,12 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
         }
       }
 
+      numCycles += 1
       step(1)
+    }
+
+    if (numCycles >= maxCycles) {
+      expect(false, "timeout!")
     }
 
     hwCorrectedSyms = hwCorrectedSyms ++ outputs

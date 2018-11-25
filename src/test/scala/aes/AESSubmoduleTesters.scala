@@ -467,8 +467,8 @@ class SubKeyScheduleTimeInterleaveTester(dut: KeyScheduleTestWrapper) extends Pe
     expect(false, "Waited too long")
   }
 
-  expect(dut.io.key_time_ready, 1, "key_time not ready")
-  expect(dut.io.key_time_valid, 1, "key_time should be valid")
+  expect(dut.io.key_time_ready, 1, "key_time should be ready")
+  expect(dut.io.key_time_valid, 0, "key_time should not be valid")
 
   poke(dut.io.key_in_top, key)
   poke(dut.io.key_in_valid, 1)

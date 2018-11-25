@@ -157,7 +157,7 @@ class AES128TimeInterleaveTester(dut: AES128TimeInterleave, trial: AESTrial) ext
   */
 object AES128TimeInterleaveTester {
   def apply(trial: AESTrial): Boolean = {
-    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AES128TimeInterleave()) {
+    chisel3.iotesters.Driver.execute(Array("-tbn", "treadle", "-fiwv"), () => new AES128TimeInterleave()) {
       c => new AES128TimeInterleaveTester(c, trial)
     }
   }
@@ -165,7 +165,7 @@ object AES128TimeInterleaveTester {
 
 object AES128Tester {
   def apply(trial: AESTrial): Boolean = {
-    chisel3.iotesters.Driver.execute(Array("-tbn", "firrtl", "-fiwv"), () => new AES128()) {
+    chisel3.iotesters.Driver.execute(Array("-tbn", "treadle", "-fiwv"), () => new AES128()) {
       c => new AES128Tester(c, trial)
     }
   }

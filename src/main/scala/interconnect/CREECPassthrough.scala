@@ -28,6 +28,7 @@ class CREECPassthroughModel(p: BusParams) extends SoftwareModel[CREECLowLevelTra
       case t: CREECHeaderBeat => Seq(t)
       case t: CREECDataBeat =>
         val newData = bytesToBigInt(t.data) + 1
+        // Take care of potential overflow TODO: maybe add intentional truncation support to bigIntToBytes
         val newDataBytes = bigIntToBytes(newData, p.bytesPerBeat + 1)
         Seq(CREECDataBeat(newDataBytes.slice(0, p.bytesPerBeat), 0)(p))
     }
