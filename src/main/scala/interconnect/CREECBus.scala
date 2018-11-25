@@ -45,7 +45,7 @@ class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   // Sector (512B) address (2TB addressable)
   val addr = UInt(32.W)
 
-  def Lit(len: UInt, id: UInt, compressed: Bool, encrypted: Bool, ecc: Bool, addr: UInt) = {
+  def Lit(len: UInt, id: UInt, compressed: Bool, encrypted: Bool, ecc: Bool, addr: UInt): TransactionHeader.this.type = {
     import chisel3.core.BundleLitBinding
     val clone = cloneType
     clone.selfBind(BundleLitBinding(Map(
@@ -64,7 +64,7 @@ class TransactionData(val p: BusParams = new CREECBusParams) extends Bundle {
   val data = UInt(p.dataWidth.W)
   val id = UInt(p.maxInFlight.W)
 
-  def Lit(data: UInt, id: UInt) = {
+  def Lit(data: UInt, id: UInt): TransactionData.this.type = {
     import chisel3.core.BundleLitBinding
     val clone = cloneType
     clone.selfBind(BundleLitBinding(Map(

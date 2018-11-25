@@ -1,7 +1,6 @@
 package interconnect
 
 import scala.collection.mutable
-import java.nio._
 
 /**
   * A Transaction is an abstract notion of a chunk of data and control that a block can process at a time
@@ -62,7 +61,7 @@ abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
   val childModels: mutable.ListBuffer[SoftwareModel[_,_]] = mutable.ListBuffer()
   var tickNum = 0
-  val thisClass = this.getClass.getSimpleName
+  val thisClass: String = this.getClass.getSimpleName
 
   /**
     * Queue up transactions internally, but don't process them.

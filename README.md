@@ -66,6 +66,11 @@ You can use the `-w` watch command for tests as well.
 ## Modules
 
 ### Compression
+Module files are in `src/main/scala/compression`. Tests are in `src/test/scala/compression`.
+
+[Module Details](src/main/scala/compression/README.md)
+
+[Test Details](src/test/scala/compression/README.md)
 
 ### AES
 Module files are in `src/main/scala/aes`. Tests are in `src/test/scala/aes`.
