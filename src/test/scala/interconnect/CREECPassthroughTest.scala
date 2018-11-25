@@ -59,7 +59,7 @@ class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
       new CREECPassthroughModel(busParams) ->
       new CREECPassthroughModel(busParams) ->
       new CREECLowToHighModel(busParams)
-    val out = model.processTransactions(highTx, true)
+    val out = model.processTransactions(highTx)
     assert(out == highTxChainedPassthroughsOutGold)
   }
 

@@ -1,0 +1,419 @@
+﻿The Project Gutenberg EBook of The Republic, by Plato
+
+This eBook is for the use of anyone anywhere at no cost and with
+almost no restrictions whatsoever.  You may copy it, give it away or
+re-use it under the terms of the Project Gutenberg License included
+with this eBook or online at www.gutenberg.org
+
+
+Title: The Republic
+
+Author: Plato
+
+Translator: B. Jowett
+
+Posting Date: August 27, 2008 [EBook #1497]
+Release Date: October, 1998
+Last Updated: June 22, 2016
+
+Language: English
+
+
+*** START OF THIS PROJECT GUTENBERG EBOOK THE REPUBLIC ***
+
+
+
+
+Produced by Sue Asscher
+
+
+
+
+
+THE REPUBLIC
+
+By Plato
+
+
+Translated by Benjamin Jowett
+
+
+Note: The Republic by Plato, Jowett, etext #150
+
+
+
+
+INTRODUCTION AND ANALYSIS.
+
+The Republic of Plato is the longest of his works with the exception
+of the Laws, and is certainly the greatest of them. There are nearer
+approaches to modern metaphysics in the Philebus and in the Sophist; the
+Politicus or Statesman is more ideal; the form and institutions of
+the State are more clearly drawn out in the Laws; as works of art, the
+Symposium and the Protagoras are of higher excellence. But no other
+Dialogue of Plato has the same largeness of view and the same perfection
+of style; no other shows an equal knowledge of the world, or contains
+more of those thoughts which are new as well as old, and not of one age
+only but of all. Nowhere in Plato is there a deeper irony or a greater
+wealth of humour or imagery, or more dramatic power. Nor in any other of
+his writings is the attempt made to interweave life and speculation, or
+to connect politics with philosophy. The Republic is the centre around
+which the other Dialogues may be grouped; here philosophy reaches the
+highest point (cp, especially in Books V, VI, VII) to which ancient
+thinkers ever attained. Plato among the Greeks, like Bacon among the
+moderns, was the first who conceived a method of knowledge, although
+neither of them always distinguished the bare outline or form from
+the substance of truth; and both of them had to be content with an
+abstraction of science which was not yet realized. He was the greatest
+metaphysical genius whom the world has seen; and in him, more than in
+any other ancient thinker, the germs of future knowledge are contained.
+The sciences of logic and psychology, which have supplied so many
+instruments of thought to after-ages, are based upon the analyses
+of Socrates and Plato. The principles of definition, the law of
+contradiction, the fallacy of arguing in a circle, the distinction
+between the essence and accidents of a thing or notion, between means
+and ends, between causes and conditions; also the division of the mind
+into the rational, concupiscent, and irascible elements, or of pleasures
+and desires into necessary and unnecessary--these and other great
+forms of thought are all of them to be found in the Republic, and were
+probably first invented by Plato. The greatest of all logical truths,
+and the one of which writers on philosophy are most apt to lose sight,
+the difference between words and things, has been most strenuously
+insisted on by him (cp. Rep.; Polit.; Cratyl. 435, 436 ff), although he
+has not always avoided the confusion of them in his own writings (e.g.
+Rep.). But he does not bind up truth in logical formulae,--logic is
+still veiled in metaphysics; and the science which he imagines to
+'contemplate all truth and all existence' is very unlike the doctrine of
+the syllogism which Aristotle claims to have discovered (Soph. Elenchi,
+33. 18).
+
+Neither must we forget that the Republic is but the third part of a
+still larger design which was to have included an ideal history of
+Athens, as well as a political and physical philosophy. The fragment of
+the Critias has given birth to a world-famous fiction, second only in
+importance to the tale of Troy and the legend of Arthur; and is said as
+a fact to have inspired some of the early navigators of the sixteenth
+century. This mythical tale, of which the subject was a history of the
+wars of the Athenians against the Island of Atlantis, is supposed to be
+founded upon an unfinished poem of Solon, to which it would have stood
+in the same relation as the writings of the logographers to the poems of
+Homer. It would have told of a struggle for Liberty (cp. Tim. 25 C), intended
+to represent the conflict of Persia and Hellas. We may judge from the
+noble commencement of the Timaeus, from the fragment of the Critias
+itself, and from the third book of the Laws, in what manner Plato would
+have treated this high argument. We can only guess why the great design
+was abandoned; perhaps because Plato became sensible of some incongruity
+in a fictitious history, or because he had lost his interest in it, or
+because advancing years forbade the completion of it; and we may please
+ourselves with the fancy that had this imaginary narrative ever been
+finished, we should have found Plato himself sympathising with the
+struggle for Hellenic independence (cp. Laws  iii. 698 ff.), singing a
+hymn of triumph over Marathon and Salamis, perhaps making the reflection
+of Herodotus (v. 78) where he contemplates the growth of the Athenian
+empire--'How brave a thing is freedom of speech, which has made the
+Athenians so far exceed every other state of Hellas in greatness!' or,
+more probably, attributing the victory to the ancient good order of
+Athens and to the favor of Apollo and Athene (cp. Introd. to Critias).
+
+Again, Plato may be regarded as the 'captain' ('arhchegoz') or leader
+of a goodly band of followers; for in the Republic is to be found the
+original of Cicero's De Republica, of St. Augustine's City of God,
+of the Utopia of Sir Thomas More, and of the numerous other imaginary
+States which are framed upon the same model. The extent to which
+Aristotle or the Aristotelian school were indebted to him in the
+Politics has been little recognised, and the recognition is the
+more necessary because it is not made by Aristotle himself. The two
+philosophers had more in common than they were conscious of; and
+probably some elements of Plato remain still undetected in Aristotle. In
+English philosophy too, many affinities may be traced, not only in the
+works of the Cambridge Platonists, but in great original writers like
+Berkeley or Coleridge, to Plato and his ideas. That there is a truth
+higher than experience, of which the mind bears witness to herself, is
+a conviction which in our own generation has been enthusiastically
+asserted, and is perhaps gaining ground. Of the Greek authors who at the
+Renaissance brought a new life into the world Plato has had the greatest
+influence. The Republic of Plato is also the first treatise upon
+education, of which the writings of Milton and Locke, Rousseau, Jean
+Paul, and Goethe are the legitimate descendants. Like Dante or Bunyan,
+he has a revelation of another life; like Bacon, he is profoundly
+impressed with the unity of knowledge; in the early Church he exercised
+a real influence on theology, and at the Revival of Literature on
+politics. Even the fragments of his words when 'repeated at second-hand'
+(Symp. 215 D) have in all ages ravished the hearts of men, who have seen
+reflected in them their own higher nature. He is the father of idealism
+in philosophy, in politics, in literature. And many of the latest
+conceptions of modern thinkers and statesmen, such as the unity of
+knowledge, the reign of law, and the equality of the sexes, have been
+anticipated in a dream by him.
+
+The argument of the Republic is the search after Justice, the nature
+of which is first hinted at by Cephalus, the just and blameless old
+man--then discussed on the basis of proverbial morality by Socrates and
+Polemarchus--then caricatured by Thrasymachus and partially explained
+by Socrates--reduced to an abstraction by Glaucon and Adeimantus, and
+having become invisible in the individual reappears at length in the
+ideal State which is constructed by Socrates. The first care of the
+rulers is to be education, of which an outline is drawn after the old
+Hellenic model, providing only for an improved religion and morality,
+and more simplicity in music and gymnastic, a manlier strain of poetry,
+and greater harmony of the individual and the State. We are thus led on
+to the conception of a higher State, in which 'no man calls anything his
+own,' and in which there is neither 'marrying nor giving in marriage,'
+and 'kings are philosophers' and 'philosophers are kings;' and there
+is another and higher education, intellectual as well as moral and
+religious, of science as well as of art, and not of youth only but of
+the whole of life. Such a State is hardly to be realized in this world
+and quickly degenerates. To the perfect ideal succeeds the government
+of the soldier and the lover of honour, this again declining into
+democracy, and democracy into tyranny, in an imaginary but regular order
+having not much resemblance to the actual facts. When 'the wheel has
+come full circle' we do not begin again with a new period of human life;
+but we have passed from the best to the worst, and there we end. The
+subject is then changed and the old quarrel of poetry and philosophy
+which had been more lightly treated in the earlier books of the Republic
+is now resumed and fought out to a conclusion. Poetry is discovered to
+be an imitation thrice removed from the truth, and Homer, as well as
+the dramatic poets, having been condemned as an imitator, is sent into
+banishment along with them. And the idea of the State is supplemented by
+the revelation of a future life.
+
+The division into books, like all similar divisions (Cp. Sir G.C. Lewis
+in the Classical Museum, vol. ii. p 1.), is probably later than the age of Plato. The
+natural divisions are five in number;--(1) Book I and the first half
+of Book II down to the paragraph beginning, 'I had always admired the
+genius of Glaucon and Adeimantus,' which is introductory; the first
+book containing a refutation of the popular and sophistical notions of
+justice, and concluding, like some of the earlier Dialogues, without
+arriving at any definite result. To this is appended a restatement of
+the nature of justice according to common opinion, and an answer is
+demanded to the question--What is justice, stripped of appearances? The
+second division (2) includes the remainder of the second and the whole
+of the third and fourth books, which are mainly occupied with the
+construction of the first State and the first education. The third
+division (3) consists of the fifth, sixth, and seventh books, in which
+philosophy rather than justice is the subject of enquiry, and the
+second State is constructed on principles of communism and ruled by
+philosophers, and the contemplation of the idea of good takes the place
+of the social and political virtues. In the eighth and ninth books (4)
+the perversions of States and of the individuals who correspond to them
+are reviewed in succession; and the nature of pleasure and the principle
+of tyranny are further analysed in the individual man. The tenth book
+(5) is the conclusion of the whole, in which the relations of philosophy
+to poetry are finally determined, and the happiness of the citizens
+in this life, which has now been assured, is crowned by the vision of
+another.
+
+Or a more general division into two parts may be adopted; the first
+(Books I - IV) containing the description of a State framed generally in
+accordance with Hellenic notions of religion and morality, while in the
+second (Books V - X) the Hellenic State is transformed into an
+ideal kingdom of philosophy, of which all other governments are the
+perversions. These two points of view are really opposed, and the
+opposition is only veiled by the genius of Plato. The Republic, like
+the Phaedrus (see Introduction to Phaedrus), is an imperfect whole; the
+higher light of philosophy breaks through the regularity of the
+Hellenic temple, which at last fades away into the heavens. Whether this
+imperfection of structure arises from an enlargement of the plan;
+or from the imperfect reconcilement in the writer's own mind of the
+struggling elements of thought which are now first brought together
+by him; or, perhaps, from the composition of the work at different
+times--are questions, like the similar question about the Iliad and
+the Odyssey, which are worth asking, but which cannot have a distinct
+answer. In the age of Plato there was no regular mode of publication,
+and an author would have the less scruple in altering or adding to a
+work which was known only to a few of his friends. There is no absurdity
+in supposing that he may have laid his labours aside for a time, or
+turned from one work to another; and such interruptions would be more
+likely to occur in the case of a long than of a short writing. In all
+attempts to determine the chronological order of the Platonic writings
+on internal evidence, this uncertainty about any single Dialogue being
+composed at one time is a disturbing element, which must be admitted
+to affect longer works, such as the Republic and the Laws, more than
+shorter ones. But, on the other hand, the seeming discrepancies of
+the Republic may only arise out of the discordant elements which the
+philosopher has attempted to unite in a single whole, perhaps without
+being himself able to recognise the inconsistency which is obvious to
+us. For there is a judgment of after ages which few great writers have
+ever been able to anticipate for themselves. They do not perceive the
+want of connexion in their own writings, or the gaps in their systems
+which are visible enough to those who come after them. In the beginnings
+of literature and philosophy, amid the first efforts of thought and
+language, more inconsistencies occur than now, when the paths of
+speculation are well worn and the meaning of words precisely defined.
+For consistency, too, is the growth of time; and some of the greatest
+creations of the human mind have been wanting in unity. Tried by this
+test, several of the Platonic Dialogues, according to our modern ideas,
+appear to be defective, but the deficiency is no proof that they were
+composed at different times or by different hands. And the supposition
+that the Republic was written uninterruptedly and by a continuous effort
+is in some degree confirmed by the numerous references from one part of
+the work to another.
+
+The second title, 'Concerning Justice,' is not the one by which the
+Republic is quoted, either by Aristotle or generally in antiquity, and,
+like the other second titles of the Platonic Dialogues, may therefore be
+assumed to be of later date. Morgenstern and others have asked
+whether the definition of justice, which is the professed aim, or the
+construction of the State is the principal argument of the work. The
+answer is, that the two blend in one, and are two faces of the same
+truth; for justice is the order of the State, and the State is the
+visible embodiment of justice under the conditions of human society. The
+one is the soul and the other is the body, and the Greek ideal of the
+State, as of the individual, is a fair mind in a fair body. In Hegelian
+phraseology the state is the reality of which justice is the idea. Or,
+described in Christian language, the kingdom of God is within, and yet
+developes into a Church or external kingdom; 'the house not made with
+hands, eternal in the heavens,' is reduced to the proportions of an
+earthly building. Or, to use a Platonic image, justice and the State are
+the warp and the woof which run through the whole texture. And when the
+constitution of the State is completed, the conception of justice is not
+dismissed, but reappears under the same or different names throughout
+the work, both as the inner law of the individual soul, and finally as
+the principle of rewards and punishments in another life. The virtues
+are based on justice, of which common honesty in buying and selling
+is the shadow, and justice is based on the idea of good, which is the
+harmony of the world, and is reflected both in the institutions of
+states and in motions of the heavenly bodies (cp. Tim. 47). The Timaeus,
+which takes up the political rather than the ethical side of the
+Republic, and is chiefly occupied with hypotheses concerning the outward
+world, yet contains many indications that the same law is supposed to
+reign over the State, over nature, and over man.
+
+Too much, however, has been made of this question both in ancient and
+modern times. There is a stage of criticism in which all works, whether
+of nature or of art, are referred to design. Now in ancient writings,
+and indeed in literature generally, there remains often a large element
+which was not comprehended in the original design. For the plan grows
+under the author's hand; new thoughts occur to him in the act of
+writing; he has not worked out the argument to the end before he begins.
+The reader who seeks to find some one idea under which the whole may be
+conceived, must necessarily seize on the vaguest and most general. Thus
+Stallbaum, who is dissatisfied with the ordinary explanations of the
+argument of the Republic, imagines himself to have found the true
+argument 'in the representation of human life in a State perfected by
+justice, and governed according to the idea of good.' There may be some
+use in such general descriptions, but they can hardly be said to express
+the design of the writer. The truth is, that we may as well speak of
+many designs as of one; nor need anything be excluded from the plan of
+a great work to which the mind is naturally led by the association of
+ideas, and which does not interfere with the general purpose. What kind
+or degree of unity is to be sought after in a building, in the plastic
+arts, in poetry, in prose, is a problem which has to be determined
+relatively to the subject-matter. To Plato himself, the enquiry 'what
+was the intention of the writer,' or 'what was the principal argument
+of the Republic' would have been hardly intelligible, and therefore had
+better be at once dismissed (cp. the Introduction to the Phaedrus).
+
+Is not the Republic the vehicle of three or four great truths which,
+to Plato's own mind, are most naturally represented in the form of the
+State? Just as in the Jewish prophets the reign of Messiah, or 'the day
+of the Lord,' or the suffering Servant or people of God, or the 'Sun of
+righteousness with healing in his wings' only convey, to us at least,
+their great spiritual ideals, so through the Greek State Plato reveals
+to us his own thoughts about divine perfection, which is the idea of
+good--like the sun in the visible world;--about human perfection, which
+is justice--about education beginning in youth and continuing in later
+years--about poets and sophists and tyrants who are the false teachers
+and evil rulers of mankind--about 'the world' which is the embodiment of
+them--about a kingdom which exists nowhere upon earth but is laid up
+in heaven to be the pattern and rule of human life. No such inspired
+creation is at unity with itself, any more than the clouds of heaven
+when the sun pierces through them. Every shade of light and dark, of
+truth, and of fiction which is the veil of truth, is allowable in a work
+of philosophical imagination. It is not all on the same plane; it easily
+passes from ideas to myths and fancies, from facts to figures of speech.
+It is not prose but poetry, at least a great part of it, and ought not
+to be judged by the rules of logic or the probabilities of history. The
+writer is not fashioning his ideas into an artistic whole; they take
+possession of him and are too much for him. We have no need therefore
+to discuss whether a State such as Plato has conceived is practicable or
+not, or whether the outward form or the inward life came first into the
+mind of the writer. For the practicability of his ideas has nothing to
+do with their truth; and the highest thoughts to which he attains may be
+truly said to bear the greatest 'marks of design'--justice more than the
+external frame-work of the State, the idea of good more than justice.
+The great science of dialectic or the organisation of ideas has no real
+content; but is only a type of the method or spirit in which the
+higher knowledge is to be pursued by the spectator of all time and
+all existence. It is in the fifth, sixth, and seventh books that Plato
+reaches the 'summit of speculation,' and these, although they fail to
+satisfy the requirements of a modern thinker, may therefore be regarded
+as the most important, as they are also the most original, portions of
+the work.
+
+It is not necessary to discuss at length a minor question which has
+been raised by Boeckh, respecting the imaginary date at which the
+conversation was held (the year 411 B.C. which is proposed by him will
+do as well as any other); for a writer of fiction, and especially a
+writer who, like Plato, is notoriously careless of chronology (cp. Rep.,
+Symp., 193 A, etc.), only aims at general probability. Whether all the persons
+mentioned in the Republic could ever have met at any one time is not
+a difficulty which would have occurred to an Athenian reading the work
+forty years later, or to Plato himself at the time of writing (any more
+than to Shakespeare respecting one of his own dramas); and need not
+greatly trouble us now. Yet this may be a question having no answer
+'which is still worth asking,' because the investigation shows that we
+cannot argue historically from the dates in Plato; it would be useless
+therefore to waste time in inventing far-fetched reconcilements of them
+in order to avoid chronological difficulties, such, for example, as
+the conjecture of C.F. Hermann, that Glaucon and Adeimantus are not the
+brothers but the uncles of Plato (cp. Apol. 34 A), or the fancy of Stallbaum
+that Plato intentionally left anachronisms indicating the dates at which
+some of his Dialogues were written.
+
+The principal characters in the Republic are Cephalus, Polemarchus,
+Thrasymachus, Socrates, Glaucon, and Adeimantus. Cephalus appears in the
+introduction only, Polemarchus drops at the end of the first argument,
+and Thrasymachus is reduced to silence at the close of the first book.
+The main discussion is carried on by Socrates, Glaucon, and Adeimantus.
+Among the company are Lysias (the orator) and Euthydemus, the sons of
+Cephalus and brothers of Polemarchus, an unknown Charmantides--these are
+mute auditors; also there is Cleitophon, who once interrupts, where, as
+in the Dialogue which bears his name, he appears as the friend and ally
+of Thrasymachus.
+
+Cephalus, the patriarch of the house, has been appropriately engaged
+in offering a sacrifice. He is the pattern of an old man who has almost
+done with life, and is at peace with himself and with all mankind. He
+feels that he is drawing nearer to the world below, and seems to linger
+around the memory of the past. He is eager that Socrates should come
+to visit him, fond of the poetry of the last generation, happy in the
+consciousness of a well-spent life, glad at having escaped from the
+tyranny of youthful lusts. His love of conversation, his affection, his
+indifference to riches, even his garrulity, are interesting traits of
+character. He is not one of those who have nothing to say, because their
+whole mind has been absorbed in making money. Yet he acknowledges
+that riches have the advantage of placing men above the temptation
+to dishonesty or falsehood. The respectful attention shown to him by
+Socrates, whose love of conversation, no less than the mission imposed
+upon him by the Oracle, leads him to ask questions of all men, young and
+old alike, should also be noted. Who better suited to raise the question
+of justice than Cephalus, whose life might seem to be the expression of
+it? The moderation with which old age is pictured by Cephalus as a very
+tolerable portion of existence is characteristic, not only of him,
+but of Greek feeling generally, and contrasts with the exaggeration of
+Cicero in the De Senectute. The evening of life is described by Plato
+in the most expressive manner, yet with the fewest possible touches. As
+Cicero remarks (Ep. ad Attic. iv. 16), the aged Cephalus would have been out of
+place in the discussion which follows, and which he could neither have
+understood nor taken part in without a violation of dramatic propriety
+(cp. Lysimachus in the Laches).
+
+His 'son and heir' Polemarchus has the frankness and impetuousness of
+youth; he is for detaining Socrates by force in the opening scene,
+and will not 'let him off' on the subject of women and children.
+Like Cephalus, he is limited in his point of view, and represents
+the proverbial stage of morality which has rules of life rather than
+principles; and he quotes Simonides (cp. Aristoph. Clouds) as his father
+had quoted Pindar. But after this he has no more to say; the answers
+which he makes are only elicited from him by the dialectic of Socrates.
+He has not yet experienced the influence of the Sophists like Glaucon
+and Adeimantus, nor is he sensible of the necessity of refuting them; he
+belongs to the pre-Socratic or pre-dialectical age. He is incapable of
+arguing, and is bewildered by Socrates to such a degree that he does not
+know what he is saying. He is made to admit that justice is a thief, and
+that the virtues follow the analogy of the arts. From his brother Lysias
+(contra Eratosth.) we learn that he fell a victim to the Thirty Tyrants,
+but no allusion is here made to his fate, nor to the circumstance that
+Cephalus and his family were of Syracusan origin, and had migrated from
+Thurii to Athens.

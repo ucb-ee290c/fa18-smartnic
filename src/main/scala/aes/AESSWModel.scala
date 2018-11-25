@@ -1,18 +1,12 @@
 package aes
 
-import scala.collection.mutable
-import java.nio._
-import interconnect.{SoftwareModel, CREECHighLevelTransaction, CREECLowLevelTransaction, BusParams, CREECHeaderBeat, CREECDataBeat}
-import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
+import interconnect._
 
 //TODO: test-time key updates
 
 // Based on https://gist.github.com/alexandru/ac1c01168710786b54b0
-import java.security.MessageDigest
-import java.util
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
-import org.apache.commons.codec.binary.Base64
 
 class AESEncryption {
   def encrypt(key: Seq[Byte], value: Seq[Byte]): Seq[Byte] = {
@@ -52,6 +46,7 @@ class CREECEncryptLowModel(p: BusParams) extends SoftwareModel[CREECLowLevelTran
         val rr = new CREECDataBeat(en, t.id)(p)
         Seq(rr)
       }
+      // TODO: this case can be omitted; the Scala compiler can figure out that you have exhaustively checked all cases
       case _ => {
         assert(false, "How did you make it here?")
         Seq(in)
@@ -73,6 +68,7 @@ class CREECDecryptLowModel(p: BusParams) extends SoftwareModel[CREECLowLevelTran
         val rr = new CREECDataBeat(de, t.id)(p)
         Seq(rr)
       }
+      // TODO: this case can be omitted; the Scala compiler can figure out that you have exhaustively checked all cases
       case _ => {
         assert(false, "How did you make it here?")
         Seq(in)
@@ -81,6 +77,8 @@ class CREECDecryptLowModel(p: BusParams) extends SoftwareModel[CREECLowLevelTran
   }
 }
 
+// TODO: this shouldn't depend on BusParams, but can require that in.data.length be a multiple of the AES block size
+// TODO: a custom encryption key can just be a constructor parameter for this class (with a default)
 class CREECEncryptHighModel(p: BusParams) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction]
   with HWKey {
   override def process(in: CREECHighLevelTransaction) : Seq[CREECHighLevelTransaction] ={

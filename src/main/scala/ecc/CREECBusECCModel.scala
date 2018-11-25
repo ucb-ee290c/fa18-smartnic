@@ -2,13 +2,10 @@
 
 package ecc
 
-import chisel3._
-import chisel3.util._
 import interconnect._
 
-class ECCEncoderTopModel(val rsParams: RSParams = new RSParams(),
-                         val busParams: CREECBusParams = new CREECBusParams()
-  ) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+class ECCEncoderTopModel(val rsParams: RSParams = new RSParams()) extends
+  SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
 
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {

@@ -14,8 +14,11 @@ abstract class CREECTransaction extends Transaction
   * A HighLevelTransaction represents a full sector write request or read response with all
   * the control and data bundled together. It is generic to any CREECBus parameterization.
   */
+// TODO: having to pass on addr inside every software model is verbose/boilerplate and not extensible to many additional fields
 case class CREECHighLevelTransaction(data: Seq[Byte], addr: BigInt) extends CREECTransaction {
-  assert(data.length % 8 == 0, "CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats")
+  // TODO: find a way to guarantee these types of constraints in the type system (Seq length with dependent types)
+  //assert(data.length % 8 == 0,
+    //s"CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats. Got $data")
 
   // TODO: Print bytes as unsigned
   //override def toString: String = super.toString
@@ -52,6 +55,8 @@ case class CREECDataBeat(data: Seq[Byte], id: Int)(implicit p: BusParams) extend
   */
 // TODO: this whole API should be based on streams with a synchronization API, not on ticks and processing
 // TODO: but this requires we first go through the struggle with this API and learn
+// TODO: we need a way to allow multiple typed input and output ports and have time synchronization between them
+  // for metadata purposes (e.g. paddedByte count on a padding model)
 abstract class SoftwareModel[I <: Transaction, O <: Transaction] { self =>
   val inputQueue: mutable.Queue[I] = mutable.Queue[I]()
   val outputQueue: mutable.Queue[O] = mutable.Queue[O]()
@@ -190,5 +195,16 @@ class CREECLowToHighModel(p: BusParams) extends SoftwareModel[CREECLowLevelTrans
           Seq()
         }
     }
+  }
+}
+
+/**
+  * Pads incoming high-level transactions a multiple of padBytes bytes with zero bytes
+  * @param padBytes Pad output data to a multiple of padBytes
+  */
+class CREECPadder(padBytes: Int = 8) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
+    val paddedData = in.data.padTo(math.ceil(in.data.length / padBytes.toFloat).toInt * padBytes, 0.asInstanceOf[Byte])
+    Seq(CREECHighLevelTransaction(paddedData.toList, in.addr))
   }
 }
