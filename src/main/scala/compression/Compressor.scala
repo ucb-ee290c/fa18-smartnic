@@ -375,7 +375,7 @@ class CREECRunLengthCoder(creecParams: CREECBusParams = new CREECBusParams,
   //keeps track of which byte we are on for both the coded and uncoded sides.
   //    popCounter is for the data being popped off of dataInBuffer, and
   //    pushCounter is for the data being pushed onto dataOutBuffer.
-  val counter = RegInit(0.U((log2Ceil(8)).W))
+  val counter = RegInit(0.U(log2Ceil(8).W))
 
   val coder = Module(new RunLengthCoder(creecParams, coderParams))
 
@@ -521,7 +521,7 @@ class CREECCoder(creecParams: CREECBusParams = new CREECBusParams,
 
   require(List("differential", "runLength", "compression").contains(operation))
 
-  val coder = if (operation == "differential")
+  val coder: Module = if (operation == "differential")
     Module(new CREECDifferentialCoder(creecParams, coderParams))
   else if (operation == "runLength")
     Module(new CREECRunLengthCoder(creecParams, coderParams))

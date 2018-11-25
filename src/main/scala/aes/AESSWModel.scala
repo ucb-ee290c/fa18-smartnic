@@ -12,7 +12,7 @@ import java.security.MessageDigest
 import java.util
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
-import org.apache.commons.codec.binary.Base64
+//import org.apache.commons.codec.binary.Base64
 
 class AESEncryption {
   def encrypt(key: Seq[Byte], value: Seq[Byte]): Seq[Byte] = {
