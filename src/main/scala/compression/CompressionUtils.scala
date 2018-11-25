@@ -61,8 +61,8 @@ object CompressionUtils {
 
   def compress(input: List[Byte], compress: Boolean): List[Byte] = {
     if(compress)
-      runLength(differential(input, true), true)
+      runLength(differential(input, encode = true), encode = true)
     else
-      differential(runLength(input, false), false)
+      differential(runLength(input, encode = false), encode = false)
   }
 }

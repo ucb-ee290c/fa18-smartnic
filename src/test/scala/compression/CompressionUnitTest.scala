@@ -380,7 +380,7 @@ class CompressionTester extends ChiselFlatSpec {
 
   "CREECRunLengthCoder" should "decode" in {
     Driver.execute(testerArgs :+ "creec_run_length_decoder", () => new CREECCoder(
-      coderParams = new CoderParams(encode = false), operation = "runLength")) {
+      coderParams = CoderParams(encode = false), operation = "runLength")) {
       c => new CREECCoderTester(c, false, "runLength")
     } should be(true)
   }
