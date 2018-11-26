@@ -174,7 +174,10 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
     // TODO: Handle Metadata better
     io.master.header.bits.compressed := RegNext(io.slave.header.bits.compressed)
     io.master.header.bits.ecc        := RegNext(io.slave.header.bits.ecc)
-    io.master.header.bits.encrypted  := RegNext(io.slave.header.bits.encrypted)
+    io.master.header.bits.encrypted  := true.B
+    io.master.header.bits.compressionPadBytes := RegNext(io.slave.header.bits.compressionPadBytes)
+    io.master.header.bits.eccPadBytes := RegNext(io.slave.header.bits.eccPadBytes)
+    io.master.header.bits.encryptionPadBytes := RegNext(io.slave.header.bits.encryptionPadBytes)
 
     // TODO: Handle id better
     io.master.data.valid     := state === sDONE
@@ -296,5 +299,7 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
 
     connectDecoupled(decrypt_FSM.io.aes_data_in, AESTop.io.decrypt_data_in)
     connectDecoupled(AESTop.io.decrypt_data_out, decrypt_FSM.io.aes_data_out)
+    // TODO: hack, should be properly resolved inside BusFSM
+    io.decrypt_master.header.bits.encrypted := false.B
 }
 

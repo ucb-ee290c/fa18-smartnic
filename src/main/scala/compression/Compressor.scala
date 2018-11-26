@@ -248,6 +248,9 @@ class CREECDifferentialCoder(coderParams: CoderParams)
       out.compressed := io.in.header.bits.compressed
       out.encrypted := io.in.header.bits.encrypted
       out.ecc := io.in.header.bits.ecc
+      out.compressionPadBytes := 0.U
+      out.eccPadBytes := 0.U
+      out.encryptionPadBytes := 0.U
       out
     }
     io.in.data.nodeq()
@@ -411,6 +414,10 @@ val in: CREECBus = Flipped(new CREECBus(creecParams))
       out.compressed := io.in.header.bits.compressed
       out.encrypted := io.in.header.bits.encrypted
       out.ecc := io.in.header.bits.ecc
+      // TODO: set compressionPadBytes accordingly
+      out.compressionPadBytes := 0.U
+      out.eccPadBytes := 0.U
+      out.encryptionPadBytes := 0.U
       out
     }
     io.in.data.nodeq()
@@ -579,6 +586,22 @@ class CREECRunLengthCoderModel(encode: Boolean) extends
 class CompressorModel(compress: Boolean) extends
   SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
-    Seq(CREECHighLevelTransaction(CompressionUtils.compress(in.data.toList, compress), in.addr))
+    compress match {
+      case true =>
+        val processedData = CompressionUtils.compress(in.data.toList, compress)
+        // TODO: hard-coded padding to 8 bytes in high level model is bad practice
+        val paddedData = processedData.padTo(math.ceil(processedData.length / 8.0).toInt * 8, 0.asInstanceOf[Byte])
+        Seq(in.copy(
+          data = paddedData,
+          compressed = true,
+          compressionPadBytes = paddedData.length - processedData.length))
+      case false =>
+        val inPadStrip = in.data.take(in.data.length - in.compressionPadBytes)
+        Seq(in.copy(
+          data = CompressionUtils.compress(inPadStrip, false),
+          compressed = false,
+          compressionPadBytes = 0
+        ))
+    }
   }
 }

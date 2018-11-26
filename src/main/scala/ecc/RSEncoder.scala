@@ -108,6 +108,9 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   io.master.header.bits.compressed := false.B
   io.master.header.bits.ecc := true.B
   io.master.header.bits.encrypted := false.B
+  io.master.header.bits.compressionPadBytes := 0.U
+  io.master.header.bits.eccPadBytes := 0.U
+  io.master.header.bits.encryptionPadBytes := 0.U
 
   // For the header, simply forward it to the master port.
   // However, we need to modify the beat length based on RSParams

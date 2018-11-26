@@ -13,11 +13,21 @@ abstract class CREECTransaction extends Transaction
   * A HighLevelTransaction represents a full sector write request or read response with all
   * the control and data bundled together. It is generic to any CREECBus parameterization.
   */
-// TODO: having to pass on addr inside every software model is verbose/boilerplate and not extensible to many additional fields
-case class CREECHighLevelTransaction(data: Seq[Byte], addr: BigInt) extends CREECTransaction {
+case class CREECHighLevelTransaction(
+  data: Seq[Byte],
+  // TODO: all these are metadata fields, they don't really belong here
+  // TODO: having to pass on addr inside every software model is verbose/boilerplate and not extensible to many additional fields
+  addr: BigInt,
+  compressed: Boolean = false,
+  encrypted: Boolean = false,
+  ecc: Boolean = false,
+  compressionPadBytes: Int = 0,
+  eccPadBytes: Int = 0,
+  encryptionPadBytes: Int = 0) extends CREECTransaction {
   // TODO: find a way to guarantee these types of constraints in the type system (Seq length with dependent types)
-  //assert(data.length % 8 == 0,
-    //s"CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats. Got $data")
+    // after more analysis, list length dependent typing breaks down after length > 50 or so
+  assert(data.length % 8 == 0,
+    s"CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats. Got $data")
 
   // TODO: Print bytes as unsigned
   //override def toString: String = super.toString
@@ -30,7 +40,16 @@ case class CREECHighLevelTransaction(data: Seq[Byte], addr: BigInt) extends CREE
   */
 abstract class CREECLowLevelTransaction extends CREECTransaction
 
-case class CREECHeaderBeat(len: Int, id: Int, addr: BigInt)(implicit p: BusParams) extends CREECLowLevelTransaction {
+case class CREECHeaderBeat(
+  len: Int,
+  id: Int,
+  addr: BigInt,
+  compressed: Boolean = false,
+  encrypted: Boolean = false,
+  ecc: Boolean = false,
+  compressionPadBytes: Int = 0,
+  eccPadBytes: Int = 0,
+  encryptionPadBytes: Int = 0)(implicit p: BusParams) extends CREECLowLevelTransaction {
   require(len <= p.maxBeats)
   require(id <= p.maxInFlight)
 }
@@ -163,7 +182,16 @@ class CREECHighToLowModel(p: BusParams) extends SoftwareModel[CREECHighLevelTran
     assert(in.data.length % p.bytesPerBeat == 0, "CREEC high transaction must have data with length = multiple of bus width")
     val beats = in.data.grouped(p.bytesPerBeat).toSeq
     assert((beats.length - 1) <= p.maxBeats, "CREEC high transaction has more beats than bus can support")
-    val header = Seq(CREECHeaderBeat(beats.length - 1, 0, in.addr)(p))
+    val header = Seq(CREECHeaderBeat(
+      len = beats.length - 1,
+      id = 0,
+      addr = in.addr,
+      compressed = in.compressed,
+      encrypted = in.encrypted,
+      ecc = in.ecc,
+      compressionPadBytes = in.compressionPadBytes,
+      eccPadBytes = in.eccPadBytes,
+      encryptionPadBytes = in.encryptionPadBytes)(p))
     val dataBeats = beats.map(dataBeat => CREECDataBeat(dataBeat, 0)(p))
     header ++ dataBeats
   }
@@ -186,10 +214,19 @@ class CREECLowToHighModel(p: BusParams) extends SoftwareModel[CREECLowLevelTrans
         val newData = storedData ++ t.data
         dataRepack.update(t.id, newData)
         if (newData.length / p.bytesPerBeat == (inFlight(t.id).len + 1)) {
-          val savedAddr = inFlight(t.id).addr
+          val savedHeader = inFlight(t.id)
           inFlight.remove(t.id)
           dataRepack.remove(t.id)
-          Seq(CREECHighLevelTransaction(newData, savedAddr))
+          Seq(CREECHighLevelTransaction(
+            data = newData,
+            addr = savedHeader.addr,
+            compressed = savedHeader.compressed,
+            encrypted = savedHeader.encrypted,
+            ecc = savedHeader.ecc,
+            compressionPadBytes = savedHeader.compressionPadBytes,
+            eccPadBytes = savedHeader.eccPadBytes,
+            encryptionPadBytes = savedHeader.encryptionPadBytes
+          ))
         } else {
           Seq()
         }
@@ -204,6 +241,7 @@ class CREECLowToHighModel(p: BusParams) extends SoftwareModel[CREECLowLevelTrans
 class CREECPadder(padBytes: Int = 8) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
     val paddedData = in.data.padTo(math.ceil(in.data.length / padBytes.toFloat).toInt * padBytes, 0.asInstanceOf[Byte])
-    Seq(CREECHighLevelTransaction(paddedData.toList, in.addr))
+    // TODO: this is a hack for this to resemble a width converter with padding
+    Seq(in.copy(data = paddedData.toList, encryptionPadBytes = paddedData.length - in.data.length))
   }
 }
