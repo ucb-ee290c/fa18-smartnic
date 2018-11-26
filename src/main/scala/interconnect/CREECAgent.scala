@@ -57,9 +57,10 @@ object CREECAgent {
         timescope {
           val header = headersToDrive.dequeueFirst(_ => true)
           header.foreach { t =>
-            // TODO: fix this once metadata fields added to low level model
             headerDriver.enqueue(new TransactionHeader().Lit(
-              t.len.U, t.id.U, t.addr.U, false.B, false.B, false.B, 0.U, 0.U))
+              t.len.U, t.id.U, t.addr.U,
+              t.compressed.B, t.encrypted.B, t.ecc.B,
+              t.compressionPadBytes.U, t.eccPadBytes.U, t.encryptionPadBytes.U))
             inFlight.update(t.id, t)
           }
           clk.step()
@@ -114,10 +115,18 @@ object CREECAgent {
           while (!x.header.valid.peek().litToBoolean) {
             clk.step()
           }
-          val len = x.header.bits.len.peek().litValue().toInt
-          val id = x.header.bits.id.peek().litValue().toInt
-          val addr = x.header.bits.addr.peek().litValue()
-          low2HighModel.pushTransactions(Seq(CREECHeaderBeat(len, id, addr)))
+          val receivedHeader = x.header.bits
+          low2HighModel.pushTransactions(Seq(CREECHeaderBeat(
+            len = receivedHeader.len.peek().litValue().toInt,
+            id = receivedHeader.id.peek().litValue().toInt,
+            addr = receivedHeader.addr.peek().litValue(),
+            compressed = receivedHeader.compressed.peek().litToBoolean,
+            encrypted = receivedHeader.encrypted.peek().litToBoolean,
+            ecc = receivedHeader.ecc.peek().litToBoolean,
+            compressionPadBytes = receivedHeader.compressionPadBytes.peek().litValue().toInt,
+            eccPadBytes = receivedHeader.eccPadBytes.peek().litValue().toInt,
+            encryptionPadBytes = receivedHeader.encryptionPadBytes.peek().litValue().toInt
+          )))
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
           clk.step()

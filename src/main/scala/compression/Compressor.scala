@@ -250,6 +250,7 @@ class CREECDifferentialCoder(coderParams: CoderParams)
       out.ecc := io.in.header.bits.ecc
       out.compressionPadBytes := 0.U
       out.eccPadBytes := 0.U
+      out.encryptionPadBytes := 0.U
       out
     }
     io.in.data.nodeq()
@@ -415,6 +416,7 @@ val in: CREECBus = Flipped(new CREECBus(creecParams))
       // TODO: set compressionPadBytes accordingly
       out.compressionPadBytes := 0.U
       out.eccPadBytes := 0.U
+      out.encryptionPadBytes := 0.U
       out
     }
     io.in.data.nodeq()

@@ -44,11 +44,13 @@ class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   val ecc = Bool()
   val compressionPadBytes = UInt(log2Ceil(p.bytesPerBeat).W)
   val eccPadBytes = UInt(log2Ceil(p.bytesPerBeat).W)
+  // AES block size = 128 bits = 16 bytes = maximum padding required
+  val encryptionPadBytes = UInt(log2Ceil(16).W)
 
-  // TODO: add metedata fields to Lit constructor
   def Lit(len: UInt, id: UInt, addr: UInt,
           compressed: Bool, encrypted: Bool, ecc: Bool,
-          compressionPadBytes: UInt, eccPadBytes: UInt)
+          compressionPadBytes: UInt, eccPadBytes: UInt,
+          encryptionPadBytes: UInt)
           : TransactionHeader.this.type = {
     import chisel3.core.BundleLitBinding
     val clone = cloneType
@@ -60,7 +62,8 @@ class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
       clone.encrypted -> litArgOfBits(encrypted),
       clone.ecc -> litArgOfBits(ecc),
       clone.compressionPadBytes -> litArgOfBits(compressionPadBytes),
-      clone.eccPadBytes-> litArgOfBits(eccPadBytes)
+      clone.eccPadBytes-> litArgOfBits(eccPadBytes),
+      clone.encryptionPadBytes -> litArgOfBits(encryptionPadBytes)
     )))
     clone
   }
