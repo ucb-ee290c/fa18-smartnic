@@ -118,6 +118,16 @@ class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
             83, 83, 83, 83, 83, 83
           ),
           0x1
+        ),
+        // Test zero padding bytes
+        CREECHighLevelTransaction(
+          Seq(
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1
+          ),
+          0x1000
         )
       ),
       Seq(
@@ -127,14 +137,20 @@ class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
             1, 1, 1, 1, 1, 1, 1, 1,
             1, 1, 1, 1, 1, 1
           ),
-          0x501
+          0x501, compressed = true, compressionPadBytes = 0
         ),
         CREECHighLevelTransaction(
           Seq(
             0, 5, 54, -38, 11, 56,
             0, 5
           ),
-          0x1
+          0x1, compressed = true, compressionPadBytes = 0
+        ),
+        CREECHighLevelTransaction(
+          Seq(
+            0, 15, 1, 0, 14, 0, 0, 0
+          ),
+          0x1000, compressed = true, compressionPadBytes = 3
         )
       )
     )

@@ -24,7 +24,7 @@ class DifferentialCoderTester(c: DifferentialCoder, encode: Boolean) extends Pee
     List(0, 0, -1, 0, -1, 0, -1, 0),
     List(4, -1, 1, 1, -1, -1, 1, 1)
   )
-  val expectedOutput: List[Byte] = CompressionUtils.differential(inputs.flatten, encode)
+  val expectedOutput: Seq[Byte] = CompressionUtils.differential(inputs.flatten, encode)
   var last: Byte = 0
   for (i <- inputs.indices) {
     for (j <- 0 until 8)

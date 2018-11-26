@@ -34,27 +34,33 @@ class CREECMetadataBundle extends Bundle with CREECMetadata
 class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   val len = UInt(p.beatBits.W)
   val id = UInt(p.maxInFlight.W)
+  // Sector (512B) address (2TB addressable)
+  val addr = UInt(32.W)
 
   // Indicate whether compression, encryption, ECC was applied to this transaction
   // This CREECMetadata struct will be written in the sector mapping table
   val compressed = Bool()
   val encrypted = Bool()
   val ecc = Bool()
-  // You can add more small stuff here
+  val compressionPadBytes = UInt(log2Ceil(p.bytesPerBeat).W)
+  val eccPadBytes = UInt(log2Ceil(p.bytesPerBeat).W)
 
-  // Sector (512B) address (2TB addressable)
-  val addr = UInt(32.W)
-
-  def Lit(len: UInt, id: UInt, compressed: Bool, encrypted: Bool, ecc: Bool, addr: UInt): TransactionHeader.this.type = {
+  // TODO: add metedata fields to Lit constructor
+  def Lit(len: UInt, id: UInt, addr: UInt,
+          compressed: Bool, encrypted: Bool, ecc: Bool,
+          compressionPadBytes: UInt, eccPadBytes: UInt)
+          : TransactionHeader.this.type = {
     import chisel3.core.BundleLitBinding
     val clone = cloneType
     clone.selfBind(BundleLitBinding(Map(
       clone.len -> litArgOfBits(len),
       clone.id -> litArgOfBits(id),
+      clone.addr -> litArgOfBits(addr),
       clone.compressed -> litArgOfBits(compressed),
       clone.encrypted -> litArgOfBits(encrypted),
       clone.ecc -> litArgOfBits(ecc),
-      clone.addr -> litArgOfBits(addr)
+      clone.compressionPadBytes -> litArgOfBits(compressionPadBytes),
+      clone.eccPadBytes-> litArgOfBits(eccPadBytes)
     )))
     clone
   }
@@ -79,3 +85,4 @@ class CREECBus(val p: BusParams) extends Bundle {
   val header = Decoupled(new TransactionHeader(p))
   val data = Decoupled(new TransactionData(p))
 }
+

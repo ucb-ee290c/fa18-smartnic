@@ -14,10 +14,19 @@ abstract class CREECTransaction extends Transaction
   * the control and data bundled together. It is generic to any CREECBus parameterization.
   */
 // TODO: having to pass on addr inside every software model is verbose/boilerplate and not extensible to many additional fields
-case class CREECHighLevelTransaction(data: Seq[Byte], addr: BigInt) extends CREECTransaction {
+case class CREECHighLevelTransaction(
+  data: Seq[Byte],
+  // TODO: all these are metadata fields, they don't really belong here
+  addr: BigInt,
+  compressed: Boolean = false,
+  encrypted: Boolean = false,
+  ecc: Boolean = false,
+  compressionPadBytes: Int = 0,
+  eccPadBytes: Int = 0) extends CREECTransaction {
   // TODO: find a way to guarantee these types of constraints in the type system (Seq length with dependent types)
-  //assert(data.length % 8 == 0,
-    //s"CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats. Got $data")
+    // after more analysis, list length dependent typing breaks down after length > 50 or so
+  assert(data.length % 8 == 0,
+    s"CREEC high level transaction must have data with length = data bus width (multiple of 8B) * numBeats. Got $data")
 
   // TODO: Print bytes as unsigned
   //override def toString: String = super.toString
@@ -204,6 +213,6 @@ class CREECLowToHighModel(p: BusParams) extends SoftwareModel[CREECLowLevelTrans
 class CREECPadder(padBytes: Int = 8) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
     val paddedData = in.data.padTo(math.ceil(in.data.length / padBytes.toFloat).toInt * padBytes, 0.asInstanceOf[Byte])
-    Seq(CREECHighLevelTransaction(paddedData.toList, in.addr))
+    Seq(in.copy(data = paddedData.toList))
   }
 }

@@ -57,7 +57,9 @@ object CREECAgent {
         timescope {
           val header = headersToDrive.dequeueFirst(_ => true)
           header.foreach { t =>
-            headerDriver.enqueue(new TransactionHeader().Lit(t.len.U, t.id.U, false.B, false.B, false.B, t.addr.U))
+            // TODO: fix this once metadata fields added to low level model
+            headerDriver.enqueue(new TransactionHeader().Lit(
+              t.len.U, t.id.U, t.addr.U, false.B, false.B, false.B, 0.U, 0.U))
             inFlight.update(t.id, t)
           }
           clk.step()
