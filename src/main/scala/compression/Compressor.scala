@@ -598,7 +598,7 @@ class CompressorModel(compress: Boolean) extends
       case false =>
         val inPadStrip = in.data.take(in.data.length - in.compressionPadBytes)
         Seq(in.copy(
-          data = CompressionUtils.compress(inPadStrip, false),
+          data = CompressionUtils.compress(inPadStrip, compress = false),
           compressed = false,
           compressionPadBytes = 0
         ))
