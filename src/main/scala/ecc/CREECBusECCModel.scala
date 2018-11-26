@@ -21,7 +21,7 @@ class ECCEncoderTopModel(val rsParams: RSParams = new RSParams()) extends
       encodedMsgs
     }.flatten
 
-    Seq(CREECHighLevelTransaction(outputs, in.addr))
+    Seq(in.copy(data = outputs, ecc = true))
   }
 }
 
@@ -43,6 +43,6 @@ class ECCDecoderTopModel(val rsParams: RSParams = new RSParams(),
       decodedMsgs
     }.flatten
 
-    Seq(CREECHighLevelTransaction(outputs, in.addr))
+    Seq(in.copy(data = outputs, ecc = false))
   }
 }
