@@ -4,7 +4,7 @@ package compression
  * Golden model for basic compression.
  */
 object CompressionUtils {
-  def differential(input: List[Byte], encode: Boolean): List[Byte] = {
+  def differential(input: Seq[Byte], encode: Boolean): Seq[Byte] = {
     var output = List[Byte]()
     var prev = 0.toByte
     for (i <- input.indices) {
@@ -14,7 +14,7 @@ object CompressionUtils {
     output
   }
 
-  private def runLengthEncode(input: List[Byte]): List[Byte] = {
+  private def runLengthEncode(input: Seq[Byte]): Seq[Byte] = {
     var output = List[Byte]()
     var run = 0
     for (i <- input.indices) {
@@ -36,7 +36,7 @@ object CompressionUtils {
     output
   }
 
-  private def runLengthDecode(input: List[Byte]): List[Byte] = {
+  private def runLengthDecode(input: Seq[Byte]): Seq[Byte] = {
     var output = List[Byte]()
     var expand = false
     for (i <- input.indices) {
@@ -52,14 +52,14 @@ object CompressionUtils {
     output
   }
 
-  def runLength(input: List[Byte], encode: Boolean): List[Byte] = {
+  def runLength(input: Seq[Byte], encode: Boolean): Seq[Byte] = {
     if(encode)
       runLengthEncode(input)
     else
       runLengthDecode(input)
   }
 
-  def compress(input: List[Byte], compress: Boolean): List[Byte] = {
+  def compress(input: Seq[Byte], compress: Boolean): Seq[Byte] = {
     if(compress)
       runLength(differential(input, encode = true), encode = true)
     else

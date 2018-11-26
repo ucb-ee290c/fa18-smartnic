@@ -1,6 +1,6 @@
 package interconnect
 
-import aes.{AESBusParams, CREECEncryptHighModel}
+import aes.{CREECEncryptHighModel}
 import compression.CompressorModel
 import ecc.{ECCEncoderTopModel, RSCode, RSParams}
 import org.scalatest.FlatSpec
@@ -14,17 +14,16 @@ class CREECeleratorSWTest extends FlatSpec {
     0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6, 0xa7, 0xa8,
     255, 255, 255, 255, 255, 255, 255, 255, // test overflow
     255, 0, 0, 0, 0, 0, 0, 0, // test byte-level overflow
-    0, 0, 0, 0, 0, 0, 0, 255
+    0, 0, 0, 0, 0, 0, 0, 255,
+    0, 0, 0, 0, 0, 0, 0, 255 // add another beat to force compression padding
   ).map(_.asInstanceOf[Byte]), 0x1000))
 
-  "CREECPadder" should "pad to 8 bytes" in {
+  "compression -> decompression loop" should "work" in {
     val compressionLoop =
       new CompressorModel(true) ->
-      new CREECPadder(8)
-    val tx = Seq(CREECHighLevelTransaction(Seq(1, 1, 1, 1, 1, 6, 7, 8), 0x1000))
-    // 6 bytes should come out from the CompressorModel
-    val out = compressionLoop.processTransactions(tx, false)
-    assert(out.head.data.length == 8)
+      new CompressorModel(false)
+    val out = compressionLoop.processTransactions(highTx)
+    assert(out.head.data == highTx.head.data)
   }
 
   "testing various model orderings" should "reveal an ideal creec pipeline ordering" in {
@@ -50,14 +49,15 @@ class CREECeleratorSWTest extends FlatSpec {
 
     val models = Seq(
       new CompressorModel(true),
-      new CREECEncryptHighModel(new AESBusParams),
+      // Simulate a width converter that can add the right amount of padding for the AES block size
+      new CREECPadder(16) -> new CREECEncryptHighModel,
       new ECCEncoderTopModel(rsParams)
     )
     val orderings = models.permutations.toList
     for (ordering <- orderings) {
       println(ordering)
-      val model = ordering.reduce(_.compose(new CREECPadder(16)).compose(_))
-      val out = model.processTransactions(tx)
+      val model = ordering.reduce(_ -> _)
+      val out = model.processTransactions(highTx)
       println(out.head.data.length)
     }
   }
