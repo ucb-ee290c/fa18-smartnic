@@ -1,8 +1,8 @@
 package interconnect
 
-import aes.{CREECEncryptHighModel}
+import aes.CREECEncryptHighModel
 import compression.CompressorModel
-import ecc.{ECCEncoderTopModel, RSCode, RSParams}
+import ecc.{ECCDecoderTopModel, ECCEncoderTopModel, RSCode, RSParams}
 import org.scalatest.FlatSpec
 
 class CREECeleratorSWTest extends FlatSpec {
@@ -18,29 +18,29 @@ class CREECeleratorSWTest extends FlatSpec {
     0, 0, 0, 0, 0, 0, 0, 255 // add another beat to force compression padding
   ).map(_.asInstanceOf[Byte]), 0x1000))
 
+  val numSymbols = 16
+  val numMsgs = 8
+  val symbolWidth = 8
+  val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
+  val rsParams = RSParams(
+    n = numSymbols,
+    k = numMsgs,
+    symbolWidth = symbolWidth,
+    gCoeffs = rs.gCoeffs,
+    fConst = rs.fConst,
+    rs.Log2Val,
+    rs.Val2Log
+  )
+
   "compression -> decompression loop" should "work" in {
     val compressionLoop =
       new CompressorModel(true) ->
       new CompressorModel(false)
     val out = compressionLoop.processTransactions(highTx)
-    assert(out.head.data == highTx.head.data)
+    assert(out == highTx)
   }
 
   "testing various model orderings" should "reveal an ideal creec pipeline ordering" in {
-    val numSymbols = 16
-    val numMsgs = 8
-    val symbolWidth = 8
-    val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
-    val rsParams = RSParams(
-      n = numSymbols,
-      k = numMsgs,
-      symbolWidth = symbolWidth,
-      gCoeffs = rs.gCoeffs,
-      fConst = rs.fConst,
-      rs.Log2Val,
-      rs.Val2Log
-    )
-
     import scala.io.Source
     val theRepublic = Source.fromResource("The_Republic_Plato.txt").toList.map(_.asInstanceOf[Byte])
     val theRepublicPadded = theRepublic.padTo(math.ceil(theRepublic.length / 16.0).toInt * 16, 0.asInstanceOf[Byte])
@@ -60,5 +60,15 @@ class CREECeleratorSWTest extends FlatSpec {
       val out = model.processTransactions(highTx)
       println(out.head.data.length)
     }
+  }
+
+  "compressor -> eccEncoder -> eccDecode -> decompressor" should "be an identity transform" in {
+    val model =
+      new CompressorModel(true) ->
+      new ECCEncoderTopModel(rsParams) ->
+      new ECCDecoderTopModel(rsParams) ->
+      new CompressorModel(false)
+    val out = model.processTransactions(highTx)
+    assert(out == highTx)
   }
 }

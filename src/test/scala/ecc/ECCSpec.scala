@@ -1,5 +1,4 @@
 package ecc
-import scala.math
 import org.scalatest.{FlatSpec, Matchers}
 
 // This only tests the Reed-Solomon encoder

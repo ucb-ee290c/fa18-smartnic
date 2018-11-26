@@ -241,6 +241,7 @@ class CREECLowToHighModel(p: BusParams) extends SoftwareModel[CREECLowLevelTrans
 class CREECPadder(padBytes: Int = 8) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
     val paddedData = in.data.padTo(math.ceil(in.data.length / padBytes.toFloat).toInt * padBytes, 0.asInstanceOf[Byte])
-    Seq(in.copy(data = paddedData.toList))
+    // TODO: this is a hack for this to resemble a width converter with padding
+    Seq(in.copy(data = paddedData.toList, encryptionPadBytes = paddedData.length - in.data.length))
   }
 }
