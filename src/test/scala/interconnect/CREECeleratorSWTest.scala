@@ -1,6 +1,6 @@
 package interconnect
 
-import aes.{AESBusParams, CREECEncryptHighModel}
+import aes.{CREECEncryptHighModel}
 import compression.CompressorModel
 import ecc.{ECCEncoderTopModel, RSCode, RSParams}
 import org.scalatest.FlatSpec
@@ -26,10 +26,6 @@ class CREECeleratorSWTest extends FlatSpec {
     assert(out.head.data == highTx.head.data)
   }
 
-  "encryption -> decryption loop" should "work" in {
-
-  }
-/*
   "testing various model orderings" should "reveal an ideal creec pipeline ordering" in {
     val numSymbols = 16
     val numMsgs = 8
@@ -53,16 +49,16 @@ class CREECeleratorSWTest extends FlatSpec {
 
     val models = Seq(
       new CompressorModel(true),
-      new CREECEncryptHighModel(new AESBusParams),
+      // Simulate a width converter that can add the right amount of padding for the AES block size
+      new CREECPadder(16) -> new CREECEncryptHighModel,
       new ECCEncoderTopModel(rsParams)
     )
     val orderings = models.permutations.toList
     for (ordering <- orderings) {
       println(ordering)
-      val model = ordering.reduce(_.compose(new CREECPadder(16)).compose(_))
-      val out = model.processTransactions(tx)
+      val model = ordering.reduce(_ -> _)
+      val out = model.processTransactions(highTx)
       println(out.head.data.length)
     }
   }
-  */
 }
