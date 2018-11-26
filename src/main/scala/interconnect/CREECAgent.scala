@@ -74,6 +74,7 @@ object CREECAgent {
           val data = dataToDrive.dequeueFirst(t => inFlight.contains(t.id))
           data.foreach { t =>
             timescope {
+              println("driving: " + t)
               x.data.bits.poke(new TransactionData().Lit(bytesToBigInt(t.data).U, t.id.U))
               x.data.valid.poke(true.B)
               while (!x.data.ready.peek().litToBoolean) {
@@ -134,6 +135,7 @@ object CREECAgent {
           // TODO: usability bug, if data.peek().litValue() is replaced with data.litValue(), you get a get None error
           val data = x.data.bits.data.peek().litValue()
           val id = x.data.bits.id.peek().litValue().toInt
+          println("monitoring: " + CREECDataBeat(bigIntToBytes(data, x.p.bytesPerBeat), id))
           low2HighModel.pushTransactions(Seq(
             CREECDataBeat(bigIntToBytes(data, x.p.bytesPerBeat), id)))
           low2HighModel.advanceSimulation()

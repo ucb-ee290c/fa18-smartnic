@@ -402,6 +402,7 @@ val in: CREECBus = Flipped(new CREECBus(creecParams))
   when(state === sAwaitHeader) {
     dataInBuffer.io.reset := false.B
     headerIn := io.in.header.deq()
+    dontTouch(headerIn.addr)
     headerOut := {
       val out = Wire(new TransactionHeader)
       out.addr := io.in.header.bits.addr
@@ -442,6 +443,9 @@ val in: CREECBus = Flipped(new CREECBus(creecParams))
         dataInBuffer.io.push := true.B
         state := sAwaitData
       }
+    }
+    when(beatsToReceive === 0.U) {
+      state := sProcessData
     }
   }.elsewhen(state === sProcessData) {
     io.in.header.nodeq()

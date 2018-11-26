@@ -205,6 +205,7 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
   }
 
   def test(addr: Int, len: Int, data: List[Byte]): Boolean = {
+    println("")
     var expectedData = {
       if (operation == "runLength")
         CompressionUtils.runLength(data, encode)
@@ -228,28 +229,43 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       expectedDatas = expectedDatas :+ Data(ByteUtils.squish(expectedData.slice(8 * i, 8 * i + 8)))
     }
 
-    poke(c.io.in.header.valid, true)
-    poke(c.io.in.data.valid, true)
     poke(c.io.out.header.ready, true)
     poke(c.io.out.data.ready, true)
 
     var i = 0
     var timeout = 0
     var datasOut: List[Data] = List[Data]()
+    var needToSendHeader = true
     while (i < datas.length || datasOut.length < expectedDatas.length) {
-      if (peek(c.io.in.header.ready) != BigInt(0)) {
+      if (needToSendHeader && peek(c.io.in.header.ready) != BigInt(0)) {
+        poke(c.io.in.header.valid, true)
         pokeHeader(c, header)
+        needToSendHeader = false
       }
+      else {
+        poke(c.io.in.header.valid, false)
+      }
+
       if (i < datas.length) {
         val data = datas(i)
         if (peek(c.io.in.data.ready) != BigInt(0)) {
           pokeData(c, data)
+          poke(c.io.in.data.valid, true)
           i = i + 1
         }
+        else {
+          poke(c.io.in.data.valid, false)
+        }
       }
+      else {
+        poke(c.io.in.data.valid, false)
+      }
+
       if (peek(c.io.out.header.valid) != BigInt(0)) {
-        expect(peekHeader(c) == expectedHeader, "input and output headers did not match.")
+        expect(peekHeader(c) == expectedHeader, "input and output headers did not " +
+          "match. expected " + expectedHeader + ", but got " + peekHeader(c))
       }
+
       if (peek(c.io.out.data.valid) != BigInt(0)) {
         datasOut = datasOut :+ peekData(c)
       }
@@ -261,9 +277,9 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
         return false
       }
     }
-    println("in :" + data)
-    println("got:" + datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }))
-    println("exp:" + expectedData)
+    println("in : " + data)
+    println("got: " + datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }))
+    println("exp: " + expectedData)
     expect(datasOut.flatMap({ x => ByteUtils.unsquish(x.data) }) == expectedData,
       "actual output did not match expected output.")
   }
@@ -332,7 +348,7 @@ class CompressionTester extends ChiselFlatSpec {
     "--target-dir", "test_run_dir/creec",
     "--top-name")
 
-  implicit val creecParams = new CREECBusParams
+  implicit val creecParams: CREECBusParams = new CREECBusParams
 
   "DifferentialCoder" should "encode" in {
     Driver.execute(testerArgs :+ "differential_encoder", () => new DifferentialCoder(
@@ -396,17 +412,17 @@ class CompressionTester extends ChiselFlatSpec {
     } should be(true)
   }
 
-  //  "Compressor" should "compress" in {
-  //    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-  //      operation = "compression")) {
-  //      c => new CREECCoderTester(c, true, "compression")
-  //    } should be(true)
-  //  }
-  //
-  //  "Compressor" should "decompress" in {
-  //    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-  //      coderParams = new CoderParams(encode = false), operation = "compression")) {
-  //      c => new CREECCoderTester(c, false, "compression")
-  //    } should be(true)
-  //  }
+  "Compressor" should "compress" in {
+    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+      coderParams = CoderParams(encode = true), operation = "compression")) {
+      c => new CREECCoderTester(c, true, "compression")
+    } should be(true)
+  }
+
+  "Compressor" should "decompress" in {
+    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+      coderParams = CoderParams(encode = false), operation = "compression")) {
+      c => new CREECCoderTester(c, false, "compression")
+    } should be(true)
+  }
 }
