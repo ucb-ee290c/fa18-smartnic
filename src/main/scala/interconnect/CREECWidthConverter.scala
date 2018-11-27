@@ -2,7 +2,9 @@ package interconnect
 
 import chisel3._
 
-class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
+import scala.collection.mutable
+
+class CREECWidthConverter(p1: BusParams, p2: BusParams, allowPadding: Boolean) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new CREECBus(p1))
     val out = new CREECBus(p2)
@@ -11,40 +13,53 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   io.out.data <> Reg(io.in.data)
 }
 
-/**
-  * Expand or contract the width
-  * 1:2 width converter => (ratio = 2, expand = True)
-  * 2:1 width converter => (ratio = 2, expand = False)
-  * 4:1 width converter => (ratio = 4, expand = False)
-  * @param ratio Width ratio of inWidth:outWidth. Must be power of 2
-  * @param expand Set to true if outWidth > inWidth.
-  */
-/*
-class CREECWidthConverterModel(p1: BusParams, p2: BusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
-
-}
-  val ratio, expand = if (p1.dataWidth > p2.dataWidth) {
-    assert(p1.dataWidth)
-    p1.dataWidth
-  } else {
-    2
+class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boolean = false)
+  extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
+  object Behavior extends Enumeration {
+    val EXPAND, CONTRACT, IDENTITY = Value
   }
+
+  val (ratio, behavior) = if (p1.dataWidth > p2.dataWidth) {
+    assert(p1.dataWidth % p2.dataWidth == 0, s"Contracting width converter must have rational dataWidth ratios: p1: ${p1.dataWidth},p2: ${p2.dataWidth}")
+    (p1.dataWidth / p2.dataWidth, Behavior.CONTRACT)
+  } else if (p1.dataWidth < p2.dataWidth) {
+    assert(p2.dataWidth % p1.dataWidth == 0, s"Expanding width converter must have rational dataWidth ratios: p1: ${p1.dataWidth},p2: ${p2.dataWidth}")
+    (p2.dataWidth / p1.dataWidth, Behavior.EXPAND)
+  } else {
+    (1, Behavior.IDENTITY)
+  }
+
+  // Map from transaction ID to data belonging to transaction
+  val dataRepack = mutable.Map[Int, Seq[Byte]]()
+  // Map of transactions in flight from transaction ID to the header beat
+  val inFlight = mutable.Map[Int, CREECHeaderBeat]()
+
   override def process(in: CREECLowLevelTransaction): Seq[CREECLowLevelTransaction] = {
     in match {
       case t: CREECHeaderBeat =>
-        if (expand) {
-          assert(t.len % ratio == 0)
-          Seq(CREECHeaderBeat(t.len / ratio, t.id, t.addr)(p))
-        } else {
-          Seq(CREECHeaderBeat(t.len * ratio, t.id, t.addr)(p))
+        behavior match {
+          case Behavior.IDENTITY => Seq(t)
+          case Behavior.EXPAND =>
+            assert((t.len + 1) % ratio == 0 || allowPadding, s"Expanding width converter received a header beat with length that's not divisible by the ratio $ratio")
+            inFlight.update(t.id, t)
+            Seq(t.copy(len = ((t.len + 1) / ratio) - 1)(p2))
         }
       case t: CREECDataBeat =>
-        if (expand) {
-          Seq()
-        } else {
-          Seq()
+        behavior match {
+          case Behavior.IDENTITY => Seq(t)
+          case Behavior.EXPAND =>
+            val tx = inFlight.get(t.id)
+            val recvData = dataRepack.getOrElse(t.id, Seq[Byte]())
+            val newData = recvData ++ t.data
+            // TODO: not considering the case where allowPadding is used (need to also update and query inFlight)
+            if (newData.length == p2.bytesPerBeat) {
+              dataRepack.update(t.id, Seq[Byte]())
+              Seq(CREECDataBeat(newData, t.id)(p2))
+            } else {
+              dataRepack.update(t.id, newData)
+              Seq()
+            }
         }
     }
   }
-//}
-*/
+}
