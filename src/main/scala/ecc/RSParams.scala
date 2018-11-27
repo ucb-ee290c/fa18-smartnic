@@ -113,3 +113,23 @@ case class RSParams(
     }
   }
 }
+
+// Precomputed RSParams
+object RSParams {
+  // RS(16, 8) with 8 bit symbols
+  val RS16_8_8 = {
+    val numSymbols = 16
+    val numMsgs = 8
+    val symbolWidth = 8
+    val rs = new RSCode(numSymbols, numMsgs, symbolWidth)
+    RSParams(
+      n = numSymbols,
+      k = numMsgs,
+      symbolWidth = symbolWidth,
+      gCoeffs = rs.gCoeffs,
+      fConst = rs.fConst,
+      rs.Log2Val,
+      rs.Val2Log
+    )
+  }
+}

@@ -132,6 +132,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
 
         val out = monitor.receivedTransactions.dequeueAll(_ => true)
         //        assert(out == outGold)
+        // TODO: (testers2 usability) assert kills everything and prevents vcd generation
       }
       //    }
     }

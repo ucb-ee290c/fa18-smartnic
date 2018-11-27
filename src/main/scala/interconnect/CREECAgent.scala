@@ -57,6 +57,7 @@ object CREECAgent {
         timescope {
           val header = headersToDrive.dequeueFirst(_ => true)
           header.foreach { t =>
+            println("driving: " + t)
             headerDriver.enqueue(new TransactionHeader().Lit(
               t.len.U, t.id.U, t.addr.U,
               t.compressed.B, t.encrypted.B, t.ecc.B,
@@ -117,7 +118,7 @@ object CREECAgent {
             clk.step()
           }
           val receivedHeader = x.header.bits
-          low2HighModel.pushTransactions(Seq(CREECHeaderBeat(
+          val headerBeat = Seq(CREECHeaderBeat(
             len = receivedHeader.len.peek().litValue().toInt,
             id = receivedHeader.id.peek().litValue().toInt,
             addr = receivedHeader.addr.peek().litValue(),
@@ -127,7 +128,9 @@ object CREECAgent {
             compressionPadBytes = receivedHeader.compressionPadBytes.peek().litValue().toInt,
             eccPadBytes = receivedHeader.eccPadBytes.peek().litValue().toInt,
             encryptionPadBytes = receivedHeader.encryptionPadBytes.peek().litValue().toInt
-          )))
+          ))
+          println("monitored " + headerBeat)
+          low2HighModel.pushTransactions(headerBeat)
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)
           clk.step()
