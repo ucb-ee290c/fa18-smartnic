@@ -54,14 +54,16 @@ object AESApp extends App {
 //  )
 //  val (chiselArgs, params) = argParse(args.toList, defaultParams)
   // Run the Chisel driver to generate a cordic
-  Driver.execute(Array("None"), () => new AES128Combinational())
+  //Driver.execute(Array("None"), () => new AES128Combinational())
   Driver.execute(Array("None"), () => new AES128TimeInterleave())
-  Driver.execute(Array("None"), () => new AES128())
+  //Driver.execute(Array("None"), () => new AES128())
 
-  Driver.execute(Array("None"), () => new InvAES128Combinational())
+  //Driver.execute(Array("None"), () => new InvAES128Combinational())
   Driver.execute(Array("None"), () => new InvAES128())
 
-  Driver.execute(Array("None"), () => new AESTopCombinational())
-  Driver.execute(Array("None"), () => new AESTopTimeInterleave())
+  //Driver.execute(Array("None"), () => new AESTopCombinational())
+  //Driver.execute(Array("None"), () => new AESTopTimeInterleave())
   Driver.execute(Array("None"), () => new AESTopFullTimeInterleave())
+
+  Driver.execute(Array("None"), () => new AESTopCREECBus(new AESBusParams))
 }

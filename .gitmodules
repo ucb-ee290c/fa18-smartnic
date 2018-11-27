@@ -4,3 +4,6 @@
 [submodule "firrtl"]
 	path = firrtl
 	url = https://github.com/freechipsproject/firrtl
+[submodule "hammer"]
+	path = hammer
+	url = https://github.com/ucb-bar/hammer
