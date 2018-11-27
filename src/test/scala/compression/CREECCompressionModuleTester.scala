@@ -2,7 +2,7 @@ package compression
 
 import chisel3.tester._
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
-import interconnect.{CREECBusParams, CREECHighLevelTransaction}
+import interconnect.{BlockDeviceIOBusParams, CREECBusParams, CREECHighLevelTransaction}
 import org.scalatest.FlatSpec
 
 class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
@@ -83,39 +83,37 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
         2, 0, 2, 0, 2, 0, 2, 0,
         2, 0, 2, 0, 2, 0, 2, 0,
         2, 0, 2, 0, 2, 0, 2, 0,
-        2, 0, 2, 0, 2, 0, 2, 0
+        2, 0, 2, 0, 2, 0, 2, 2
       ),
       0x515
     )
   )
 
-//  "the CREECDifferentialCoder module" should "encode and decode data" in {
-//    for (encode <- List(true, false)) {
-//      val model = new CREECDifferentialCoderModel(encode = encode)
-//      val outGold = model.processTransactions(transactions)
-//
-//      test(new CREECDifferentialCoder(coderParams = CoderParams(encode = encode))) { c =>
-//        val driver = new CREECDriver(c.io.in, c.clock)
-//        val monitor = new CREECMonitor(c.io.out, c.clock)
-//        driver.pushTransactions(transactions)
-//        var cycle = 0
-//        val timeout = 1000
-//        while (cycle < timeout && monitor.receivedTransactions.length < outGold.length) {
-//          c.clock.step()
-//          cycle += 1
-//        }
-//
-//        val out = monitor.receivedTransactions.dequeueAll(_ => true)
-//        assert(out == outGold)
-//      }
-//    }
-//  }
+  "the CREECDifferentialCoder module" should "encode and decode data" in {
+    for (encode <- List(true, false)) {
+      val model = new CREECDifferentialCoderModel(encode = encode)
+      val outGold = model.processTransactions(transactions)
+
+      test(new CREECDifferentialCoder(coderParams = CoderParams(encode = encode))) { c =>
+        val driver = new CREECDriver(c.io.in, c.clock)
+        val monitor = new CREECMonitor(c.io.out, c.clock)
+        driver.pushTransactions(transactions)
+        var cycle = 0
+        val timeout = 2000
+        while (cycle < timeout && monitor.receivedTransactions.length < outGold.length) {
+          c.clock.step()
+          cycle += 1
+        }
+
+        val out = monitor.receivedTransactions.dequeueAll(_ => true)
+        assert(out == outGold)
+      }
+    }
+  }
 
   //TODO: don't copy and paste this just to change the module/model being tested
   "the CREECRunLengthCoder module" should "encode and decode data" in {
-    try {
-      //    for (encode <- List(true, false)) {
-      val encode = true
+    for (encode <- List(true, false)) {
       val model = new CREECRunLengthCoderModel(encode = encode)
       val outGold = model.processTransactions(transactions)
 
@@ -124,20 +122,43 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
         val monitor = new CREECMonitor(c.io.out, c.clock)
         driver.pushTransactions(transactions)
         var cycle = 0
-        val timeout = 1000
-        while (cycle < timeout && monitor.receivedTransactions.length < outGold.length) {
+        val timeout = 2000
+        while (cycle <= timeout && monitor.receivedTransactions.length < outGold.length) {
           c.clock.step()
           cycle += 1
         }
+        if (cycle >= timeout)
+          println("Test timed out!!!!!!!!!!!!!!!!!!!!!!!!")
 
         val out = monitor.receivedTransactions.dequeueAll(_ => true)
-        //        assert(out == outGold)
+        assert(out == outGold)
         // TODO: (testers2 usability) assert kills everything and prevents vcd generation
       }
-      //    }
-    }
-    catch {
-      case _:AssertionError =>
     }
   }
+
+  //TODO: don't copy and paste this just to change the module/model being tested
+//  "the Compressor module" should "compress and uncompress" in {
+//    for (compress <- List(true, false)) {
+//      val model = new CompressorModel(compress = compress)
+//      val outGold = model.processTransactions(transactions)
+//
+//      test(new Compressor(new BlockDeviceIOBusParams, compress)) { c =>
+//        val driver = new CREECDriver(c.io.in, c.clock)
+//        val monitor = new CREECMonitor(c.io.out, c.clock)
+//        driver.pushTransactions(transactions)
+//        var cycle = 0
+//        val timeout = 2000
+//        while (cycle <= timeout && monitor.receivedTransactions.length < outGold.length) {
+//          c.clock.step()
+//          cycle += 1
+//        }
+//        if (cycle >= timeout)
+//          println("Test timed out!!!!!!!!!!!!!!!!!!!!!!!!")
+//
+//        val out = monitor.receivedTransactions.dequeueAll(_ => true)
+//        assert(out == outGold)
+//      }
+//    }
+//  }
 }

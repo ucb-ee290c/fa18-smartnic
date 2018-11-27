@@ -87,14 +87,14 @@ class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
             1, 1, 1, 1, 1, 1, 1, 1,
             1, 1, 1, 1, 1, 1
           ),
-          0x501
+          0x501, compressed = true
         ),
         CREECHighLevelTransaction(
           Seq(
             0, 5, 54, -38, 11, 56,
             0, 5
           ),
-          0x1
+          0x1, compressed = true
         )
       )
     )

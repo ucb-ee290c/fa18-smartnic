@@ -198,8 +198,7 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       2, 0, 2, 0, 2, 0, 2, 0
     )
   )
-  val allTestLens = allTestDatas.map(x => x.length / 8)
-
+  val allTestLens: List[Int] = allTestDatas.map(x => x.length / 8 - 1)
   for (i <- allTestAddrs.indices) {
     test(allTestAddrs(i), allTestLens(i), allTestDatas(i))
   }
@@ -219,7 +218,7 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       expectedData = expectedData :+ 0.toByte
     }
     val header = Header(len, addr)
-    val expectedHeader = Header(len, addr)
+    val expectedHeader = Header((math.ceil(expectedData.length / 8) - 1).toInt , addr, compressed = List("runLength", "compression").contains(operation))
     var datas: List[Data] = List[Data]()
     for (i <- 0 until math.ceil(data.length / 8.0).toInt) {
       datas = datas :+ Data(ByteUtils.squish(data.slice(8 * i, 8 * i + 8)))
@@ -328,13 +327,6 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
   }
 }
 
-/*
- * Top-level test.
- */
-class CompressorTester(c: Compressor) extends PeekPokeTester(c) {
-  //TODO
-}
-
 /**
   * From within sbt use:
   * testOnly example.test.CompressionTester
@@ -413,17 +405,17 @@ class CompressionTester extends ChiselFlatSpec {
     } should be(true)
   }
 
-  "Compressor" should "compress" in {
-    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-      coderParams = CoderParams(encode = true), operation = "compression")) {
-      c => new CREECCoderTester(c, true, "compression")
-    } should be(true)
-  }
-
-  "Compressor" should "decompress" in {
-    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
-      coderParams = CoderParams(encode = false), operation = "compression")) {
-      c => new CREECCoderTester(c, false, "compression")
-    } should be(true)
-  }
+//  "Compressor" should "compress" in {
+//    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+//      coderParams = CoderParams(encode = true), operation = "compression")) {
+//      c => new CREECCoderTester(c, true, "compression")
+//    } should be(true)
+//  }
+//
+//  "Compressor" should "decompress" in {
+//    Driver.execute(testerArgs :+ "compressor", () => new CREECCoder(
+//      coderParams = CoderParams(encode = false), operation = "compression")) {
+//      c => new CREECCoderTester(c, false, "compression")
+//    } should be(true)
+//  }
 }

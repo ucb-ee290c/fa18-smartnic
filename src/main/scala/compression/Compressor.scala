@@ -357,12 +357,11 @@ class CREECRunLengthCoder(coderParams: CoderParams)
     val out: CREECBus = new CREECBus(creecParams)
   })
   //create state machine definitions
-  val sAwaitHeader :: sSendHeader :: sAwaitData :: sProcessData :: sAccumulate :: sSendData :: Nil = Enum(6)
+  val sAwaitHeader :: sAwaitData :: sProcessData :: sSendHeader :: sAccumulate :: sSendData :: Nil = Enum(6)
   val state = RegInit(sAwaitHeader)
 
   //register the header and data inputs once they have been accepted
   val headerIn = Reg(new TransactionHeader)
-  val headerOut = Reg(new TransactionHeader)
   val dataOut = Wire(new TransactionData)
 
   //dataInBuffer holds the beats to be processed, while dataOutBuffer holds processed bytes.
@@ -372,7 +371,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
   //how many beats we need to get before the processing starts or send at the end
   val beatsToReceive = Reg(chiselTypeOf(io.in.header.bits.len))
   val beatsToProcess = Reg(chiselTypeOf(io.in.header.bits.len))
-  val bytesToSend = Reg(SInt((creecParams.beatBits + 1).W))
+  val bytesToSend = RegInit(0.asUInt((creecParams.beatBits + 1).W))
 
   //keeps track of which byte we are on for both the coded and uncoded sides.
   //    popCounter is for the data being popped off of dataInBuffer, and
@@ -403,34 +402,12 @@ class CREECRunLengthCoder(coderParams: CoderParams)
     dataInBuffer.io.reset := false.B
     headerIn := io.in.header.deq()
     dontTouch(headerIn.addr)
-    headerOut := {
-      val out = Wire(new TransactionHeader)
-      out.addr := io.in.header.bits.addr
-      out.id := io.in.header.bits.id
-      out.len := io.in.header.bits.len
-      out.compressed := io.in.header.bits.compressed
-      out.encrypted := io.in.header.bits.encrypted
-      out.ecc := io.in.header.bits.ecc
-      // TODO: set compressionPadBytes accordingly
-      out.compressionPadBytes := 0.U
-      out.eccPadBytes := 0.U
-      out.encryptionPadBytes := 0.U
-      out
-    }
+    beatsToReceive := io.in.header.deq().len + 1.U
+    beatsToProcess := io.in.header.deq().len + 1.U
     io.in.data.nodeq()
     io.out.data.noenq()
     io.out.header.noenq()
     when(io.in.header.fire()) {
-      state := sSendHeader
-    }
-  }.elsewhen(state === sSendHeader) {
-    io.in.data.nodeq()
-    io.in.header.nodeq()
-    io.out.data.noenq()
-    io.out.header.enq(headerOut)
-    beatsToReceive := headerIn.len
-    beatsToProcess := headerIn.len
-    when(io.out.header.fire()) {
       state := sAwaitData
     }
   }.elsewhen(state === sAwaitData) {
@@ -448,7 +425,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
         state := sAwaitData
       }
     }
-    when(beatsToReceive === 0.U) {
+    when(beatsToReceive <= 1.U) {
       state := sProcessData
     }
   }.elsewhen(state === sProcessData) {
@@ -471,10 +448,10 @@ class CREECRunLengthCoder(coderParams: CoderParams)
     when(coder.io.out.fire()) {
       dataOutBuffer.io.push := true.B
       when(coder.io.out.bits.flag) {
-        state := sAccumulate
+        state := sSendHeader
         counter := 0.U
       }.otherwise {
-        bytesToSend := bytesToSend + 1.S
+        bytesToSend := bytesToSend + 1.U
       }
     }
 
@@ -486,6 +463,26 @@ class CREECRunLengthCoder(coderParams: CoderParams)
           dataInBuffer.io.pop := true.B
         }
       }
+    }
+  }.elsewhen(state === sSendHeader) {
+    io.in.data.nodeq()
+    io.in.header.nodeq()
+    io.out.data.noenq()
+    io.out.header.enq({
+      val out = Wire(new TransactionHeader)
+      out.addr := headerIn.addr
+      out.id := headerIn.id
+      out.len := Mux(bytesToSend % 8.U === 0.U, (bytesToSend / 8.U) - 1.U, bytesToSend / 8.U)
+      out.compressed := true.B
+      out.encrypted := headerIn.encrypted
+      out.ecc := headerIn.ecc
+      out.compressionPadBytes := 8.U - bytesToSend % 8.U
+      out.eccPadBytes := headerIn.eccPadBytes
+      out.encryptionPadBytes := headerIn.encryptionPadBytes
+      out
+    })
+    when(io.out.header.fire()) {
+      state := sAccumulate
     }
   }.elsewhen(state === sAccumulate) {
     io.in.header.nodeq()
@@ -505,13 +502,13 @@ class CREECRunLengthCoder(coderParams: CoderParams)
     io.out.header.noenq()
     io.out.data.enq(dataOut)
     when(io.out.data.fire()) {
-      when(bytesToSend <= 8.S) {
+      when(bytesToSend <= 8.U) {
         state := sAwaitHeader
         dataInBuffer.io.reset := true.B
         dataOutBuffer.io.reset := true.B
-        bytesToSend := 0.S
+        bytesToSend := 0.U
       }.otherwise {
-        bytesToSend := bytesToSend - 8.S
+        bytesToSend := bytesToSend - 8.U
         state := sAccumulate
       }
     }
@@ -577,20 +574,13 @@ class CREECDifferentialCoderModel(encode: Boolean) extends
 class CREECRunLengthCoderModel(encode: Boolean) extends
   SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
-    if (encode) {
-      val processedData = CompressionUtils.runLength(in.data.toList, encode)
-      // TODO: hard-coded padding to 8 bytes in high level model is bad practice
-      val paddedData = processedData.padTo(math.ceil(processedData.length / 8.0).toInt * 8, 0.asInstanceOf[Byte])
-      Seq(in.copy(
-        data = paddedData,
-        compressionPadBytes = paddedData.length - processedData.length))
-    } else {
-      val inPadStrip = in.data.take(in.data.length - in.compressionPadBytes)
-      Seq(in.copy(
-        data = CompressionUtils.runLength(inPadStrip, encode),
-        compressionPadBytes = 0
-      ))
-    }
+    val processedData = CompressionUtils.runLength(in.data.toList, encode)
+    // TODO: hard-coded padding to 8 bytes in high level model is bad practice
+    val paddedData = processedData.padTo(math.ceil(processedData.length / 8.0).toInt * 8, 0.asInstanceOf[Byte])
+    Seq(in.copy(
+      data = paddedData,
+      compressed = true,
+      compressionPadBytes = paddedData.length - processedData.length))
   }
 }
 
