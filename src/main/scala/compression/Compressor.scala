@@ -425,7 +425,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
         state := sAwaitData
       }
     }
-    when(beatsToReceive <= 1.U) {
+    when(beatsToReceive === 0.U) {
       state := sProcessData
     }
   }.elsewhen(state === sProcessData) {
@@ -450,6 +450,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
       when(coder.io.out.bits.flag) {
         state := sSendHeader
         counter := 0.U
+        bytesToSend := bytesToSend - headerIn.compressionPadBytes
       }.otherwise {
         bytesToSend := bytesToSend + 1.U
       }
@@ -473,7 +474,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
       out.addr := headerIn.addr
       out.id := headerIn.id
       out.len := Mux(bytesToSend % 8.U === 0.U, (bytesToSend / 8.U) - 1.U, bytesToSend / 8.U)
-      out.compressed := true.B
+      out.compressed := coderParams.encode.B
       out.encrypted := headerIn.encrypted
       out.ecc := headerIn.ecc
       out.compressionPadBytes := 8.U - bytesToSend % 8.U
@@ -558,9 +559,16 @@ class Compressor(blockDeviceParams: BlockDeviceIOBusParams,
   val differential = Module(new CREECDifferentialCoder(CoderParams(encode = compress)))
   val runLength = Module(new CREECRunLengthCoder(CoderParams(encode = compress)))
 
-  io.in <> differential.io.in
-  differential.io.out <> runLength.io.in
-  io.out <> runLength.io.out
+  if(compress) {
+    io.in <> differential.io.in
+    differential.io.out <> runLength.io.in
+    io.out <> runLength.io.out
+  }
+  else {
+    io.in <> runLength.io.in
+    runLength.io.out <> differential.io.in
+    io.out <> differential.io.out
+  }
 }
 
 class CREECDifferentialCoderModel(encode: Boolean) extends
@@ -579,7 +587,7 @@ class CREECRunLengthCoderModel(encode: Boolean) extends
     val paddedData = processedData.padTo(math.ceil(processedData.length / 8.0).toInt * 8, 0.asInstanceOf[Byte])
     Seq(in.copy(
       data = paddedData,
-      compressed = true,
+      compressed = encode,
       compressionPadBytes = paddedData.length - processedData.length))
   }
 }

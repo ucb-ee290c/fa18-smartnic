@@ -11,7 +11,7 @@ object ByteUtils {
     require(bytes.length == 8)
     var squished = BigInt(0)
     for (i <- 0 until 8) {
-      squished |= BigInt(bytes(i)) << (8 * i)
+      squished |= (BigInt(bytes(i)) & 0xFF) << (8 * i)
     }
     squished
   }
