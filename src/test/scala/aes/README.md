@@ -69,7 +69,7 @@ Testers:
 
 These tests validate top-level modules that combine key generation, encryption, and decryption. As with the
 above tests, these tests are designed to verify one vector at a time. However, they are setup to run decryption and
-encryption asynchronously when possible.
+encryption asynchronously when possible to demonstrated independent operation despite the shared key schedule.
 
 - `AESTopCombinationalTester`: Purely combinational system
 - `AESTopTimeInterleaveTester`: Combinational Key generation, time-interleaved encryption and decryption
@@ -90,3 +90,16 @@ with the test vectors.
 A notable feature of the test is the byte-reordering in `AESNISTSpec`. This is done to accommodate endianess.
 The NIST files provide vectors are byte-wise little-endian, but have the first byte in the leftmost (MSB) slot.
 While the DUT expects a 128-bit value, the entire length is little-endian, so the first byte is in the rightmost (LSB) slot.
+
+## CREECBusAESTest
+
+This test suite validates the CREECBus software model and hardware wrappers for AES. It utilizes the test
+drivers and monitors developed for CREECBus. Unlike in the above testers, no extra hardware tester classes
+are necessary since the drivers and monitors are designed for CREECBus modules while the software model has
+built-in functions for testing from their super class `SoftwareModel`.
+
+- `CREECBusAESSWTest`: Verifies the encryption and decryption software models for both high and low level transactions.
+Also runs a basic encrypt-decrypt chain to demonstrate block composition.
+- `CREECBusAESHWTest`: Verifies the encryption and decryption RTL interfaces individually against the software models,
+then runs a simple encrypt-decrypt chain.
+

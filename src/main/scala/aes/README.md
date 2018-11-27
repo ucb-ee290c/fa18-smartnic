@@ -1,6 +1,6 @@
 # AES Chisel Blocks
 
-This directory contains the AES modules. They can be compile to FIRRTL with `sbt compile`, and compiled to Verilog with
+This directory contains the AES modules. They can be compiled to FIRRTL with `sbt compile`, and compiled to Verilog with
 `sbt run`.
 
 These blocks are designed for 128-bit Electronic Codebook AES encryption. The proposed use case is
@@ -14,8 +14,8 @@ Files:
 - AESHelper.scala: Helper modules (e.g. hardware multiplies for Rijndael field) and shared modules (e.g. key generation)
 - AES.scala: Modules for AES encryption
 - InvAES.scala: Modules for AES decryption
-- AESTop.scala: Full AES encryption and decryption modules
-- AESApp.scala: Helper class to output Verilog.
+- AESTop.scala: Full AES encryption and decryption modules, and hardware wrapper for CREECBus
+- AESApp.scala: Helper class to output Verilog
 - AESSWModel.scala: AES Interconnect Software Model for CREECBus
 
 
@@ -51,8 +51,17 @@ Without delving too deeply into each module, the relevant "top" level modules ar
         Uses a decoupled interface for data input and output.
 - `AESTopFullTimeInterleave`: Pure time-interleaved system
         Uses a decoupled interface for data input, output, and key input.
+- `AESTopCREECBus`: `AESTopFullTimeInterleave` wrapped for CREECBus.
+        Uses an auxilary state machine for encrypt and decrypt interfaces to consume
+        CREECBus high level transactions.
 
 
 ### AESSWModel.scala
-Contains CREECEncryptModel and CREECDecryptModel, which consume CREECBus transaction and process them
-using the Javax implementation of AES.
+Contains CREECEncryptModel and CREECDecryptModel, which consume CREECBus transactions and process them
+using the Javax implementation of AES. Different implementations exist for both CREECBus high and low
+level transactions.
+
+CREECBus software models only require an overriden `process` function that defines how
+high or low level transactions are consumed. The remaining functions for running tests are
+inherited from the `SoftwareModel` class.
+
