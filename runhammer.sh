@@ -19,4 +19,5 @@ source $HAMMER_HOME/sourceme.sh
 
 cd "$DIR" && hammer-vlsi synthesis -o syn-output.json -v ${VERILOG_FILE} --top ${VERILOG_TOP} -p config/clocks.json -p config/use_vivado.json  --obj_dir out_${VERILOG_TOP}
 
+source config/vivado_setup.sh
 vivado -mode batch -source extract_vivado_report.tcl -tclargs ${VERILOG_TOP}
