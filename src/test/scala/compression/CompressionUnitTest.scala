@@ -147,7 +147,6 @@ class BasicFIFOTester(c: BasicFIFO) extends PeekPokeTester(c) {
 class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extends PeekPokeTester(c) {
   require(List("differential", "runLength", "compression").contains(operation))
   val allTestAddrs = List(611, 612, 613, 614, 615, 616)
-  val allTestLens = List(5, 1, 2, 9, 10, 10)
   val allTestDatas = List(
     List[Byte](
       3, 4, 5, 6, 7, 8, 9, 10,
@@ -199,6 +198,7 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       2, 0, 2, 0, 2, 0, 2, 0
     )
   )
+  val allTestLens = allTestDatas.map(x => x.length / 8)
 
   for (i <- allTestAddrs.indices) {
     test(allTestAddrs(i), allTestLens(i), allTestDatas(i))
@@ -263,7 +263,7 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
 
       if (peek(c.io.out.header.valid) != BigInt(0)) {
         expect(peekHeader(c) == expectedHeader, "input and output headers did not " +
-          "match. expected " + expectedHeader + ", but got " + peekHeader(c))
+        "match. expected " + expectedHeader + ", but got " + peekHeader(c))
       }
 
       if (peek(c.io.out.data.valid) != BigInt(0)) {
@@ -271,6 +271,7 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       }
 
       step(1)
+
       timeout += 1
       if (timeout > 1000) {
         expect(good = false, "took too long.")

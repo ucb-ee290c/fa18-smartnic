@@ -280,6 +280,10 @@ class CREECDifferentialCoder(coderParams: CoderParams)
     io.out.header.noenq()
     io.out.data.noenq()
     when(io.in.data.fire()) {
+      if (coderParams.encode)
+        lastValue := bytesIn.last
+      else
+        lastValue := bytesOut.last
       state := sSendData
     }
   }.otherwise /*sSendData*/ {
@@ -287,17 +291,10 @@ class CREECDifferentialCoder(coderParams: CoderParams)
     io.in.data.nodeq()
     io.out.header.noenq()
     io.out.data.enq(dataOut)
-    when(beatsToGo === 1.U) {
-      lastValue := 0.S
-    }.otherwise {
-      if (coderParams.encode)
-        lastValue := bytesIn.last
-      else
-        lastValue := bytesOut.last
-    }
     when(io.out.data.fire()) {
-      when(beatsToGo === 1.U) {
+      when(beatsToGo === 0.U) {
         state := sAwaitHeader
+        lastValue := 0.S
       }.otherwise {
         beatsToGo := beatsToGo - 1.U
         state := sAwaitData
@@ -355,8 +352,8 @@ class BasicFIFO(width: Int, length: Int) extends Module {
  */
 class CREECRunLengthCoder(coderParams: CoderParams)
                          (implicit creecParams: CREECBusParams) extends Module {
-val io = IO(new Bundle {
-val in: CREECBus = Flipped(new CREECBus(creecParams))
+  val io = IO(new Bundle {
+    val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
   })
   //create state machine definitions
@@ -576,10 +573,24 @@ class CREECDifferentialCoderModel(encode: Boolean) extends
   }
 }
 
+//TODO: don't copy and paste this from the model below
 class CREECRunLengthCoderModel(encode: Boolean) extends
   SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
-    Seq(CREECHighLevelTransaction(CompressionUtils.runLength(in.data.toList, encode), in.addr))
+    if (encode) {
+      val processedData = CompressionUtils.runLength(in.data.toList, encode)
+      // TODO: hard-coded padding to 8 bytes in high level model is bad practice
+      val paddedData = processedData.padTo(math.ceil(processedData.length / 8.0).toInt * 8, 0.asInstanceOf[Byte])
+      Seq(in.copy(
+        data = paddedData,
+        compressionPadBytes = paddedData.length - processedData.length))
+    } else {
+      val inPadStrip = in.data.take(in.data.length - in.compressionPadBytes)
+      Seq(in.copy(
+        data = CompressionUtils.runLength(inPadStrip, encode),
+        compressionPadBytes = 0
+      ))
+    }
   }
 }
 
@@ -593,13 +604,13 @@ class CompressorModel(compress: Boolean) extends
         val paddedData = processedData.padTo(math.ceil(processedData.length / 8.0).toInt * 8, 0.asInstanceOf[Byte])
         Seq(in.copy(
           data = paddedData,
-          compressed = true,
+          compressed = compress,
           compressionPadBytes = paddedData.length - processedData.length))
       case false =>
         val inPadStrip = in.data.take(in.data.length - in.compressionPadBytes)
         Seq(in.copy(
-          data = CompressionUtils.compress(inPadStrip, compress = false),
-          compressed = false,
+          data = CompressionUtils.compress(inPadStrip, compress),
+          compressed = compress,
           compressionPadBytes = 0
         ))
     }
