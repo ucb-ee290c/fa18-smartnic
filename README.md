@@ -87,3 +87,18 @@ Module files are in `src/main/scala/ecc`. Tests are in `src/test/scala/ecc`.
 [Test Details](src/test/scala/ecc/README.md)
 
 ### Interconnect
+
+## Hammer
+
+Setup the path to Vivado installation on your machine in the file `config/vivado_setup.sh`.
+
+To change the clock constraint (or add new constraint), modify the file `config/constraint.xdc`. Note that we do not use `config/clocks.json`.
+
+To synthesize a Verilog file with Hammer (basically Vivado synthesis for now), use the following command:
+
+```
+./runhammer.sh {path/to/verilog_file.v}
+```
+
+The timing and area report will be generated inside the directory `out_{verilog_top_module}`.
+
