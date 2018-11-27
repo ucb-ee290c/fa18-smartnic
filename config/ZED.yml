@@ -1,0 +1,9 @@
+# Small ZYNQ build information
+synthesis.vivado:
+  # FPGA board name
+  board_name: "zed"
+  # FPGA part name
+  part_fpga: "xc7z020clg484-1"
+  # FPGA board part
+  part_board: "em.avnet.com:zed:part0:1.3"
+

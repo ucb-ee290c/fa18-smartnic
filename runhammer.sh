@@ -3,10 +3,17 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 
 VERILOG_FILE=$1
+FPGA_CONFIG=$2
 
 if [ -z "$VERILOG_FILE" ]
 then
   echo "Need a verilog file"
+  exit
+fi
+
+if [ ! -e "config/${FPGA_CONFIG}.yml" ]
+then
+  echo "config/${FPGA_CONFIG}.yml does not exist!"
   exit
 fi
 
@@ -17,7 +24,7 @@ export HAMMER_HOME=$DIR/hammer
 
 source $HAMMER_HOME/sourceme.sh
 
-cd "$DIR" && hammer-vlsi synthesis -o syn-output.json -v ${VERILOG_FILE} --top ${VERILOG_TOP} -p config/clocks.json -p config/use_vivado.json  --obj_dir out_${VERILOG_TOP}
+cd "$DIR" && hammer-vlsi synthesis -o syn-output.json -v ${VERILOG_FILE} --top ${VERILOG_TOP} -p config/clocks.json -p config/use_vivado.json  -p config/${FPGA_CONFIG}.yml --obj_dir out_${VERILOG_TOP}
 
 source config/vivado_setup.sh
 vivado -mode batch -source extract_vivado_report.tcl -tclargs ${VERILOG_TOP}
