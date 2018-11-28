@@ -16,9 +16,14 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   }
 
   val mode = (p1.dataWidth compare p2.dataWidth) match {
-    case -1 => Mode.Expand
-    case 0  => Mode.Identity
-    case 1  => Mode.Contract
+    case -1 => // p1.dataWidth < p2.dataWidth
+      require(p2.dataWidth % p1.dataWidth == 0, s"Expanding width converter must have rational dataWidth ratios: p1: ${p1.dataWidth},p2: ${p2.dataWidth}")
+      Mode.Expand
+    case 1  => // p1.dataWidth > p2.dataWidth
+      require(p1.dataWidth % p2.dataWidth == 0, s"Contracting width converter must have rational dataWidth ratios: p1: ${p1.dataWidth},p2: ${p2.dataWidth}")
+      Mode.Contract
+    case 0  => // p1.dataWidth == p2.dataWidth
+      Mode.Identity
   }
 
   val ratio = mode match {
@@ -32,16 +37,27 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
     case Mode.Contract => p1.dataWidth - p2.dataWidth
     case Mode.Identity => 0
   }
-    
-  val sRecvHeader :: sRecvData :: sSend :: Nil = Enum(3)
+
+  // There are four stages
+  //   - sRecvHeader: for accepting the header from the slave port
+  //   - sSendHeader: for sending the header to the master port
+  //   - sRecvData: for accepting the data from the slave port
+  //   - sSendData: for sending the data to the master port
+  val sRecvHeader :: sSendHeader :: sRecvData :: sSendData :: Nil = Enum(4)
   val state = RegInit(sRecvHeader)
 
   val dataInReg = RegInit(0.U(p1.dataWidth.W))
   val dataOutReg = RegInit(0.U(p2.dataWidth.W))
 
+  // Keep track of how many beats are sent
   val numBeats = RegInit(0.U(32.W))
   val beatCnt = RegInit(0.U(32.W))
 
+  // In the case of Expand mode, this counter keeps track of how many input
+  // data needs to be accepted before sending a new output data.
+  // In the case of Contract mode, this counter keeps track of how many output
+  // data needs to be sent before accepting a new input data.
+  // The Identity mode does not use this counter
   val ratioCnt = RegInit(0.U(32.W))
 
   val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
@@ -49,6 +65,8 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   val idReg = RegInit(0.U)
   io.master.data.bits.id := idReg
   io.master.header.bits <> headerReg
+
+  // Update the len field accordingly to the mode
   val newLen = mode match {
     case Mode.Expand   => (headerReg.len + 1.U) / ratio.asUInt() - 1.U
     case Mode.Contract => (headerReg.len + 1.U) * ratio.asUInt() - 1.U
@@ -56,15 +74,12 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   }
 
   io.master.header.bits.len := newLen
-
-  // TODO: this doesn't look like it can handle back-pressure from master
-  io.master.header.valid := RegNext(state === sRecvHeader &&
-                                    io.slave.header.fire())
+  io.master.header.valid := state === sSendHeader
 
   io.slave.header.ready := state === sRecvHeader
 
   io.slave.data.ready := state === sRecvData
-  io.master.data.valid := state === sSend
+  io.master.data.valid := state === sSendData
 
   val outputData = mode match {
     case Mode.Expand   => dataOutReg
@@ -80,9 +95,17 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
       dataOutReg := 0.U
 
       when (io.slave.header.fire()) {
-        state := sRecvData
+        state := sSendHeader
         numBeats := io.slave.header.bits.len + 1.U
         headerReg := io.slave.header.bits
+      }
+    }
+
+    // We could probably overlap sSendHeader and sRecvData,
+    // but let's play safe here by having a separate sSendHeader state
+    is (sSendHeader) {
+      when (io.master.header.fire()) {
+        state := sRecvData
       }
     }
 
@@ -93,12 +116,15 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
 
         mode match {
           case Mode.Expand =>
-            beatCnt := beatCnt + 1.U
+            // Accumulate the input data
             dataOutReg := (dataOutReg >> p1.dataWidth) |
                           (io.slave.data.bits.data << shiftAmt)
 
+            // Send the output data to master if enough input data
+            // have been accumulated
             when (ratioCnt === (ratio - 1).asUInt()) {
-              state := sSend
+              state := sSendData
+              ratioCnt := 0.U
             }
             .otherwise {
               ratioCnt := ratioCnt + 1.U
@@ -106,21 +132,21 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
 
           case Mode.Contract =>
             dataInReg := io.slave.data.bits.data
-            state := sSend
+            state := sSendData
 
           case Mode.Identity =>
             dataOutReg := io.slave.data.bits.data
-            state := sSend
+            state := sSendData
         }
 
       }
     }
 
-    is (sSend) {
+    is (sSendData) {
       when (io.master.data.fire()) {
         mode match {
-          case Mode.Expand =>
-            ratioCnt := 0.U
+          case Mode.Expand | Mode.Identity =>
+            // Receive the next header if all beats have sent out
             when (beatCnt === numBeats) {
               state := sRecvHeader
             }
@@ -129,23 +155,21 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
             }
           case Mode.Contract =>
             dataInReg := dataInReg >> p2.dataWidth
+            // If enough data have been sent out, either accepting
+            // new input data or new header depending on beatCnt
             when (ratioCnt === (ratio - 1).asUInt()) {
               ratioCnt := 0.U
+
+              // Receive the next header if all beats have sent out
               when (beatCnt === numBeats) {
                 state := sRecvHeader
               }
               .otherwise {
                 state := sRecvData
               }
+
             } .otherwise {
               ratioCnt := ratioCnt + 1.U
-            }
-          case Mode.Identity =>
-            when (beatCnt === numBeats) {
-              state := sRecvHeader
-            }
-            .otherwise {
-              state := sRecvData
             }
 
         }

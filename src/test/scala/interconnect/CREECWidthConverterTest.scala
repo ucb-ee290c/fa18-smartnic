@@ -93,7 +93,6 @@ class CREECWidthConverterTest extends FlatSpec with ChiselScalatestTester {
     }
   }
 
-  behavior of "CREECWidthConverter"
   it should "expand by a factor of 2 when ratio = 2" in {
     test(new CREECWidthConverter(busParamsBase, busParamsExpand2)) { c =>
       val driver = new CREECDriver(c.io.slave, c.clock)
@@ -113,7 +112,6 @@ class CREECWidthConverterTest extends FlatSpec with ChiselScalatestTester {
     }
   }
 
-  behavior of "CREECWidthConverter"
   it should "contract by a factor of 2 when ratio = 2" in {
     test(new CREECWidthConverter(busParamsExpand2, busParamsBase)) { c =>
       val driver = new CREECDriver(c.io.slave, c.clock)
