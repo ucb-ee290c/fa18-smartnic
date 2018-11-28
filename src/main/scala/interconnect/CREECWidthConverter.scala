@@ -21,16 +21,6 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
     case 1  => Mode.Contract
   }
 
-//  val mode = if (p1.dataWidth < p2.dataWidth) {
-//    Mode.Expand
-//  }
-//  else if (p1.dataWidth > p2.dataWidth) { 
-//    Mode.Contract
-//  }
-//  else {
-//    Mode.Identity
-//  }
-
   val ratio = mode match {
     case Mode.Expand   => p2.dataWidth / p1.dataWidth
     case Mode.Contract => p1.dataWidth / p2.dataWidth
