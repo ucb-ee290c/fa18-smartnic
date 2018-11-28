@@ -41,7 +41,7 @@ class CREECeleratorSWTest extends FlatSpec {
     val models = Seq(
       new CompressorModel(true),
       // Simulate a width converter that can add the right amount of padding for the AES block size
-      new CREECPadder(16) -> new CREECEncryptHighModel,
+      new CREECPadderModel(16) -> new CREECEncryptHighModel,
       new ECCEncoderTopModel(RSParams.RS16_8_8)
     )
     val orderings = models.permutations.toList
@@ -56,12 +56,12 @@ class CREECeleratorSWTest extends FlatSpec {
   "compressor -> encrypter -> eccEncoder -> eccDecode -> decrypter -> decompressor" should "be an identity transform" in {
     val model =
       new CompressorModel(true) ->
-      new CREECPadder(16) ->
+      new CREECPadderModel(16) ->
       new CREECEncryptHighModel ->
       new ECCEncoderTopModel(RSParams.RS16_8_8) ->
       new ECCDecoderTopModel(RSParams.RS16_8_8) ->
       new CREECDecryptHighModel ->
-      new CREECStripper ->
+      new CREECStripperModel ->
       new CompressorModel(false)
     val out = model.processTransactions(theRepublic)
     assert(out == theRepublic)
