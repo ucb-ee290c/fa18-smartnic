@@ -103,14 +103,15 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
   //  - sDone: send the encoded data to the master port
   val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
   val state = RegInit(sRecvHeader)
+  val header = Reg(chiselTypeOf(io.slave.header.bits))
 
   // TODO: Don't know how to handle metadata for now
-  io.master.header.bits.compressed := false.B
+  io.master.header.bits.compressed := header.compressed
   io.master.header.bits.ecc := true.B
-  io.master.header.bits.encrypted := false.B
-  io.master.header.bits.compressionPadBytes := 0.U
+  io.master.header.bits.encrypted := header.encrypted
+  io.master.header.bits.compressionPadBytes := header.compressionPadBytes
   io.master.header.bits.eccPadBytes := 0.U
-  io.master.header.bits.encryptionPadBytes := 0.U
+  io.master.header.bits.encryptionPadBytes := header.encryptionPadBytes
 
   // For the header, simply forward it to the master port.
   // However, we need to modify the beat length based on RSParams
@@ -164,6 +165,7 @@ class ECCEncoderTop(val rsParams: RSParams = new RSParams(),
       when (io.slave.header.fire()) {
         state := sRecvData
         numBeats := (io.slave.header.bits.len + 1.U) * numItems.asUInt()
+        header := io.slave.header.bits
       }
     }
 

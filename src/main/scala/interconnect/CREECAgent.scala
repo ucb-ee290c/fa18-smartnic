@@ -129,7 +129,7 @@ object CREECAgent {
             eccPadBytes = receivedHeader.eccPadBytes.peek().litValue().toInt,
             encryptionPadBytes = receivedHeader.encryptionPadBytes.peek().litValue().toInt
           ))
-          println("monitored " + headerBeat)
+          println("monitoring: " + headerBeat.head)
           low2HighModel.pushTransactions(headerBeat)
           low2HighModel.advanceSimulation()
           receivedTransactions.enqueue(low2HighModel.pullTransactions():_*)

@@ -2,6 +2,7 @@ package interconnect
 
 import chisel3.tester._
 import compression.CompressorModel
+import ecc.{ECCEncoderTopModel, RSParams}
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
 
@@ -22,7 +23,7 @@ class CREECeleratorHWTest extends FlatSpec with ChiselScalatestTester {
   "the CREEC compression pipeline" should "loopback" in {
     val model =
       new CompressorModel(true) ->
-      new CompressorModel(false)
+      new ECCEncoderTopModel(RSParams.RS16_8_8)
 
     val outGold = model.processTransactions(transactions)
 
