@@ -94,10 +94,12 @@ Setup the path to Vivado installation on your machine in the file `config/vivado
 
 To change the clock constraint (or add new constraint), modify the file `config/constraint.xdc`. Note that we do not use `config/clocks.json`.
 
+To select an FPGA, use one of the YAML files in the `config` folder. For example, to use the VC707 FPGA, use "VC707" as `FPGANAME` in the run command.
+
 To synthesize a Verilog file with Hammer (basically Vivado synthesis for now), use the following command:
 
 ```
-./runhammer.sh {path/to/verilog_file.v}
+./runhammer.sh {path/to/verilog_file.v} {FPGANAME}
 ```
 
 The timing and area report will be generated inside the directory `out_{verilog_top_module}`.

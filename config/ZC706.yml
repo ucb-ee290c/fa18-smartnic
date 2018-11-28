@@ -1,0 +1,8 @@
+# ZC706 fpga build configuration
+synthesis.vivado:
+  # FPGA board name
+  board_name: "zc706"
+  # FPGA part name
+  part_fpga: "xc7z045ffg900-2"
+  # FPGA board part
+  part_board: "xilinx.com:zc706:part0:1.4"
