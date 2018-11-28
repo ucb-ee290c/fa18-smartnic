@@ -1,0 +1,9 @@
+# Default FPGA settings (VC707)
+synthesis.vivado:
+  # FPGA board name
+  board_name: "vc707"
+  # FPGA part name
+  part_fpga: "xc7vx485tffg1761-2" 
+  # FPGA board part
+  part_board: "xilinx.com:vc707:part0:1.3"
+  
