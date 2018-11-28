@@ -53,7 +53,7 @@ class CREECeleratorSWTest extends FlatSpec {
     }
   }
 
-  "compressor -> eccEncoder -> encrypter -> decrypter -> eccDecode -> decompressor" should "be an identity transform" in {
+  "compressor -> encrypter -> eccEncoder -> eccDecode -> decrypter -> decompressor" should "be an identity transform" in {
     val model =
       new CompressorModel(true) ->
       new CREECPadder(16) ->

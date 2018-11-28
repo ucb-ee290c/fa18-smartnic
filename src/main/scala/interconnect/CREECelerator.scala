@@ -9,10 +9,12 @@ class CREECelerator extends Module {
     val out = new CREECBus(new CREECBusParams)
   })
   val compressorOut = new CREECBus(new CREECBusParams)
-  // TODO: this is a bad idea
-  implicit val compressorBus = new CREECBusParams
-  val compressor = new Compressor(io.in.p, true)
+  // TODO: this implicit is a bad idea
+  implicit val compressorBus: BusParams = new CREECBusParams
+  val compressor = Module(new Compressor(io.in.p, true))
+  val deCompressor = Module(new Compressor(compressorBus, false))
 
-  io.out.header <> Reg(io.in.header)
-  io.out.data <> Reg(io.in.data)
+  compressor.io.in <> io.in
+  deCompressor.io.in <> compressor.io.out
+  io.out <> deCompressor.io.out
 }
