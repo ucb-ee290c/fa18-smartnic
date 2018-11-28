@@ -4,7 +4,7 @@ import chisel3._
 
 import scala.collection.mutable
 
-class CREECWidthConverter(p1: BusParams, p2: BusParams, allowPadding: Boolean) extends Module {
+class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(new CREECBus(p1))
     val out = new CREECBus(p2)
@@ -13,7 +13,7 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams, allowPadding: Boolean) e
   io.out.data <> Reg(io.in.data)
 }
 
-class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boolean = false)
+class CREECWidthConverterModel(p1: BusParams, p2: BusParams)
   extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction] {
   object Behavior extends Enumeration {
     val EXPAND, CONTRACT, IDENTITY = Value
@@ -29,10 +29,8 @@ class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boole
     (1, Behavior.IDENTITY)
   }
 
-  // Map from transaction ID to data belonging to transaction
+  // Map from transaction ID to data belonging to transaction (for expanding)
   val dataRepack = mutable.Map[Int, Seq[Byte]]()
-  // Map of transactions in flight from transaction ID to the header beat
-  val inFlight = mutable.Map[Int, CREECHeaderBeat]()
 
   override def process(in: CREECLowLevelTransaction): Seq[CREECLowLevelTransaction] = {
     in match {
@@ -40,9 +38,10 @@ class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boole
         behavior match {
           case Behavior.IDENTITY => Seq(t)
           case Behavior.EXPAND =>
-            assert((t.len + 1) % ratio == 0 || allowPadding, s"Expanding width converter received a header beat with length that's not divisible by the ratio $ratio")
-            inFlight.update(t.id, t)
+            assert((t.len + 1) % ratio == 0, s"Expanding width converter received a header beat with length that's not divisible by the ratio $ratio")
             Seq(t.copy(len = ((t.len + 1) / ratio) - 1)(p2))
+          case Behavior.CONTRACT =>
+            Seq(t.copy(len = ((t.len + 1) * ratio) - 1)(p2))
         }
       case t: CREECDataBeat =>
         behavior match {
@@ -50,15 +49,17 @@ class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boole
           case Behavior.EXPAND =>
             val recvData = dataRepack.getOrElse(t.id, Seq[Byte]())
             val newData = recvData ++ t.data
-            val tx = inFlight.get(t.id)
-            // TODO: not considering the case where allowPadding is used (need to also update and query inFlight)
-            if (newData.length == p2.bytesPerBeat) { // Normal beat
+            if (newData.length == p2.bytesPerBeat) {
               dataRepack.update(t.id, Seq[Byte]())
-              inFlight.update(t.id, tx.get.copy(len = tx.get.len - ratio)(p1))
               Seq(CREECDataBeat(newData, t.id)(p2))
             } else {
               dataRepack.update(t.id, newData)
               Seq()
+            }
+          case Behavior.CONTRACT =>
+            val dataChunks = t.data.grouped(p2.bytesPerBeat).toList
+            dataChunks.map {
+              dataChunk => t.copy(data = dataChunk)(p2)
             }
         }
     }

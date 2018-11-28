@@ -49,15 +49,17 @@ class CREECWidthConverterTest extends FlatSpec {
     assert(out == outGoldExpand2)
   }
 
-  it should "error out on unaligned inputs if allowPadding == false" in {
-    val model = new CREECWidthConverterModel(busParamsBase, busParamsExpand2, false)
+  it should "error out on unaligned inputs when ratio = 2" in {
+    val model = new CREECWidthConverterModel(busParamsBase, busParamsExpand2)
     assertThrows[AssertionError] {
       model.processTransactions(testTxUnaligned)
     }
   }
 
-  it should "pad unaligned inputs if allowPadding == true" in {
-    val model = new CREECWidthConverterModel(busParamsBase, busParamsExpand2, allowPadding = true)
-    val out = model.processTransactions(testTxUnaligned)
+  it should "contract by a factor of 2 when ratio = 2" in {
+    val model = new CREECWidthConverterModel(busParamsExpand2, busParamsBase)
+    val out = model.processTransactions(outGoldExpand2)
+    println(out)
+    assert(out == testTx)
   }
 }
