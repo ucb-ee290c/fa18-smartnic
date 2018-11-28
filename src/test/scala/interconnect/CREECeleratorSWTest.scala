@@ -56,10 +56,12 @@ class CREECeleratorSWTest extends FlatSpec {
   "compressor -> eccEncoder -> encrypter -> decrypter -> eccDecode -> decompressor" should "be an identity transform" in {
     val model =
       new CompressorModel(true) ->
-      new ECCEncoderTopModel(RSParams.RS16_8_8) ->
+      new CREECPadder(16) ->
       new CREECEncryptHighModel ->
-      new CREECDecryptHighModel ->
+      new ECCEncoderTopModel(RSParams.RS16_8_8) ->
       new ECCDecoderTopModel(RSParams.RS16_8_8) ->
+      new CREECDecryptHighModel ->
+      new CREECStripper ->
       new CompressorModel(false)
     val out = model.processTransactions(theRepublic)
     assert(out == theRepublic)

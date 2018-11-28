@@ -16,6 +16,13 @@ class CREECWidthConverterTest extends FlatSpec {
     CREECDataBeat(Seq(2, 2, 2, 2, 2, 2, 2, 2), id = 0x1)(busParamsBase)
   )
 
+  val outGoldExpand2 = Seq(
+    CREECHeaderBeat(len = 0, id = 0x0, addr = 0x0)(busParamsExpand2),
+    CREECHeaderBeat(len = 0, id = 0x1, addr = 0x0)(busParamsExpand2),
+    CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), id = 0x0)(busParamsExpand2),
+    CREECDataBeat(Seq(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2), id = 0x1)(busParamsExpand2)
+  )
+
   val testTxUnaligned = Seq(
     CREECHeaderBeat(len = 2, id = 0x0, addr = 0x0)(busParamsBase),
     CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 8), id = 0x0)(busParamsBase),
@@ -23,11 +30,10 @@ class CREECWidthConverterTest extends FlatSpec {
     CREECDataBeat(Seq(17, 18, 19, 20, 21, 22, 23, 24), id = 0x0)(busParamsBase),
   )
 
-  val outGoldExpand2 = Seq(
-    CREECHeaderBeat(len = 0, id = 0x0, addr = 0x0)(busParamsExpand2),
-    CREECHeaderBeat(len = 0, id = 0x1, addr = 0x0)(busParamsExpand2),
+  val outGoldExpand2Unaligned = Seq(
+    CREECHeaderBeat(len = 1, id = 0x0, addr = 0x0, encryptionPadBytes = 8)(busParamsExpand2),
     CREECDataBeat(Seq(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16), id = 0x0)(busParamsExpand2),
-    CREECDataBeat(Seq(1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2), id = 0x1)(busParamsExpand2)
+    CREECDataBeat(Seq(17, 18, 19, 20, 21, 22, 23, 24, 0, 0, 0, 0, 0, 0, 0, 0), id = 0x0)(busParamsExpand2),
   )
 
   behavior of "SW Width Converter"
@@ -50,4 +56,8 @@ class CREECWidthConverterTest extends FlatSpec {
     }
   }
 
+  it should "pad unaligned inputs if allowPadding == true" in {
+    val model = new CREECWidthConverterModel(busParamsBase, busParamsExpand2, allowPadding = true)
+    val out = model.processTransactions(testTxUnaligned)
+  }
 }

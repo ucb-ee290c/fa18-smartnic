@@ -48,12 +48,13 @@ class CREECWidthConverterModel(p1: BusParams, p2: BusParams, allowPadding: Boole
         behavior match {
           case Behavior.IDENTITY => Seq(t)
           case Behavior.EXPAND =>
-            val tx = inFlight.get(t.id)
             val recvData = dataRepack.getOrElse(t.id, Seq[Byte]())
             val newData = recvData ++ t.data
+            val tx = inFlight.get(t.id)
             // TODO: not considering the case where allowPadding is used (need to also update and query inFlight)
-            if (newData.length == p2.bytesPerBeat) {
+            if (newData.length == p2.bytesPerBeat) { // Normal beat
               dataRepack.update(t.id, Seq[Byte]())
+              inFlight.update(t.id, tx.get.copy(len = tx.get.len - ratio)(p1))
               Seq(CREECDataBeat(newData, t.id)(p2))
             } else {
               dataRepack.update(t.id, newData)

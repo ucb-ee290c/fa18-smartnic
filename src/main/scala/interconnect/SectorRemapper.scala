@@ -52,7 +52,7 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
     val mappedOffset = UInt(log2Ceil(sectorSize/8).W)
     val mappedLength = UInt((maxBlockLength*sectorSize / 8).W)
     val entryValid = Bool()
-    val metadata = new CREECMetadataBundle
+    //val metadata = new CREECMetadataBundle
   }
 
   // Round up numToRound to a multiple of 'multiple'
@@ -97,7 +97,7 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
   val sIdle :: sFetchCacheReq :: sFetchCacheFilling :: sSendToBuffer :: Nil = Enum(4)
   val state = RegInit(sIdle)
 
-  val workingWrite = Reg(new TransactionHeader(io.wrSlave.p) with BusAddress)
+  val workingWrite = Reg(new TransactionHeader(io.wrSlave.p))
 
   io.wrSlave.header.ready := state === sIdle
   io.wrSlave.data.ready := state === sSendToBuffer

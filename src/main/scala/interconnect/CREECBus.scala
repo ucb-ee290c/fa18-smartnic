@@ -21,16 +21,6 @@ class BlockDeviceIOBusParams extends BusParams(64, 1, 64)
 class CREECBusParams extends BusParams(128, 1, 64)
 class CREECBusParamsInterleave extends BusParams(128, 32, 64)
 
-trait CREECMetadata {
-}
-
-// TODO: traits can't take parameters in Scala
-trait BusAddress {
-}
-
-class CREECMetadataBundle extends Bundle with CREECMetadata
-
-// TODO: migrate all the stuff that belongs in a trait back to traits once testers2 can accommodate them
 class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   val len = UInt(p.beatBits.W)
   val id = UInt(p.maxInFlight.W)

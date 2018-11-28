@@ -24,7 +24,7 @@ class FlaggedByte(width: Int = 8) extends Bundle {
  */
 class RunLengthCoder(coderParams: CoderParams,
                      byteWidth: Int = 8)
-                    (implicit creecParams: CREECBusParams) extends Module {
+                    (implicit creecParams: BusParams) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
     val out = Decoupled(Output(new FlaggedByte(byteWidth)))
@@ -193,7 +193,7 @@ class DifferentialCoder(numElements: Int = 8,
  */
 //TODO: deal with CREECMetadata. i.e. if read data is not compressed, don't uncompress.
 class CREECDifferentialCoder(coderParams: CoderParams)
-                            (implicit creecParams: CREECBusParams) extends Module {
+                            (implicit creecParams: BusParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
@@ -351,7 +351,7 @@ class BasicFIFO(width: Int, length: Int) extends Module {
  * //TODO: combine this module with CREECDifferentialCoder
  */
 class CREECRunLengthCoder(coderParams: CoderParams)
-                         (implicit creecParams: CREECBusParams) extends Module {
+                         (implicit creecParams: BusParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
@@ -549,9 +549,9 @@ class SnappyCompressorParams {
 /*
  * Top-level module for whole compression scheme. Slots into CREEC bus.
  */
-class Compressor(blockDeviceParams: BlockDeviceIOBusParams,
+class Compressor(blockDeviceParams: BusParams,
                  compress: Boolean)
-                (implicit creecParams: CREECBusParams) extends Module {
+                (implicit creecParams: BusParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = Flipped(new CREECBus(blockDeviceParams))
     val out: CREECBus = new CREECBus(creecParams)
