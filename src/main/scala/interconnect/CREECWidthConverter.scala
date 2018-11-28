@@ -56,8 +56,8 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   }
 
   io.master.header.bits.len := newLen
-  // TODO: this doesn't look like it can handle back-pressure from master
-  io.master.header.valid := RegNext(io.slave.header.valid)
+  io.master.header.valid := RegNext(state === sRecvHeader &&
+                                    io.slave.header.fire())
 
   io.slave.header.ready := state === sRecvHeader
 
