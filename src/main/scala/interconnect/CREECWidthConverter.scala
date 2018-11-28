@@ -1,16 +1,166 @@
 package interconnect
 
 import chisel3._
+import chisel3.util._
 
 import scala.collection.mutable
 
 class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(new CREECBus(p1))
-    val out = new CREECBus(p2)
+    val slave = Flipped(new CREECBus(p1))
+    val master = new CREECBus(p2)
   })
-  io.out.header <> Reg(io.in.header)
-  io.out.data <> Reg(io.in.data)
+
+  object Mode extends Enumeration {
+    val Expand, Contract, Identity = Value
+  }
+
+  val mode = (p1.dataWidth compare p2.dataWidth) match {
+    case -1 => Mode.Expand
+    case 0  => Mode.Identity
+    case 1  => Mode.Contract
+  }
+
+//  val mode = if (p1.dataWidth < p2.dataWidth) {
+//    Mode.Expand
+//  }
+//  else if (p1.dataWidth > p2.dataWidth) { 
+//    Mode.Contract
+//  }
+//  else {
+//    Mode.Identity
+//  }
+
+  val ratio = mode match {
+    case Mode.Expand   => p2.dataWidth / p1.dataWidth
+    case Mode.Contract => p1.dataWidth / p2.dataWidth
+    case Mode.Identity => 1
+  }
+
+  val shiftAmt = mode match {
+    case Mode.Expand   => p2.dataWidth - p1.dataWidth
+    case Mode.Contract => p1.dataWidth - p2.dataWidth
+    case Mode.Identity => 0
+  }
+    
+  val sRecvHeader :: sRecvData :: sSend :: Nil = Enum(3)
+  val state = RegInit(sRecvHeader)
+
+  val dataInReg = RegInit(0.U(p1.dataWidth.W))
+  val dataOutReg = RegInit(0.U(p2.dataWidth.W))
+
+  val numBeats = RegInit(0.U(32.W))
+  val beatCnt = RegInit(0.U(32.W))
+
+  val ratioCnt = RegInit(0.U(32.W))
+
+  val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
+
+  val idReg = RegInit(0.U)
+  io.master.data.bits.id := idReg
+  io.master.header.bits <> headerReg
+  val newLen = mode match {
+    case Mode.Expand   => (headerReg.len + 1.U) / ratio.asUInt() - 1.U
+    case Mode.Contract => (headerReg.len + 1.U) * ratio.asUInt() - 1.U
+    case Mode.Identity => headerReg.len
+  }
+
+  io.master.header.bits.len := newLen
+  // TODO: this doesn't look like it can handle back-pressure from master
+  io.master.header.valid := RegNext(io.slave.header.valid)
+
+  io.slave.header.ready := state === sRecvHeader
+
+  io.slave.data.ready := state === sRecvData
+  io.master.data.valid := state === sSend
+
+  val outputData = mode match {
+    case Mode.Expand   => dataOutReg
+    case Mode.Contract => dataInReg(p2.dataWidth - 1, 0)
+    case Mode.Identity => dataOutReg
+  }
+
+  io.master.data.bits.data := outputData
+
+  switch (state) {
+    is (sRecvHeader) {
+      beatCnt := 0.U
+      dataOutReg := 0.U
+
+      when (io.slave.header.fire()) {
+        state := sRecvData
+        numBeats := io.slave.header.bits.len + 1.U
+        headerReg := io.slave.header.bits
+      }
+    }
+
+    is (sRecvData) {
+      when (io.slave.data.fire()) {
+        idReg := io.slave.data.bits.id
+        beatCnt := beatCnt + 1.U
+
+        mode match {
+          case Mode.Expand =>
+            beatCnt := beatCnt + 1.U
+            dataOutReg := (dataOutReg >> p1.dataWidth) |
+                          (io.slave.data.bits.data << shiftAmt)
+
+            when (ratioCnt === (ratio - 1).asUInt()) {
+              state := sSend
+            }
+            .otherwise {
+              ratioCnt := ratioCnt + 1.U
+            }
+
+          case Mode.Contract =>
+            dataInReg := io.slave.data.bits.data
+            state := sSend
+
+          case Mode.Identity =>
+            dataOutReg := io.slave.data.bits.data
+            state := sSend
+        }
+
+      }
+    }
+
+    is (sSend) {
+      when (io.master.data.fire()) {
+        mode match {
+          case Mode.Expand =>
+            ratioCnt := 0.U
+            when (beatCnt === numBeats) {
+              state := sRecvHeader
+            }
+            .otherwise {
+              state := sRecvData
+            }
+          case Mode.Contract =>
+            dataInReg := dataInReg >> p2.dataWidth
+            when (ratioCnt === (ratio - 1).asUInt()) {
+              ratioCnt := 0.U
+              when (beatCnt === numBeats) {
+                state := sRecvHeader
+              }
+              .otherwise {
+                state := sRecvData
+              }
+            } .otherwise {
+              ratioCnt := ratioCnt + 1.U
+            }
+          case Mode.Identity =>
+            when (beatCnt === numBeats) {
+              state := sRecvHeader
+            }
+            .otherwise {
+              state := sRecvData
+            }
+
+        }
+      }
+    }
+
+  }
 }
 
 class CREECWidthConverterModel(p1: BusParams, p2: BusParams)

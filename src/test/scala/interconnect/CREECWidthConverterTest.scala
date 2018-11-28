@@ -1,9 +1,13 @@
 package interconnect
 
+import chisel3._
+import chisel3.tester._
+
 import aes.AESBusParams
 import org.scalatest.FlatSpec
+import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 
-class CREECWidthConverterTest extends FlatSpec {
+class CREECWidthConverterTest extends FlatSpec with ChiselScalatestTester {
   val busParamsBase = new CREECBusParams
   val busParamsExpand2 = new AESBusParams
 
@@ -62,4 +66,73 @@ class CREECWidthConverterTest extends FlatSpec {
     println(out)
     assert(out == testTx)
   }
+
+  // Convert test data to High-level format for RTL testing
+  val modelBase = new CREECLowToHighModel(busParamsBase)
+  val testTxHigh = modelBase.processTransactions(testTx)
+  val modelExpand2 = new CREECLowToHighModel(busParamsExpand2)
+  val outGoldExpand2High = modelExpand2.processTransactions(outGoldExpand2)
+
+  behavior of "CREECWidthConverter"
+  it should "pass through transactions when ratio = 1" in {
+    test(new CREECWidthConverter(busParamsBase, busParamsBase)) { c =>
+      val driver = new CREECDriver(c.io.slave, c.clock)
+      val monitor = new CREECMonitor(c.io.master, c.clock)
+
+      driver.pushTransactions(testTxHigh)
+      var cycle = 0
+      val timeout = 2000
+      while (cycle < timeout &&
+             monitor.receivedTransactions.length < testTxHigh.length) {
+        c.clock.step()
+        cycle += 1
+      }
+
+      val out = monitor.receivedTransactions.dequeueAll(_ => true)
+      assert(out == testTxHigh)
+    }
+  }
+
+  behavior of "CREECWidthConverter"
+  it should "expand by a factor of 2 when ratio = 2" in {
+    test(new CREECWidthConverter(busParamsBase, busParamsExpand2)) { c =>
+      val driver = new CREECDriver(c.io.slave, c.clock)
+      val monitor = new CREECMonitor(c.io.master, c.clock)
+
+      driver.pushTransactions(testTxHigh)
+      var cycle = 0
+      val timeout = 2000
+      while (cycle < timeout &&
+             monitor.receivedTransactions.length < outGoldExpand2High.length) {
+        c.clock.step()
+        cycle += 1
+      }
+
+      val out = monitor.receivedTransactions.dequeueAll(_ => true)
+      assert(out == outGoldExpand2High)
+    }
+  }
+
+  behavior of "CREECWidthConverter"
+  it should "contract by a factor of 2 when ratio = 2" in {
+    test(new CREECWidthConverter(busParamsExpand2, busParamsBase)) { c =>
+      val driver = new CREECDriver(c.io.slave, c.clock)
+      val monitor = new CREECMonitor(c.io.master, c.clock)
+
+      driver.pushTransactions(outGoldExpand2High)
+      var cycle = 0
+      val timeout = 2000
+      while (cycle < timeout &&
+             monitor.receivedTransactions.length < testTxHigh.length) {
+        c.clock.step()
+        cycle += 1
+      }
+
+      val out = monitor.receivedTransactions.dequeueAll(_ => true)
+      println(out)
+      assert(out == testTxHigh)
+    }
+  }
+
+
 }
