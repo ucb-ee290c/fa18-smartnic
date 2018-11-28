@@ -26,7 +26,7 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
                      advanceSimulation(true).pullTransactions()
 
   "ECCEncoderTop" should "be testable with testers2" in {
-    test(new ECCEncoderTop(rsParams)) { c =>
+    test(new ECCEncoderTop(rsParams, busParams)) { c =>
       val tx = CREECHighLevelTransaction(inputsEnc, 0x1000)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
@@ -46,12 +46,12 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
   // Software golden model
   val txDec = CREECHighLevelTransaction(inputsDec, 0x1000)
-  val modelDec = new ECCDecoderTopModel(rsParams)
+  val modelDec = new ECCDecoderTopModel(rsParams, busParams)
   val outGoldDec = modelDec.pushTransactions(Seq(txDec)).
                      advanceSimulation(true).pullTransactions()
 
   "ECCDecoderTop" should "be testable with testers2" in {
-    test(new ECCDecoderTop(rsParams)) { c =>
+    test(new ECCDecoderTop(rsParams, busParams)) { c =>
       val tx = CREECHighLevelTransaction(inputsDec, 0x1000)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)

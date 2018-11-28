@@ -565,8 +565,8 @@ class RSDecoder(val rsParams: RSParams = new RSParams()) extends Module {
 //   + Send read header to upstream block (master)
 //   + Receive read data from downstream block (slave)
 //   + Send *decoded* read data to upstream block (master)
-class ECCDecoderTop(val rsParams: RSParams = new RSParams(),
-                    val busParams: CREECBusParams = new CREECBusParams()
+class ECCDecoderTop(val rsParams: RSParams,
+                    val busParams: BusParams
   ) extends Module {
   val io = IO(new Bundle {
     val slave = Flipped(new CREECBus(busParams))

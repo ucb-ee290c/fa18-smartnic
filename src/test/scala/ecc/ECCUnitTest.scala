@@ -1,6 +1,7 @@
 package ecc
 import scala.math
 
+import interconnect._
 import chisel3.iotesters
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 
@@ -278,6 +279,8 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
   * sbt 'testOnly ecc.ECCTester'
   */
 class ECCTester extends ECCSpec {
+  val busParams = new CREECBusParams
+
   "RSEncoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
     new RSEncoder(rsParams)) {
@@ -294,14 +297,14 @@ class ECCTester extends ECCSpec {
 
   "ECCEncoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ECCEncoderTop(rsParams)) {
+    new ECCEncoderTop(rsParams, busParams)) {
       c => new ECCEncoderTopUnitTester(c, trials,verbose)
     } should be(true)
   }
 
   "ECCDecoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ECCDecoderTop(rsParams)) {
+    new ECCDecoderTop(rsParams, busParams)) {
       c => new ECCDecoderTopUnitTester(c, trials, verbose)
     } should be(true)
   }
