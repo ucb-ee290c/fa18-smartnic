@@ -1,7 +1,6 @@
 package ecc
 import org.scalatest.{FlatSpec, Matchers}
 
-// This only tests the Reed-Solomon encoder
 class ECCSpec extends FlatSpec with Matchers {
   behavior of "ECC"
 
