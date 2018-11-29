@@ -9,7 +9,7 @@ import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 // For more advanced tests, check out the CREECBusECC test
 
 class RSEncoderUnitTester(c: RSEncoder,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  trials: List[(Seq[Int], Seq[Int], Seq[Int])],
   verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {
@@ -66,7 +66,7 @@ class RSEncoderUnitTester(c: RSEncoder,
 }
 
 class RSDecoderUnitTester(c: RSDecoder,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  trials: List[(Seq[Int], Seq[Int], Seq[Int])],
   verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {
@@ -126,7 +126,7 @@ class RSDecoderUnitTester(c: RSDecoder,
 }
 
 class ECCEncoderTopUnitTester(c: ECCEncoderTop,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  trials: List[(Seq[Int], Seq[Int], Seq[Int])],
   verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {
@@ -194,7 +194,7 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
 }
 
 class ECCDecoderTopUnitTester(c: ECCDecoderTop,
-  trials: List[(Seq[Int], Array[Int], Seq[Int])],
+  trials: List[(Seq[Int], Seq[Int], Seq[Int])],
   verbose: Boolean = false) extends PeekPokeTester(c) {
 
   for (i <- 0 until trials.size) {

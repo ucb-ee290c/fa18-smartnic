@@ -4,6 +4,24 @@ package ecc
 
 import interconnect._
 
+class CommChannel(val rsParams: RSParams, val noiseByteLevel: Int) extends
+  SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+  val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
+
+  override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {
+
+    // Group the data beats into chunks of n symbols,
+    // and introduce noise to (up to) *noiseByteLevel* symbols
+    val inGrp = in.data.grouped(rsParams.n).toSeq
+    val output = inGrp.map{m =>
+      val noisySyms = rs.noiseGen(m.map(_.toInt), noiseByteLevel)
+      noisySyms.map(_.toByte)
+    }.flatten
+
+    Seq(in.copy(data = output))
+  }
+}
+
 class ECCEncoderTopModel(val rsParams: RSParams) extends
   SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)

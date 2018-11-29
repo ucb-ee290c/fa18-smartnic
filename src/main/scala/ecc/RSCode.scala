@@ -127,6 +127,24 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
     msgs ++ pars.reverse
   }
 
+  def noiseGen(syms: Seq[Int], numErrorSyms: Int): Seq[Int] = {
+    val noiseSyms = new Array[Int](numSyms)
+    for (i <- 0 until numSyms) {
+      noiseSyms(i) = syms(i)
+    }
+
+    // Randomly pick locations for introducing error symbols
+    // It's okay if we pick the same location multiple times
+    // as long as the number of errorneous locations does not
+    // exceed *numErrorSyms*
+    for (i <- 0 until numErrorSyms) {
+      val errorIdx = scala.util.Random.nextInt(numSyms - 1)
+      noiseSyms(errorIdx) = scala.util.Random.nextInt(numRoots - 1)
+    }
+
+    noiseSyms
+  }
+
   // This function computes the following polynomial
   // coeffs(0) * X^(0) + coeffs(1) * X^(1) + ... + coeffs(d - 1) * X^(d - 1)
   // where X = variable, d = coeffs.size

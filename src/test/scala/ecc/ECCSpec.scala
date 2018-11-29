@@ -5,7 +5,7 @@ class ECCSpec extends FlatSpec with Matchers {
   behavior of "ECC"
 
   val numTrials = 40
-  var trials: List[(Seq[Int], Array[Int], Seq[Int])] = List()
+  var trials: List[(Seq[Int], Seq[Int], Seq[Int])] = List()
   val verbose = if (numTrials <= 10) {
     true
   }
@@ -13,7 +13,7 @@ class ECCSpec extends FlatSpec with Matchers {
     false
   }
 
-  // RS(16, 8)
+  // RS(16, 8, 8)
   val numSymbols = 16
   val numMsgs = 8
   val symbolWidth = 8
@@ -41,29 +41,17 @@ class ECCSpec extends FlatSpec with Matchers {
     // Need to pass this test to go further
     require(rs.verifySyms(swSyms), "Incorrect software RS encoder!")
 
-    var buggySyms = new Array[Int](numSymbols)
-    for (i <- 0 until numSymbols) {
-      buggySyms(i) = swSyms(i)
-    }
-
-    // Randomly pick locations for introducing error symbols
-    // It's okay if we pick the same location multiple times
-    // as long as the number of errorneous locations does not
-    // exceed *maxNumErrorSyms*
     val maxNumErrorSyms = (numSymbols - numMsgs) / 2
-    for (i <- 0 until maxNumErrorSyms) {
-      val errorIdx = scala.util.Random.nextInt(numSymbols - 1)
-      buggySyms(errorIdx) = scala.util.Random.nextInt(rs.numRoots - 1)
-    }
+    val noisySyms = rs.noiseGen(swSyms, maxNumErrorSyms)
 
     if (verbose) {
       for (i <- 0 until numSymbols) {
-        printf("buggySyms(%d) = %d\n", i, buggySyms(i))
+        printf("noisySyms(%d) = %d\n", i, noisySyms(i))
       }
     }
 
     // Running software RS Decoder
-    val swCorrectedSyms = rs.decode(buggySyms)
+    val swCorrectedSyms = rs.decode(noisySyms)
     if (verbose) {
       for (i <- 0 until swCorrectedSyms.size) {
         printf("swCorrectedSyms(%d) = %d\n", i, swCorrectedSyms(i))
@@ -73,7 +61,7 @@ class ECCSpec extends FlatSpec with Matchers {
     // Need to pass this test to go further
     require(rs.verifySyms(swCorrectedSyms), "Incorrect software RS decoder!")
 
-    val item = (swSyms, buggySyms, swCorrectedSyms)
+    val item = (swSyms, noisySyms, swCorrectedSyms)
     trials = trials :+ item
   }
 

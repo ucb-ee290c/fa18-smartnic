@@ -2,7 +2,7 @@ package interconnect
 
 import aes.{CREECDecryptHighModel, CREECEncryptHighModel}
 import compression.CompressorModel
-import ecc.{ECCDecoderTopModel, ECCEncoderTopModel, RSCode, RSParams}
+import ecc.{ECCDecoderTopModel, ECCEncoderTopModel, RSParams, CommChannel}
 import org.scalatest.FlatSpec
 
 class CREECeleratorSWTest extends FlatSpec {
@@ -59,6 +59,11 @@ class CREECeleratorSWTest extends FlatSpec {
       new CREECPadderModel(16) ->
       new CREECEncryptHighModel ->
       new ECCEncoderTopModel(RSParams.RS16_8_8) ->
+      // With RS(16,8,8), we can tolerate up to (16 - 8) / 2 = 4 (8-bit) symbols
+      // per each group of 16 (8-bit) symbols. It means that we can correct up to
+      // 4B out of 16B. Therefore, setting the *noiseByteLevel* to 5 or higher
+      // will fail
+      new CommChannel(RSParams.RS16_8_8, noiseByteLevel=4) ->
       new ECCDecoderTopModel(RSParams.RS16_8_8) ->
       new CREECDecryptHighModel ->
       new CREECStripperModel ->
