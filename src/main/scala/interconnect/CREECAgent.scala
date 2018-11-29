@@ -43,9 +43,14 @@ object CREECAgent {
     // We need a way to sequence data beats to only appear 1 or more cycles after the respective header beat
     val inFlight = mutable.Map[Int, CREECHeaderBeat]()
 
-    def pushTransactions(ts: Seq[CREECHighLevelTransaction]): Unit = {
-      val lowTransactions = high2LowModel.pushTransactions(ts).advanceSimulation().pullTransactions()
-      lowTransactions.foreach {
+    def pushTransactions(ts: Seq[CREECTransaction]): Unit = {
+      ts.foreach {
+        case t: CREECHighLevelTransaction =>
+          val lowTransactions = high2LowModel.pushTransactions(Seq(t)).advanceSimulation().pullTransactions()
+          lowTransactions.foreach {
+            case t: CREECHeaderBeat => headersToDrive.enqueue(t)
+            case t: CREECDataBeat => dataToDrive.enqueue(t)
+          }
         case t: CREECHeaderBeat => headersToDrive.enqueue(t)
         case t: CREECDataBeat => dataToDrive.enqueue(t)
       }

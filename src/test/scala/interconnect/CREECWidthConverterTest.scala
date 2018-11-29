@@ -1,6 +1,5 @@
 package interconnect
 
-import chisel3._
 import chisel3.tester._
 
 import aes.AESBusParams

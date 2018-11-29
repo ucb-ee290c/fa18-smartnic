@@ -48,8 +48,8 @@ class CREECeleratorSWTest extends FlatSpec {
     for (ordering <- orderings) {
       println(ordering)
       val model = ordering.reduce(_ -> _)
-      val out = model.processTransactions(testTx)
-      println(out.head.data.length)
+      val out = model.processTransactions(theRepublic)
+      println(out.map(_.data.length).sum)
     }
   }
 

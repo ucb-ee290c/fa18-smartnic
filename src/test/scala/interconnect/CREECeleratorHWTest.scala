@@ -1,5 +1,6 @@
 package interconnect
 
+import aes.CREECEncryptHighModel
 import chisel3.tester._
 import compression.CompressorModel
 import ecc.{ECCEncoderTopModel, RSParams}
@@ -20,10 +21,12 @@ class CREECeleratorHWTest extends FlatSpec with ChiselScalatestTester {
     )
   )
 
-  "the CREEC compression pipeline" should "loopback" in {
+  "the compression -> ECC RTL pipeline" should "match the SW model" in {
     val model =
       new CompressorModel(true) ->
-      new ECCEncoderTopModel(RSParams.RS16_8_8)
+      new ECCEncoderTopModel(RSParams.RS16_8_8) ->
+      new CREECPadderModel(16) ->
+      new CREECEncryptHighModel()
 
     val outGold = model.processTransactions(transactions)
 
