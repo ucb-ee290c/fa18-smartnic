@@ -10,8 +10,8 @@ class CREECelerator extends Module {
   val aesBusParams = new AESBusParams
 
   val io = IO(new Bundle {
-    val in = Flipped(new CREECBus(new BlockDeviceIOBusParams))
-    val out = new CREECBus(creecBusParams)
+    val in = Flipped(new CREECBus(BusParams.blockDev))
+    val out = new CREECBus(BusParams.creec)
   })
 
   // TODO: this implicit is a bad idea

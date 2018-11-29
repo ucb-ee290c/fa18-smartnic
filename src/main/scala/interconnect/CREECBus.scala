@@ -13,15 +13,22 @@ case class BusParams(maxBeats: Int, maxInFlight: Int, dataWidth: Int) {
   val bytesPerBeat: Int = dataWidth / 8
 }
 
-// From the block device IO (master) to the compression block (slave) (64 beats per req guaranteed)
-// Also from the MMU/remapper (master) to the block device model (slave) (address on 512B, 64 beats required)
-class BlockDeviceIOBusParams extends BusParams(64, 1, 64)
+object BusParams {
+  // From the block device IO (master) to the compression block (slave) (64 beats per req guaranteed)
+  // Also from the MMU/remapper (master) to the block device model (slave) (address on 512B, 64 beats required)
+  val blockDev = BusParams(64, 1, 64)
 
-// Used internally to connect (compression -> parity/ECC -> encryption -> mapping/MMU unit)
+  // Used internally to connect (compression -> parity/ECC -> encryption -> mapping/MMU unit)
+  val creec = BusParams(128, 1, 64)
+  val creecInterleave = BusParams(128, 32, 64)
+
+  // Wider bus interface for AES (aligned to block size)
+  val aes = BusParams(128, 1, 128)
+}
+
 class CREECBusParams extends BusParams(128, 1, 64)
-class CREECBusParamsInterleave extends BusParams(128, 32, 64)
 
-class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
+class TransactionHeader(val p: BusParams) extends Bundle {
   val len = UInt(p.beatBits.W)
   val id = UInt(p.maxInFlight.W)
   // Sector (512B) address (2TB addressable)
@@ -59,7 +66,7 @@ class TransactionHeader(val p: BusParams = new CREECBusParams) extends Bundle {
   }
 }
 
-class TransactionData(val p: BusParams = new CREECBusParams) extends Bundle {
+class TransactionData(val p: BusParams) extends Bundle {
   val data = UInt(p.dataWidth.W)
   val id = UInt(p.maxInFlight.W)
 

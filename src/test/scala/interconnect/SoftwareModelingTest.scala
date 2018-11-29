@@ -4,7 +4,7 @@ import org.scalatest.FlatSpec
 
 class SoftwareModelingTest extends FlatSpec {
   // Shared BusParams for all the tests below
-  implicit val busParams: BusParams = new CREECBusParamsInterleave
+  implicit val busParams: BusParams = BusParams.creecInterleave
 
   // High-level transactions for testing
   val highTxs = Seq(

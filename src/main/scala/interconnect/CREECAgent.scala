@@ -63,7 +63,7 @@ object CREECAgent {
           val header = headersToDrive.dequeueFirst(_ => true)
           header.foreach { t =>
             println("driving: " + t)
-            headerDriver.enqueue(new TransactionHeader().Lit(
+            headerDriver.enqueue(new TransactionHeader(x.p).Lit(
               t.len.U, t.id.U, t.addr.U,
               t.compressed.B, t.encrypted.B, t.ecc.B,
               t.compressionPadBytes.U, t.eccPadBytes.U, t.encryptionPadBytes.U))
@@ -78,13 +78,13 @@ object CREECAgent {
     fork {
       timescope {
         x.data.valid.poke(false.B)
-        x.data.bits.poke(new TransactionData().Lit(0.U, 0.U))
+        x.data.bits.poke(new TransactionData(x.p).Lit(0.U, 0.U))
         while (true) {
           val data = dataToDrive.dequeueFirst(t => inFlight.contains(t.id))
           data.foreach { t =>
             timescope {
               println("driving: " + t)
-              x.data.bits.poke(new TransactionData().Lit(bytesToBigInt(t.data).U, t.id.U))
+              x.data.bits.poke(new TransactionData(x.p).Lit(bytesToBigInt(t.data).U, t.id.U))
               x.data.valid.poke(true.B)
               while (!x.data.ready.peek().litToBoolean) {
                 clk.step()

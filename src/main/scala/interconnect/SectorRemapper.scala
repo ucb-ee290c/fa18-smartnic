@@ -21,9 +21,9 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
                      val nBlockDeviceTrackers: Int = 1) extends Module {
   val io = IO(new Bundle {
     val wrSlave = new CREECBus(new CREECBusParams)
-    val wrMaster = new CREECBus(new BlockDeviceIOBusParams)
+    val wrMaster = new CREECBus(BusParams.blockDev)
 
-    val rdSlave = new CREECBus(new BlockDeviceIOBusParams)
+    val rdSlave = new CREECBus(BusParams.blockDev)
     val rdMaster = new CREECBus(new CREECBusParams)
   })
 

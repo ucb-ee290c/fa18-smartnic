@@ -207,9 +207,9 @@ class CREECDifferentialCoder(coderParams: CoderParams)
   val state = RegInit(sAwaitHeader)
 
   //register the header and data inputs once they have been accepted
-  val headerIn = Reg(new TransactionHeader)
-  val headerOut = Reg(new TransactionHeader)
-  val dataOut = Reg(new TransactionData)
+  val headerIn = Reg(new TransactionHeader(creecParams))
+  val headerOut = Reg(new TransactionHeader(creecParams))
+  val dataOut = Reg(new TransactionData(creecParams))
 
   //keep track of how many more data beats we need to process
   val beatsToGo = Reg(chiselTypeOf(io.in.header.bits.len))
@@ -241,7 +241,7 @@ class CREECDifferentialCoder(coderParams: CoderParams)
   when(state === sAwaitHeader) {
     headerIn := io.in.header.deq()
     headerOut := {
-      val out = Wire(new TransactionHeader)
+      val out = Wire(new TransactionHeader(creecParams))
       out.addr := io.in.header.bits.addr
       out.id := io.in.header.bits.id
       out.len := io.in.header.bits.len
@@ -272,7 +272,7 @@ class CREECDifferentialCoder(coderParams: CoderParams)
     io.in.header.nodeq()
     io.in.data.deq()
     dataOut := {
-      val out = Wire(new TransactionData)
+      val out = Wire(new TransactionData(creecParams))
       out.data := bytesOut.asUInt()
       out.id := io.in.data.bits.id
       out
@@ -361,8 +361,8 @@ class CREECRunLengthCoder(coderParams: CoderParams)
   val state = RegInit(sAwaitHeader)
 
   //register the header and data inputs once they have been accepted
-  val headerIn = Reg(new TransactionHeader)
-  val dataOut = Wire(new TransactionData)
+  val headerIn = Reg(new TransactionHeader(creecParams))
+  val dataOut = Wire(new TransactionData(creecParams))
 
   //dataInBuffer holds the beats to be processed, while dataOutBuffer holds processed bytes.
   val dataInBuffer = Module(new BasicFIFO(creecParams.dataWidth, creecParams.maxBeats))
@@ -470,7 +470,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
     io.in.header.nodeq()
     io.out.data.noenq()
     io.out.header.enq({
-      val out = Wire(new TransactionHeader)
+      val out = Wire(new TransactionHeader(creecParams))
       out.addr := headerIn.addr
       out.id := headerIn.id
       out.len := Mux(bytesToSend % 8.U === 0.U, (bytesToSend / 8.U) - 1.U, bytesToSend / 8.U)
@@ -533,7 +533,7 @@ class CREECCoder(coderParams: CoderParams, operation: String)
   else if (operation == "runLength")
     Module(new CREECRunLengthCoder(coderParams))
   else
-    Module(new Compressor(new BlockDeviceIOBusParams, compress = coderParams.encode))
+    Module(new Compressor(BusParams.blockDev, compress = coderParams.encode))
 
   coder.io <> io
 }

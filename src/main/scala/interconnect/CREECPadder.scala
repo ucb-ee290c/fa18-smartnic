@@ -31,7 +31,7 @@ class CREECPadder(busParams: BusParams, padBytes: Int = 8) extends Module {
   io.out.header.valid := state === sSendHeader
 
   // Use a shallow queue to get around testers2 threading ordering limitation on combinational input -> output paths
-  val dataQueue = Module(new Queue(new TransactionData(), 1))
+  val dataQueue = Module(new Queue(new TransactionData(busParams), 1))
 
   // Push data into queue from the input directly or from the padder
   dataQueue.io.enq.valid := (state === sSendData) && (io.in.data.valid || paddingData)

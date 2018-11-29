@@ -3,7 +3,7 @@ package compression
 import chisel3.Module
 import chisel3.tester._
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
-import interconnect.{BlockDeviceIOBusParams, CREECBusParams, CREECHighLevelTransaction, SoftwareModel}
+import interconnect._
 import org.scalatest.FlatSpec
 
 class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
@@ -133,7 +133,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
   }
 
   "the Compressor module" should "compress" in {
-    test(new Compressor(new BlockDeviceIOBusParams, true)) { c =>
+    test(new Compressor(BusParams.blockDev, true)) { c =>
       val model = new CompressorModel(compress = true)
       val driver = new CREECDriver(c.io.in, c.clock)
       val monitor = new CREECMonitor(c.io.out, c.clock)
@@ -144,7 +144,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
   "the Cmpressor module" should "uncompress" in {
     val m = new CompressorModel(compress = true)
     val compressedTransactions = m.processTransactions(transactions)
-    test(new Compressor(new BlockDeviceIOBusParams, false)) { c =>
+    test(new Compressor(BusParams.blockDev, false)) { c =>
       val model = new CompressorModel(compress = false)
       val driver = new CREECDriver(c.io.in, c.clock)
       val monitor = new CREECMonitor(c.io.out, c.clock)
