@@ -9,6 +9,7 @@ import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.regmapper._
 import freechips.rocketchip.tilelink._
+import freechips.rocketchip.subsystem.BaseSubsystem
 
 /**
   * The memory interface writes entries into the queue.
@@ -216,3 +217,17 @@ class CREECeleratorThing[T]
 
   lazy val module = new LazyModuleImp(this)
 }
+
+/**
+  * Mixin for top-level rocket to add a CREECelerator
+  *
+  */
+trait HasPeripheryCREECelerator extends BaseSubsystem {
+  // instantiate creec chain
+  val creecChain = LazyModule(new CREECeleratorThing())
+
+  // connect memory interfaces to pbus
+  pbus.toVariableWidthSlave(Some("creecWrite")) { creecChain.writeQueue.mem.get }
+  pbus.toVariableWidthSlave(Some("creecRead")) { creecChain.readQueue.mem.get }
+}
+
