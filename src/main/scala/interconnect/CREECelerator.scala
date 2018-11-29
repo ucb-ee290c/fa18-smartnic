@@ -41,3 +41,7 @@ class CREECelerator extends Module {
   aes.io.decrypt_master.header.nodeq()
   aes.io.decrypt_master.data.nodeq()
 }
+
+object CREECeleratorApp extends App {
+  Driver.execute(Array("None"), () => new CREECelerator())
+}
