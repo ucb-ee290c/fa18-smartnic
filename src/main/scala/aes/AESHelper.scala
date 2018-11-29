@@ -3,11 +3,6 @@ package aes
 import chisel3._
 import chisel3.util._
 import interconnect.{CREECBusParams, CREECBus}
-//import freechips.rocketchip.subsystem.BaseSubsystem
-//import freechips.rocketchip.config.{Parameters, Field}
-//import freechips.rocketchip.diplomacy._
-//import freechips.rocketchip.regmapper.{HasRegMap, RegField}
-//import freechips.rocketchip.tilelink._
 
 
 class DataBundle extends Bundle {
