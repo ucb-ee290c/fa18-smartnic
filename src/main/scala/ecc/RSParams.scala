@@ -5,6 +5,10 @@ package ecc
 import chisel3._
 import chisel3.util._
 
+import interconnect._
+
+class ECCBusParams extends BusParams(maxBeats = 128, maxInFlight=1, dataWidth=128)
+
 // References:
 // [1] http://ptgmedia.pearsoncmg.com/images/art_sklar7_reed-solomon/elementLinks/art_sklar7_reed-solomon.pdf
 // [2] https://downloads.bbc.co.uk/rd/pubs/whp/whp-pdf-files/WHP031.pdf

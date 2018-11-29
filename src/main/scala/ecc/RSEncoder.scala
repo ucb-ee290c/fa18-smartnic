@@ -80,21 +80,13 @@ class RSEncoder(val rsParams: RSParams = new RSParams()) extends Module {
 //   + Receive write data from upstream block (slave)
 //   + Send *encoded* write data to downstream block (master)
 class ECCEncoderTop(val rsParams: RSParams,
-                    val busParams: BusParams
+                    val busInParams: BusParams,
+                    val busOutParams: BusParams
   ) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new CREECBus(busParams))
-    val master = new CREECBus(busParams)
+    val slave = Flipped(new CREECBus(busInParams))
+    val master = new CREECBus(busOutParams)
   })
-
-  // *numItems* denotes the number of master outputs to be fired
-  // One master output represents *dataWidth* / *symbolWidth* symbols
-  // If the encoder produces more symbols than one master output can represent,
-  // we need to fire multiple master outputs
-  // For example, if we have RS(16, 8, 8), meaning 16 symbols with 8 original
-  // symbols of 8-bit, we need to fire *two* 64-bit output at the master port
-  // after encoding
-  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
 
   // There are four states
   //  - sRecvHeader: for accepting the header from the slave port
@@ -107,8 +99,8 @@ class ECCEncoderTop(val rsParams: RSParams,
 
   val enc = Module(new RSEncoder(rsParams))
 
-  val dataInReg = RegInit(0.U(busParams.dataWidth.W))
-  val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
+  val dataInReg = RegInit(0.U(busInParams.dataWidth.W))
+  val dataOutReg = RegInit(0.U(busOutParams.dataWidth.W))
   val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
   val idReg = RegInit(0.U)
 
@@ -117,23 +109,13 @@ class ECCEncoderTop(val rsParams: RSParams,
 
   io.master.header.bits.ecc := true.B
   io.master.header.bits.eccPadBytes := 0.U
-
-  // For the header, simply forward it to the master port.
-  // However, we need to modify the beat length based on RSParams
-  // because of the newly generated parity symbols.
-  // TODO: Dealing with odd number of beats. Hopefully never.
-  // Quirk: plus 1 (minus 1) because of the CREECBus convention
-  // we are following (e.g., *len* - 1 means a beat length of *len*)
-  io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) *
-                                       numItems.asUInt() - 1.U)
   io.master.header.valid := state === sSendHeader
 
   io.slave.header.ready := state === sRecvHeader
 
   io.slave.data.ready := state === sRecvData
   io.master.data.valid := state === sSendData
-  // Note that the output data only has a width of *dataWidth*
-  io.master.data.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
+  io.master.data.bits.data := dataOutReg
 
   // Trigger the encoding process when sCompute
   enc.io.in.valid := state === sCompute
@@ -143,7 +125,6 @@ class ECCEncoderTop(val rsParams: RSParams,
   // Various counters for keeping track of progress
   val (encInCntVal, encInCntDone) = Counter(enc.io.in.fire(), rsParams.k)
   val (encOutCntVal, encOutCntDone) = Counter(enc.io.out.fire(), rsParams.n)
-  val (itemCntVal, itemCntDone) = Counter(io.master.data.fire(), numItems)
 
   // Cannot use Counter for this because the maximum value is not statically known
   val beatCnt = RegInit(0.U(32.W))
@@ -171,7 +152,7 @@ class ECCEncoderTop(val rsParams: RSParams,
 
     is (sRecvData) {
       when (io.slave.data.fire()) {
-        // start the encoding process once the first input item is fired
+        // start the encoding process once accepting the first input
         state := sCompute
         dataInReg := io.slave.data.bits.data
         beatCnt := beatCnt + 1.U
@@ -201,18 +182,13 @@ class ECCEncoderTop(val rsParams: RSParams,
 
     is (sSendData) {
       when (io.master.data.fire()) {
-        dataOutReg := (dataOutReg >> busParams.dataWidth)
-        // May take multiple cycles to send the output data
-        // if it is larger than the bus data width
-        when (itemCntDone) {
-          when (beatCnt === numBeats) {
-            // If all data beats have been processed, receive the next header
-            state := sRecvHeader
-          }
-          .otherwise {
-            // Process the next data beat
-            state := sRecvData
-          }
+        when (beatCnt === numBeats) {
+          // If all data beats have been processed, receive the next header
+          state := sRecvHeader
+        }
+        .otherwise {
+          // Process the next data beat
+          state := sRecvData
         }
       }
     }

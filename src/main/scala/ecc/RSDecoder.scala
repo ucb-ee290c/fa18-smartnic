@@ -566,21 +566,13 @@ class RSDecoder(val rsParams: RSParams = new RSParams()) extends Module {
 //   + Receive read data from downstream block (slave)
 //   + Send *decoded* read data to upstream block (master)
 class ECCDecoderTop(val rsParams: RSParams,
-                    val busParams: BusParams
+                    val busInParams: BusParams,
+                    val busOutParams: BusParams,
   ) extends Module {
   val io = IO(new Bundle {
-    val slave = Flipped(new CREECBus(busParams))
-    val master = new CREECBus(busParams)
+    val slave = Flipped(new CREECBus(busInParams))
+    val master = new CREECBus(busOutParams)
   })
-
-  // *numItems* denotes the number of slave inputs to be accepted
-  // One slave input represents *dataWidth* / *symbolWidth* symbols
-  // If the decoder requires more symbols than one slave input can represent,
-  // we need to accept multiple slave inputs
-  // For example, if we have RS(16, 8, 8), meaning 16 symbols with 8 original
-  // symbols of 8-bit, we need to accept *two* 64-bit input at the slave port
-  // for decoding
-  val numItems = rsParams.n * rsParams.symbolWidth / busParams.dataWidth
 
   // There are four states
   //  - sRecvHeader: for accepting the header from the slave port
@@ -593,8 +585,8 @@ class ECCDecoderTop(val rsParams: RSParams,
 
   val dec = Module(new RSDecoder(rsParams))
 
-  val dataInReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
-  val dataOutReg = RegInit(0.U(busParams.dataWidth.W))
+  val dataInReg = RegInit(0.U(busInParams.dataWidth.W))
+  val dataOutReg = RegInit(0.U(busOutParams.dataWidth.W))
   val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
   val idReg = RegInit(0.U)
 
@@ -604,15 +596,6 @@ class ECCDecoderTop(val rsParams: RSParams,
   // Unset metadata for ECC
   io.master.header.bits.ecc := false.B
   io.master.header.bits.eccPadBytes := 0.U
-
-  // For the header, simply forward it to the master port.
-  // However, we need to modify the beat length based on RSParams
-  // because of the newly generated parity symbols.
-  // TODO: Dealing with odd number of beats. Hopefully never.
-  // Quirk: plus 1 (minus 1) because of the CREECBus convention
-  // we are following (e.g., *len* - 1 means a beat length of *len*)
-  io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) /
-                                       numItems.asUInt() - 1.U)
   io.master.header.valid := state === sSendHeader
 
   io.slave.header.ready := state === sRecvHeader
@@ -624,7 +607,6 @@ class ECCDecoderTop(val rsParams: RSParams,
   // Various counters for keeping track of progress
   val (decInCntVal, decInCntDone) = Counter(dec.io.in.fire(), rsParams.n)
   val (decOutCntVal, decOutCntDone) = Counter(dec.io.out.fire(), rsParams.k)
-  val (itemCntVal, itemCntDone) = Counter(io.slave.data.fire(), numItems)
   // Cannot use Counter for this because the maximum value is not statically known
   val beatCnt = RegInit(0.U(32.W))
   val numBeats = RegInit(0.U(32.W))
@@ -656,15 +638,8 @@ class ECCDecoderTop(val rsParams: RSParams,
     is (sRecvData) {
       when (io.slave.data.fire()) {
         beatCnt := beatCnt + 1.U
-        val shiftAmt = rsParams.n * rsParams.symbolWidth - busParams.dataWidth
-        dataInReg := (dataInReg >> busParams.dataWidth) |
-          (io.slave.data.bits.data << shiftAmt)
-        // May take multiple cycles to receive input data
-        // if it is larger than the bus data width
-        when (itemCntDone) {
-          // start the decoding process once we receive enough input data
-          state := sCompute
-        }
+        dataInReg := io.slave.data.bits.data
+        state := sCompute
       }
     }
 
@@ -683,7 +658,7 @@ class ECCDecoderTop(val rsParams: RSParams,
         // Note the endianness
         // The first decoding output is the LSB
         // The last decoding output is the MSB
-        val shiftAmt = busParams.dataWidth - rsParams.symbolWidth
+        val shiftAmt = busOutParams.dataWidth - rsParams.symbolWidth
         dataOutReg := (dataOutReg >> rsParams.symbolWidth) |
           (dec.io.out.bits << shiftAmt)
       }

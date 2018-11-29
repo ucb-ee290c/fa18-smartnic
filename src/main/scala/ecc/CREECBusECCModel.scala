@@ -4,7 +4,7 @@ package ecc
 
 import interconnect._
 
-class ECCEncoderTopModel(val rsParams: RSParams = new RSParams()) extends
+class ECCEncoderTopModel(val rsParams: RSParams) extends
   SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
 
@@ -25,9 +25,7 @@ class ECCEncoderTopModel(val rsParams: RSParams = new RSParams()) extends
   }
 }
 
-class ECCDecoderTopModel(val rsParams: RSParams = new RSParams(),
-                         val busParams: CREECBusParams = new CREECBusParams()
-  ) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
+class ECCDecoderTopModel(val rsParams: RSParams) extends SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction] {
   val rs = new RSCode(rsParams.n, rsParams.k, rsParams.symbolWidth)
 
   override def process(in: CREECHighLevelTransaction): Seq[CREECHighLevelTransaction] = {

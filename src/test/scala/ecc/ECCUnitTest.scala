@@ -167,7 +167,7 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
           peek(c.io.master.data.ready) == BigInt(1)) {
         var result: BigInt = peek(c.io.master.data.bits.data)
         var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
-        for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
+        for (i <- 0 until c.busOutParams.dataWidth / c.rsParams.symbolWidth) {
           outputs = outputs :+ (result & mask).toInt
           result = result >> c.rsParams.symbolWidth
         }
@@ -215,11 +215,15 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
     // TODO: test with multiple data beats
     // Note: multiple-beat test should be taken care of by the CREECBus
     // Transaction modeling test
-    val numBeats = c.rsParams.n * c.rsParams.symbolWidth / c.busParams.dataWidth
-    poke(c.io.slave.header.bits.len, numBeats)
 
-    val r = c.rsParams.n / numBeats
-    var beatCnt = 1
+    // Pack all input symbols into a single data item
+    // that has width == bus data width
+    var inputBits: BigInt = 0
+    for (i <- 0 until c.rsParams.n) {
+      inputBits = (inputBits << c.rsParams.symbolWidth) +
+                  inSyms(c.rsParams.n - i - 1)
+    }
+    poke(c.io.slave.data.bits.data, inputBits)
 
     var numCycles = 0
     val maxCycles = 300
@@ -227,24 +231,11 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
 
     // Wait until getting enough data or timeout
     while (numCycles < maxCycles && outputs.size < c.rsParams.k) {
-      if (peek(c.io.slave.data.valid) == BigInt(1) &&
-          peek(c.io.slave.data.ready) == BigInt(1)) {
-        var inputBits: BigInt = 0
-        for (j <- beatCnt * r until (beatCnt + 1) * r) {
-          // Pack r input symbols into a single data item
-          // that has width == bus data width
-          inputBits = (inputBits << c.rsParams.symbolWidth) +
-                       inSyms(c.rsParams.n - j - 1)
-        }
-        poke(c.io.slave.data.bits.data, inputBits)
-        beatCnt = beatCnt - 1
-      }
-
       if (peek(c.io.master.data.valid) == BigInt(1) &&
           peek(c.io.master.data.ready) == BigInt(1)) {
         var result: BigInt = peek(c.io.master.data.bits.data)
         var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
-        for (i <- 0 until c.busParams.dataWidth / c.rsParams.symbolWidth) {
+        for (i <- 0 until c.busOutParams.dataWidth / c.rsParams.symbolWidth) {
           outputs = outputs :+ (result & mask).toInt
           result = result >> c.rsParams.symbolWidth
         }
@@ -280,6 +271,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
   */
 class ECCTester extends ECCSpec {
   val busParams = new CREECBusParams
+  val busECCParams = new ECCBusParams
 
   "RSEncoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
@@ -297,14 +289,14 @@ class ECCTester extends ECCSpec {
 
   "ECCEncoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ECCEncoderTop(rsParams, busParams)) {
+    new ECCEncoderTop(rsParams, busParams, busECCParams)) {
       c => new ECCEncoderTopUnitTester(c, trials,verbose)
     } should be(true)
   }
 
   "ECCDecoderTop" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ECCDecoderTop(rsParams, busParams)) {
+    new ECCDecoderTop(rsParams, busECCParams, busParams)) {
       c => new ECCDecoderTopUnitTester(c, trials, verbose)
     } should be(true)
   }
