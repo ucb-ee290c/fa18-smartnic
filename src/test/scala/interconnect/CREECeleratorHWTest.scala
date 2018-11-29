@@ -21,12 +21,16 @@ class CREECeleratorHWTest extends FlatSpec with ChiselScalatestTester {
     )
   )
 
-  "the compression -> ECC RTL pipeline" should "match the SW model" in {
+  "the entire CREEC write RTL pipeline" should "match the SW model" in {
     val model =
       new CompressorModel(true) ->
-      new ECCEncoderTopModel(RSParams.RS16_8_8) ->
       new CREECPadderModel(16) ->
-      new CREECEncryptHighModel()
+      new CREECEncryptHighModel ->
+      new ECCEncoderTopModel(RSParams.RS16_8_8)
+      //new CompressorModel(true) ->
+      //new ECCEncoderTopModel(RSParams.RS16_8_8) ->
+      //new CREECPadderModel(16) ->
+      //new CREECEncryptHighModel()
 
     val outGold = model.processTransactions(transactions)
 
