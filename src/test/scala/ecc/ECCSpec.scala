@@ -4,7 +4,7 @@ import org.scalatest.{FlatSpec, Matchers}
 class ECCSpec extends FlatSpec with Matchers {
   behavior of "ECC"
 
-  val numTrials = 10
+  val numTrials = 40
   var trials: List[(Seq[Int], Array[Int], Seq[Int])] = List()
   val verbose = if (numTrials <= 10) {
     true

@@ -98,20 +98,25 @@ class ECCEncoderTop(val rsParams: RSParams,
 
   // There are four states
   //  - sRecvHeader: for accepting the header from the slave port
+  //  - sSendHeader: for sending the header to the master port
   //  - sRecvData: for accepting the data from the slave port
   //  - sCompute: RS encoding
-  //  - sDone: send the encoded data to the master port
-  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
+  //  - sSendData: send the encoded data to the master port
+  val sRecvHeader :: sSendHeader :: sRecvData :: sCompute :: sSendData :: Nil = Enum(5)
   val state = RegInit(sRecvHeader)
-  val header = Reg(chiselTypeOf(io.slave.header.bits))
 
-  // TODO: Don't know how to handle metadata for now
-  io.master.header.bits.compressed := header.compressed
+  val enc = Module(new RSEncoder(rsParams))
+
+  val dataInReg = RegInit(0.U(busParams.dataWidth.W))
+  val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
+  val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
+  val idReg = RegInit(0.U)
+
+  io.master.data.bits.id := idReg
+  io.master.header.bits <> headerReg
+
   io.master.header.bits.ecc := true.B
-  io.master.header.bits.encrypted := header.encrypted
-  io.master.header.bits.compressionPadBytes := header.compressionPadBytes
   io.master.header.bits.eccPadBytes := 0.U
-  io.master.header.bits.encryptionPadBytes := header.encryptionPadBytes
 
   // For the header, simply forward it to the master port.
   // However, we need to modify the beat length based on RSParams
@@ -121,23 +126,12 @@ class ECCEncoderTop(val rsParams: RSParams,
   // we are following (e.g., *len* - 1 means a beat length of *len*)
   io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) *
                                        numItems.asUInt() - 1.U)
-  io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
-  io.master.header.valid := RegNext(io.slave.header.valid)
-
-  // TODO: Don't know how to handle id for now
-  io.master.data.bits.id := RegNext(io.slave.data.bits.id)
-
-  val enc = Module(new RSEncoder(rsParams))
-
-  val dataInReg = RegInit(0.U(busParams.dataWidth.W))
-  val dataOutReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
+  io.master.header.valid := state === sSendHeader
 
   io.slave.header.ready := state === sRecvHeader
 
   io.slave.data.ready := state === sRecvData
-  io.master.data.valid := state === sDone
-
+  io.master.data.valid := state === sSendData
   // Note that the output data only has a width of *dataWidth*
   io.master.data.bits.data := dataOutReg(busParams.dataWidth - 1, 0)
 
@@ -146,14 +140,14 @@ class ECCEncoderTop(val rsParams: RSParams,
   enc.io.in.bits := dataInReg
   enc.io.out.ready := state === sCompute
 
-  val numBeats = RegInit(0.U(32.W))
-
   // Various counters for keeping track of progress
   val (encInCntVal, encInCntDone) = Counter(enc.io.in.fire(), rsParams.k)
   val (encOutCntVal, encOutCntDone) = Counter(enc.io.out.fire(), rsParams.n)
   val (itemCntVal, itemCntDone) = Counter(io.master.data.fire(), numItems)
+
   // Cannot use Counter for this because the maximum value is not statically known
   val beatCnt = RegInit(0.U(32.W))
+  val numBeats = RegInit(0.U(32.W))
 
   switch (state) {
     is (sRecvHeader) {
@@ -163,9 +157,15 @@ class ECCEncoderTop(val rsParams: RSParams,
       dataOutReg := 0.U
 
       when (io.slave.header.fire()) {
+        state := sSendHeader
+        numBeats := io.slave.header.bits.len + 1.U
+        headerReg := io.slave.header.bits
+      }
+    }
+
+    is (sSendHeader) {
+      when (io.master.header.fire()) {
         state := sRecvData
-        numBeats := (io.slave.header.bits.len + 1.U) * numItems.asUInt()
-        header := io.slave.header.bits
       }
     }
 
@@ -179,7 +179,7 @@ class ECCEncoderTop(val rsParams: RSParams,
     }
 
     is (sCompute) {
-      // Slice the dataInReg register into smaller chunk of size
+      // Slice the dataInReg register into smaller chunks of size
       // *symbolWidth* for the encoding process
       when (enc.io.in.fire()) {
         dataInReg := (dataInReg >> rsParams.symbolWidth)
@@ -187,7 +187,7 @@ class ECCEncoderTop(val rsParams: RSParams,
 
       when (enc.io.out.fire()) {
         when (encOutCntDone) {
-          state := sDone
+          state := sSendData
         }
 
         // Note the endianness
@@ -199,13 +199,13 @@ class ECCEncoderTop(val rsParams: RSParams,
       }
     }
 
-    is (sDone) {
+    is (sSendData) {
       when (io.master.data.fire()) {
         dataOutReg := (dataOutReg >> busParams.dataWidth)
         // May take multiple cycles to send the output data
         // if it is larger than the bus data width
         when (itemCntDone) {
-          when (beatCnt === numBeats - 1.U) {
+          when (beatCnt === numBeats) {
             // If all data beats have been processed, receive the next header
             state := sRecvHeader
           }

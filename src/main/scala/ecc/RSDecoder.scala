@@ -584,19 +584,26 @@ class ECCDecoderTop(val rsParams: RSParams,
 
   // There are four states
   //  - sRecvHeader: for accepting the header from the slave port
+  //  - sSendHeader: for sending the header to the master port
   //  - sRecvData: for accepting the data from the slave port
   //  - sCompute: RS deconding
-  //  - sDone: send the decoded data to the master port
-  val sRecvHeader :: sRecvData :: sCompute :: sDone :: Nil = Enum(4)
+  //  - sSendData: send the decoded data to the master port
+  val sRecvHeader :: sSendHeader :: sRecvData :: sCompute :: sSendData :: Nil = Enum(5)
   val state = RegInit(sRecvHeader)
 
-  // TODO: Don't know how to handle metadata for now
-  io.master.header.bits.compressed := false.B
+  val dec = Module(new RSDecoder(rsParams))
+
+  val dataInReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
+  val dataOutReg = RegInit(0.U(busParams.dataWidth.W))
+  val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
+  val idReg = RegInit(0.U)
+
+  io.master.data.bits.id := idReg
+  io.master.header.bits <> headerReg
+
+  // Unset metadata for ECC
   io.master.header.bits.ecc := false.B
-  io.master.header.bits.encrypted := false.B
-  io.master.header.bits.compressionPadBytes := 0.U
   io.master.header.bits.eccPadBytes := 0.U
-  io.master.header.bits.encryptionPadBytes := 0.U
 
   // For the header, simply forward it to the master port.
   // However, we need to modify the beat length based on RSParams
@@ -606,25 +613,13 @@ class ECCDecoderTop(val rsParams: RSParams,
   // we are following (e.g., *len* - 1 means a beat length of *len*)
   io.master.header.bits.len := RegNext((io.slave.header.bits.len + 1.U) /
                                        numItems.asUInt() - 1.U)
-  io.master.header.bits.id := RegNext(io.slave.header.bits.id)
-  io.master.header.bits.addr := RegNext(io.slave.header.bits.addr)
-  io.master.header.valid := RegNext(io.slave.header.valid)
-
-  // TODO: Don't know how to handle id for now
-  io.master.data.bits.id := RegNext(io.slave.data.bits.id)
-
-  val dec = Module(new RSDecoder(rsParams))
-
-  val dataInReg = RegInit(0.U((rsParams.n * rsParams.symbolWidth).W))
-  val dataOutReg = RegInit(0.U(busParams.dataWidth.W))
+  io.master.header.valid := state === sSendHeader
 
   io.slave.header.ready := state === sRecvHeader
 
   io.slave.data.ready := state === sRecvData
-  io.master.data.valid := state === sDone
+  io.master.data.valid := state === sSendData
   io.master.data.bits.data := dataOutReg
-
-  val numBeats = RegInit(0.U(32.W))
 
   // Various counters for keeping track of progress
   val (decInCntVal, decInCntDone) = Counter(dec.io.in.fire(), rsParams.n)
@@ -632,6 +627,7 @@ class ECCDecoderTop(val rsParams: RSParams,
   val (itemCntVal, itemCntDone) = Counter(io.slave.data.fire(), numItems)
   // Cannot use Counter for this because the maximum value is not statically known
   val beatCnt = RegInit(0.U(32.W))
+  val numBeats = RegInit(0.U(32.W))
 
   dec.io.in.valid := state === sCompute
   dec.io.in.bits := dataInReg(rsParams.symbolWidth - 1, 0)
@@ -645,8 +641,15 @@ class ECCDecoderTop(val rsParams: RSParams,
       dataOutReg := 0.U
 
       when (io.slave.header.fire()) {
+        state := sSendHeader
+        numBeats := io.slave.header.bits.len + 1.U
+        headerReg := io.slave.header.bits
+      }
+    }
+
+    is (sSendHeader) {
+      when (io.master.header.fire()) {
         state := sRecvData
-        numBeats := io.slave.header.bits.len
       }
     }
 
@@ -674,7 +677,7 @@ class ECCDecoderTop(val rsParams: RSParams,
 
       when (dec.io.out.fire()) {
         when (decOutCntDone) {
-          state := sDone
+          state := sSendData
         }
 
         // Note the endianness
@@ -686,7 +689,7 @@ class ECCDecoderTop(val rsParams: RSParams,
       }
     }
 
-    is (sDone) {
+    is (sSendData) {
       when (io.master.data.fire()) {
         when (beatCnt === numBeats) {
           // If all data beats have been processed, receive the next header
