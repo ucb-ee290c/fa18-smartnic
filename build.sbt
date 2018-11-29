@@ -58,3 +58,6 @@ javacOptions ++= javacOptionsVersion(scalaVersion.value)
 cancelable in Global := true
 
 libraryDependencies ++= Seq("commons-codec" % "commons-codec" % "1.9")
+
+libraryDependencies ++= Seq("edu.berkeley.cs" %% "rocket-dsptools" % "1.2-102318-SNAPSHOT")
+
