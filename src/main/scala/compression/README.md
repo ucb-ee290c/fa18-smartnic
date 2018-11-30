@@ -65,4 +65,4 @@ This file contains the Chisel code for the compressor. It is broken into the fol
 
 It also contains the software models for the three types of coding (differential, run-length, and both). These are `CREECDifferentialCoderModel`, `CREECRunLengthCoderModel`, and `CompressorModel`.
 
-For testing details, see [src/test/scala/compression/README.md](src/test/scala/compression/README.md)
+For testing details, see the test README.
