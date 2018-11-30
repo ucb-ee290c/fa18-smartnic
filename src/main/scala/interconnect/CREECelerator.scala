@@ -94,4 +94,6 @@ class CREECeleratorRead extends Module {
 
 object CREECeleratorApp extends App {
   Driver.execute(Array("None"), () => new CREECeleratorWrite())
+  Driver.execute(Array("None"), () => new CREECeleratorRead())
+
 }
