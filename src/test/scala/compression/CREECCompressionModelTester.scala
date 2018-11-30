@@ -14,10 +14,10 @@ class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
     val decodeModel = DUTFactory(false)
     val encoded = encodeModel.pushTransactions(uncodedGold)
       .advanceSimulation(true).pullTransactions()
-    assert(encodedGold == encoded)
+    assert(encoded.toList == encodedGold)
     val decoded = decodeModel.pushTransactions(encodedGold)
       .advanceSimulation(true).pullTransactions()
-    assert(decoded == uncodedGold)
+    assert(decoded.toList == uncodedGold)
   }
 
   "the CREECDifferentialCoderModel" should "encode and decode data" in {
@@ -78,6 +78,9 @@ class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
             0, 0, 0, 0, 0, 0
           ),
           0x1
+        ),
+        CREECHighLevelTransaction(
+          (Seq(3, 4, 5) ++ (0 until 308).map(_ => 0) ++ Seq(7)).map(_.toByte), 0x69
         )
       ),
       Seq(
@@ -95,6 +98,12 @@ class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
             0, 5
           ),
           0x1, compressed = true
+        ),
+        CREECHighLevelTransaction(
+          Seq(
+            3, 4, 5, 0, 255, 0, 51, 7
+          ).map(_.toByte),
+          0x69, compressed = true
         )
       )
     )

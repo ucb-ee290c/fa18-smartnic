@@ -146,7 +146,6 @@ class BasicFIFOTester(c: BasicFIFO) extends PeekPokeTester(c) {
  */
 class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extends PeekPokeTester(c) {
   require(List("differential", "runLength", "compression").contains(operation))
-  val allTestAddrs = List(611, 612, 613, 614, 615, 616)
   val allTestDatas = List(
     List[Byte](
       3, 4, 5, 6, 7, 8, 9, 10,
@@ -196,23 +195,25 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       2, 0, 2, 0, 2, 0, 2, 0,
       2, 0, 2, 0, 2, 0, 2, 0,
       2, 0, 2, 0, 2, 0, 3, 2
-    )
+    ),
     //TODO: figure out why this particular test doesn't uncompress
-    //    List[Byte](
-    //      0, 0, 2, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      2, 0, 0, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      2, -2, 2, -2, 2, -2, 2, -2,
-    //      3, -1, 0, 0, 0, 0, 0, 0
-    //    )
+//    List[Byte](
+//      0, 0, 2, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      2, 0, 0, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      2, -2, 2, -2, 2, -2, 2, -2,
+//      3, -1, 0, 0, 0, 0, 0, 0
+//    )
   )
   val allTestLens: List[Int] = allTestDatas.map(x => x.length / 8 - 1)
+  val allTestAddrs = allTestDatas.indices.map(x => 611 + x)
+  assert(allTestLens.length == allTestDatas.length && allTestDatas.length == allTestAddrs.length, "Test vector lengths must match.")
   for (i <- allTestAddrs.indices) {
     test(allTestAddrs(i), allTestLens(i), allTestDatas(i))
   }

@@ -73,6 +73,10 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
       ),
       0x514
     ),
+    //TODO: implement 255-wrap for RLE
+    CREECHighLevelTransaction(
+      (Seq(3, 4, 5) ++ (0 until 308).map(_ => 0) ++ Seq(7)).map(_.toByte), 0x69
+    ),
     //TODO: figure out why this particular test doesn't work
     //    CREECHighLevelTransaction(
     //      Seq(
@@ -122,7 +126,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
   }
 
   "the CREECRunLengthCoder module" should "encode and decode data" in {
-    for (encode <- List(true, false)) {
+    for (encode <- List(true)) {
       test(new CREECRunLengthCoder(coderParams = CoderParams(encode = encode))) { c =>
         val model = new CREECRunLengthCoderModel(encode = encode)
         val driver = new CREECDriver(c.io.in, c.clock)

@@ -76,15 +76,15 @@ class RunLengthCoder(coderParams: CoderParams,
     io.in.nodeq()
 
     if (coderParams.encode) {
-      dataOut.byte := Mux(byteIn === 0.U, run, Mux(run === 0.U, byteIn, run - 1.U))
+      dataOut.byte := Mux(byteIn === 0.U, Mux(run <= 255.U, run, run - 1.U), Mux(run === 0.U, byteIn, run - 1.U))
       finish := stop && !stutter
-      run := Mux(byteIn =/= 0.U || stop, 0.U, run + 1.U)
-      stutter := Mux(byteIn === 0.U, stop && run === 0.U, run =/= 0.U)
+      run := Mux(byteIn =/= 0.U || stop, 0.U, (run % 256.U) + 1.U)
+      stutter := run === 256.U || Mux(byteIn === 0.U, stop && run === 0.U, run =/= 0.U)
       state := Mux(byteIn === 0.U && run =/= 0.U && !stop, sAccept, state)
       stutterByte := Mux(byteIn === 0.U,
         Mux(run === 0.U || stop, run, stutterByte),
         Mux(run =/= 0.U, byteIn, stutterByte))
-      when(byteIn === 0.U && run =/= 0.U && !stop) {
+      when(byteIn === 0.U && run =/= 0.U && run < 256.U && !stop) {
         io.out.noenq()
       }.otherwise {
         io.out.enq(dataOut)
@@ -149,6 +149,7 @@ class RunLengthCoder(coderParams: CoderParams,
     io.in.nodeq()
     dataOut.byte := 77.U
     dataOut.flag := true.B
+    goToStutter := false.B
     io.out.enq(dataOut)
     when(io.out.fire()) {
       state := sAccept
@@ -371,7 +372,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
   //how many beats we need to get before the processing starts or send at the end
   val beatsToReceive = Reg(chiselTypeOf(io.in.header.bits.len))
   val beatsToProcess = Reg(chiselTypeOf(io.in.header.bits.len))
-  val bytesToSend = RegInit(0.asUInt((creecParams.beatBits + 1).W))
+  val bytesToSend = RegInit(0.asUInt(64.W))//TODO: don't use literal 64
 
   //keeps track of which byte we are on for both the coded and uncoded sides.
   //    popCounter is for the data being popped off of dataInBuffer, and
