@@ -346,3 +346,4 @@ hs_err_pid*
 #verisim
 verisim/generated*
 verisim/verilator*
+verisim/simulator*
