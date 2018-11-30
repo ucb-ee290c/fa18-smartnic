@@ -365,7 +365,10 @@ class RSDecoder(val rsParams: RSParams = new RSParams()) extends Module {
       }
 
       when (syndCmpOutCntDone) {
-        state := sKeyEquationSolver
+        // If there is no syndrome found (degB is 0), proceed to send output
+        // because the input sequence is correct.
+        // Otherwise, begin Key equation solver
+        state := Mux(degB === 0.U, sErrorCorrection0, sKeyEquationSolver)
       }
     }
 
