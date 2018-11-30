@@ -49,10 +49,6 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   val dataInReg = RegInit(0.U(p1.dataWidth.W))
   val dataOutReg = RegInit(0.U(p2.dataWidth.W))
 
-  // Keep track of how many beats are sent
-  val numBeats = RegInit(0.U(32.W))
-  val beatCnt = RegInit(0.U(32.W))
-
   // In the case of Expand mode, this counter keeps track of how many input
   // data needs to be accepted before sending a new output data.
   // In the case of Contract mode, this counter keeps track of how many output
@@ -63,14 +59,32 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
   val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
 
   val idReg = RegInit(0.U)
+
   io.master.data.bits.id := idReg
   io.master.header.bits <> headerReg
 
   // Update the len field accordingly to the mode
   val newLen = mode match {
-    case Mode.Expand   => (headerReg.len + 1.U) / ratio.asUInt() - 1.U
+    case Mode.Expand   => (headerReg.len + 1.U + ratio.U - 1.U) / ratio.U - 1.U
     case Mode.Contract => (headerReg.len + 1.U) * ratio.asUInt() - 1.U
     case Mode.Identity => headerReg.len
+  }
+
+  // Keep track of how many beats are sent
+  val numBeatsOriginal = headerReg.len + 1.U
+  val numBeatsExpected = (newLen + 1.U) * ratio.U
+  val beatCnt = RegInit(0.U(32.W))
+
+  val padBytes = (numBeatsExpected - numBeatsOriginal) * p1.bytesPerBeat.U
+
+  when (!headerReg.compressed && headerReg.compressionPadBytes === 0.U) {
+    io.master.header.bits.compressionPadBytes := padBytes
+  }
+  .elsewhen (!headerReg.encrypted && headerReg.encryptionPadBytes === 0.U) {
+    io.master.header.bits.encryptionPadBytes := padBytes
+  }
+  .elsewhen (!headerReg.ecc && headerReg.eccPadBytes === 0.U) {
+    io.master.header.bits.eccPadBytes := padBytes
   }
 
   io.master.header.bits.len := newLen
@@ -78,7 +92,7 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
 
   io.slave.header.ready := state === sRecvHeader
 
-  io.slave.data.ready := state === sRecvData
+  io.slave.data.ready := state === sRecvData && (beatCnt < numBeatsOriginal)
   io.master.data.valid := state === sSendData
 
   val outputData = mode match {
@@ -96,7 +110,6 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
 
       when (io.slave.header.fire()) {
         state := sSendHeader
-        numBeats := io.slave.header.bits.len + 1.U
         headerReg := io.slave.header.bits
       }
     }
@@ -110,15 +123,18 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
     }
 
     is (sRecvData) {
-      when (io.slave.data.fire()) {
+      when (io.slave.data.fire() || beatCnt >= numBeatsOriginal) {
         idReg := io.slave.data.bits.id
         beatCnt := beatCnt + 1.U
 
         mode match {
           case Mode.Expand =>
+            val inputData = Mux(beatCnt < numBeatsOriginal,
+                                io.slave.data.bits.data,
+                                0.U)
             // Accumulate the input data
             dataOutReg := (dataOutReg >> p1.dataWidth) |
-                          (io.slave.data.bits.data << shiftAmt)
+                          (inputData << shiftAmt)
 
             // Send the output data to master if enough input data
             // have been accumulated
@@ -147,7 +163,7 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
         mode match {
           case Mode.Expand | Mode.Identity =>
             // Receive the next header if all beats have sent out
-            when (beatCnt === numBeats) {
+            when (beatCnt === numBeatsExpected) {
               state := sRecvHeader
             }
             .otherwise {
@@ -161,7 +177,7 @@ class CREECWidthConverter(p1: BusParams, p2: BusParams) extends Module {
               ratioCnt := 0.U
 
               // Receive the next header if all beats have sent out
-              when (beatCnt === numBeats) {
+              when (beatCnt === numBeatsOriginal) {
                 state := sRecvHeader
               }
               .otherwise {

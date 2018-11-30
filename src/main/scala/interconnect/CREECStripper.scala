@@ -41,17 +41,18 @@ class CREECStripper(busParams: BusParams) extends Module {
     newLen := headerReg.len
   }
 
+  val numBeatsExpected = newLen + 1.U
+  val numBeatsOriginal = headerReg.len + 1.U
+  val beatCnt = RegInit(0.U(32.W))
+
   io.master.header.bits.len := newLen
 
   io.slave.header.ready := state === sRecvHeader
   io.master.header.valid := state === sSendHeader
   io.slave.data.ready := state === sRecvData
-  io.master.data.valid := state === sSendData
+  io.master.data.valid := state === sSendData && (beatCnt <= numBeatsExpected)
 
   io.master.data.bits.data := dataOutReg
-
-  val numBeats = newLen + 1.U
-  val beatCnt = RegInit(0.U(32.W))
 
   switch (state) {
     is (sRecvHeader) {
@@ -80,9 +81,9 @@ class CREECStripper(busParams: BusParams) extends Module {
     }
 
     is (sSendData) {
-      when (io.master.data.fire()) {
+      when (io.master.data.fire() || beatCnt >= numBeatsExpected) {
         // Receive the next header if all beats have sent out
-        when (beatCnt === numBeats) {
+        when (beatCnt === numBeatsOriginal) {
           state := sRecvHeader
         }
         .otherwise {
