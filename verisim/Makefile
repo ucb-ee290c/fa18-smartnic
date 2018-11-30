@@ -2,7 +2,7 @@ base_dir=$(abspath ..)
 sim_dir=$(abspath .)
 
 MODEL ?= TestHarness
-PROJECT ?= aes
+PROJECT ?= interconnect
 CFG_PROJECT ?= freechips.rocketchip.system
 CONFIG ?= DefaultConfig
 
