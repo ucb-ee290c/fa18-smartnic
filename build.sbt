@@ -44,8 +44,8 @@ val defaultVersions = Map(
   "chisel-iotesters" -> "1.2.+",
 )
 
-libraryDependencies ++= (Seq("chisel3", "chisel-iotesters").map {
-  dep: String => "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep)) })
+//libraryDependencies ++= (Seq("chisel3", "chisel-iotesters").map {
+//  dep: String => "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep)) })
 
 libraryDependencies ++= Seq("org.typelevel" %% "squants" % "1.3.0")
 libraryDependencies ++= Seq("com.lihaoyi" %% "utest" % "0.6.5")
@@ -54,10 +54,28 @@ libraryDependencies ++= Seq("edu.berkeley.cs" %% "chisel-testers2" % "0.1-SNAPSH
 scalacOptions ++= scalacOptionsVersion(scalaVersion.value)
 scalacOptions ++= Seq("-language:reflectiveCalls", "-unchecked", "-deprecation", "-feature")
 
+scalacOptions ++= Seq(
+  "-Xsource:2.11",
+  "-deprecation",
+  "-explaintypes",
+  "-feature",
+  "-language:reflectiveCalls",
+  "-Xcheckinit",
+  "-Xlint:infer-any",
+  "-Xlint:missing-interpolator",
+  "-Ywarn-unused:imports",
+  "-Ywarn-unused:locals",
+  "-Ywarn-value-discard",
+)
+
 javacOptions ++= javacOptionsVersion(scalaVersion.value)
 cancelable in Global := true
 
 libraryDependencies ++= Seq("commons-codec" % "commons-codec" % "1.9")
+
+libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.0.1" % "test")
+dependencyOverrides ++= Seq("org.json4s" % "json4s-core_2.12" % "3.5.3")
+libraryDependencies ++= Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value)
 
 libraryDependencies ++= Seq("edu.berkeley.cs" %% "rocket-dsptools" % "1.2-102318-SNAPSHOT")
 
