@@ -74,7 +74,9 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
     0x38, 0xad, 0x15, 0x85, 0x82, 0xd4, 0x5c, 0x3c).map(_.asInstanceOf[Byte])
 
   "AESHWModel" should "match encryption with HLT" in {
-    val txaction = Seq(CREECHighLevelTransaction(data, 0x0))
+    val txaction = Seq(CREECHighLevelTransaction(data, 0x0),
+                       CREECHighLevelTransaction(data, 0x1)
+    )
         
     // SW golden model
     val swModel = new CREECEncryptHighModel
