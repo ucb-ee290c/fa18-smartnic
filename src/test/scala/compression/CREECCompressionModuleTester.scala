@@ -73,25 +73,24 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
       ),
       0x514
     ),
-    //TODO: implement 255-wrap for RLE
     CREECHighLevelTransaction(
       (Seq(3, 4, 5) ++ (0 until 308).map(_ => 0) ++ Seq(7)).map(_.toByte), 0x69
     ),
-    //TODO: figure out why this particular test doesn't work
-    //    CREECHighLevelTransaction(
-    //      Seq(
-    //        0, 2, 0, 2, 0, 2, 0, 2,
-    //        0, 2, 0, 2, 0, 2, 0, 2,
-    //        0, 2, 0, 2, 0, 2, 0, 2,
-    //        0, 2, 0, 2, 0, 2, 0, 2,
-    //        0, 2, 0, 2, 0, 2, 0, 2,
-    //        2, 0, 2, 0, 2, 0, 2, 0,
-    //        2, 0, 2, 0, 2, 0, 2, 0,
-    //        2, 0, 2, 0, 2, 0, 2, 0,
-    //        2, 0, 2, 0, 2, 0, 2, 0,
-    //        2, 0, 2, 0, 2, 0, 3, 2
-    //      ),
-    //      0x515
+    CREECHighLevelTransaction(
+      Seq(
+        0, 2, 0, 2, 0, 2, 0, 2,
+        0, 2, 0, 2, 0, 2, 0, 2,
+        0, 2, 0, 2, 0, 2, 0, 2,
+        0, 2, 0, 2, 0, 2, 0, 2,
+        0, 2, 0, 2, 0, 2, 0, 2,
+        2, 0, 2, 0, 2, 0, 2, 0,
+        2, 0, 2, 0, 2, 0, 2, 0,
+        2, 0, 2, 0, 2, 0, 2, 0,
+        2, 0, 2, 0, 2, 0, 2, 0,
+        2, 0, 2, 0, 2, 0, 3, 2
+      ),
+      0x515
+    )
   )
 
   def runTest(c: Module,

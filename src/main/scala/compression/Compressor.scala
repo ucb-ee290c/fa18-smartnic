@@ -372,7 +372,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
   //how many beats we need to get before the processing starts or send at the end
   val beatsToReceive = Reg(chiselTypeOf(io.in.header.bits.len))
   val beatsToProcess = Reg(chiselTypeOf(io.in.header.bits.len))
-  val bytesToSend = RegInit(0.asUInt(64.W))//TODO: don't use literal 64
+  val bytesToSend = RegInit(0.asUInt(64.W)) //TODO: don't use literal 64
 
   //keeps track of which byte we are on for both the coded and uncoded sides.
   //    popCounter is for the data being popped off of dataInBuffer, and
@@ -560,7 +560,7 @@ class Compressor(blockDeviceParams: BusParams,
   val differential = Module(new CREECDifferentialCoder(CoderParams(encode = compress)))
   val runLength = Module(new CREECRunLengthCoder(CoderParams(encode = compress)))
 
-  if(compress) {
+  if (compress) {
     io.in <> differential.io.in
     differential.io.out <> runLength.io.in
     io.out <> runLength.io.out

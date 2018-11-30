@@ -3,6 +3,8 @@ package compression
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
 import interconnect.CREECBusParams
 
+import scala.collection.immutable
+
 /*
  * Tests non-timed differential coder block.
  */
@@ -195,24 +197,10 @@ class CREECCoderTester(c: CREECCoder, encode: Boolean, operation: String) extend
       2, 0, 2, 0, 2, 0, 2, 0,
       2, 0, 2, 0, 2, 0, 2, 0,
       2, 0, 2, 0, 2, 0, 3, 2
-    ),
-    //TODO: figure out why this particular test doesn't uncompress
-//    List[Byte](
-//      0, 0, 2, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      2, 0, 0, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      2, -2, 2, -2, 2, -2, 2, -2,
-//      3, -1, 0, 0, 0, 0, 0, 0
-//    )
+    )
   )
   val allTestLens: List[Int] = allTestDatas.map(x => x.length / 8 - 1)
-  val allTestAddrs = allTestDatas.indices.map(x => 611 + x)
+  val allTestAddrs: immutable.IndexedSeq[Int] = allTestDatas.indices.map(x => 611 + x)
   assert(allTestLens.length == allTestDatas.length && allTestDatas.length == allTestAddrs.length, "Test vector lengths must match.")
   for (i <- allTestAddrs.indices) {
     test(allTestAddrs(i), allTestLens(i), allTestDatas(i))
