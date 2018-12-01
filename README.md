@@ -88,6 +88,12 @@ Module files are in `src/main/scala/ecc`. Tests are in `src/test/scala/ecc`.
 
 ### Interconnect
 
+[CREECBus Interconnect Details](doc/Interconnect_and_Bus_Components.md)
+
+[CREECelerator Details](doc/Top_Level_Integration.md)
+
+[Transaction Modeling Details](doc/Transaction_Level_Modeling.md)
+
 ## Hammer
 
 Setup the path to Vivado installation on your machine in the file `config/vivado_setup.sh`.
