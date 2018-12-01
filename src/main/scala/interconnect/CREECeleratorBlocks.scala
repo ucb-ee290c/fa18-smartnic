@@ -158,9 +158,8 @@ class TLReadQueue
   */
 abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
 (
-)(implicit p: Parameters) extends DspBlock[D, U, EO, EI, B] {
+)(implicit p: Parameters) extends DspBlock[D, U, EO, EI, B] with HasCSR {
   val streamNode = AXI4StreamIdentityNode()
-  val mem = None
 
   lazy val module = new LazyModuleImp(this) {
     require(streamNode.in.length == 1)
@@ -172,6 +171,19 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
     // TODO
     in.bits.last := false.B
     out.bits.last := false.B
+
+    // MMIO Registers
+    val enable = RegInit(false.B)
+    val numBeatsIn = RegInit(0.U(32.W))
+    // The header beat info needs to be passed to the C host
+    // so that the Read path knows how to decode
+    val numBeatsOut = RegInit(0.U(32.W))
+    val crOut = RegInit(false.B)
+    val eOut = RegInit(false.B)
+    val eccOut = RegInit(false.B)
+    val crPadBytesOut = RegInit(0.U(32.W))
+    val ePadBytesOut = RegInit(0.U(32.W))
+    val eccPadBytesOut = RegInit(0.U(32.W))
 
     val creecW = Module(new CREECeleratorWrite())
     val busParams = creecW.creecBusParams
@@ -187,9 +199,6 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
     val state = RegInit(sSendHeader)
 
     val beatCnt = RegInit(0.U(32.W))
-    val beatLen = 6.U//Reg(UInt(32.W))
-    val newBeatLen = RegInit(0.U(32.W))
-
 
     val headerBeat = new TransactionHeader(busParams).Lit(
                        len = 0.U,
@@ -206,13 +215,19 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
                      id = 0.U)
 
     when (creecW.io.out.header.fire()) {
-      newBeatLen := creecW.io.out.header.bits.len + 1.U
+      numBeatsOut := creecW.io.out.header.bits.len + 1.U
+      crOut := creecW.io.out.header.bits.compressed
+      eOut := creecW.io.out.header.bits.encrypted
+      eccOut := creecW.io.out.header.bits.ecc
+      crPadBytesOut := creecW.io.out.header.bits.compressionPadBytes
+      ePadBytesOut := creecW.io.out.header.bits.encryptionPadBytes
+      eccPadBytesOut := creecW.io.out.header.bits.eccPadBytes
     }
 
     creecW.io.in.header.bits := headerBeat
     // override len field
-    creecW.io.in.header.bits.len := beatLen - 1.U
-    creecW.io.in.header.valid := (state === sSendHeader)
+    creecW.io.in.header.bits.len := numBeatsIn - 1.U
+    creecW.io.in.header.valid := (state === sSendHeader) && enable
 
     creecW.io.in.data.bits := dataBeat
     // override data field
@@ -238,7 +253,7 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
 
       is (sSendData) {
         when (creecW.io.in.data.fire()) {
-          when (beatCnt === beatLen - 1.U) {
+          when (beatCnt === numBeatsIn - 1.U) {
             state := sSendOut
             beatCnt := 0.U
           }
@@ -250,7 +265,7 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
 
       is (sSendOut) {
         when (creecW.io.out.data.fire()) {
-          when (beatCnt === newBeatLen - 1.U) {
+          when (beatCnt === numBeatsOut - 1.U) {
             state := sSendHeader
             beatCnt := 0.U
           }
@@ -260,10 +275,21 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
         }
       }
     }
-//    // TODO: figure out how to set beatLen via MMIO of this block
-//    regmap(
-//      0x0 -> Seq(RegField.r(32, beatLen)),
-//    )
+
+    // We ignore addr and id fields as of now
+    // since they are not relevant to what we
+    // want to test
+    regmap(
+      0x00 -> Seq(RegField.w(1,  enable)),
+      0x04 -> Seq(RegField.w(32, numBeatsIn)),
+      0x08 -> Seq(RegField.r(32, numBeatsOut)),
+      0x0c -> Seq(RegField.r(1,  crOut)),
+      0x10 -> Seq(RegField.r(1,  eOut)),
+      0x14 -> Seq(RegField.r(1,  eccOut)),
+      0x18 -> Seq(RegField.r(32, crPadBytesOut)),
+      0x1c -> Seq(RegField.r(32, ePadBytesOut)),
+      0x20 -> Seq(RegField.r(32, eccPadBytesOut)),
+    )
 
   }
 }
@@ -279,9 +305,25 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
   */
 class TLCREECeleratorBlock[T]
 (
+  depth: Int = 16,
+  csrAddress: AddressSet = AddressSet(0x2200, 0xff),
+  beatBytes: Int = 8
 )(implicit p: Parameters) extends
   CREECeleratorBlock[TLClientPortParameters, TLManagerPortParameters, TLEdgeOut, TLEdgeIn, TLBundle, T]
-  with TLDspBlock
+  with TLDspBlock with TLHasCSR {
+
+  val devname = "creecW"
+  val devcompat = Seq("ucb-art", "dsptools")
+  val device = new SimpleDevice(devname, devcompat) {
+    override def describe(resources: ResourceBindings): Description = {
+      val Description(name, mapping) = super.describe(resources)
+      Description(name, mapping)
+    }
+  }
+  // make diplomatic TL node for regmap
+  override val mem = Some(TLRegisterNode(address = Seq(csrAddress), device = device, beatBytes = beatBytes))
+
+}
 
 /**
   * TLChain is the "right way" to do this, but the dspblocks library seems to be broken.
@@ -318,7 +360,9 @@ trait HasPeripheryCREECelerator extends BaseSubsystem {
   val creecChain = LazyModule(new CREECeleratorThing())
 
   // connect memory interfaces to pbus
-  pbus.toVariableWidthSlave(Some("creecWrite")) { creecChain.writeQueue.mem.get }
-  pbus.toVariableWidthSlave(Some("creecRead")) { creecChain.readQueue.mem.get }
+  pbus.toVariableWidthSlave(Some("writeQueue")) { creecChain.writeQueue.mem.get }
+  pbus.toVariableWidthSlave(Some("readQueue")) { creecChain.readQueue.mem.get }
+  pbus.toVariableWidthSlave(Some("creecW")) { creecChain.creec.mem.get }
+
 }
 

@@ -1,8 +1,19 @@
-#define CREECW_WRITE 0x2000
-#define CREECW_WRITE_COUNT 0x2008
-#define CREECW_READ 0x2100
-#define CREECW_READ_COUNT 0x2108
-#define CREECW_LEN 0x2200
+#define CREECW_WRITE            0x2000
+#define CREECW_WRITE_COUNT      0x2008
+#define CREECW_READ             0x2100
+#define CREECW_READ_COUNT       0x2108
+
+#define CREECW_ENABLE           0x2200
+// Header info
+#define CREECW_NUM_BEATS_IN     0x2204
+#define CREECW_NUM_BEATS_OUT    0x2208
+#define CREECW_CR_OUT           0x220c
+#define CREECW_E_OUT            0x2210
+#define CREECW_ECC_OUT          0x2214
+#define CREECW_CR_PADBYTES_OUT  0x2218
+#define CREECW_E_PADBYTES_OUT   0x221c
+#define CREECW_ECC_PADBYTES_OUT 0x2220
+
 
 #define BEAT_WIDTH 64 // 64-bit per beat
 #define DATA_WIDTH 8  // 8-bit per data of a beat
@@ -34,21 +45,36 @@ int main(void)
   int i, j;
   int len = sizeof(data) / DATA_WIDTH;
 
-  // TODO
-  //reg_write32(CREECW_LEN, len);
+  reg_write32(CREECW_NUM_BEATS_IN, len);
+  reg_write32(CREECW_ENABLE, 1);
 
   for (i = 0; i < len; i++) {
     uint64_t packed_data = 0;
     for (j = i * DATA_WIDTH; j < (i + 1) * DATA_WIDTH; j++) {
-      packed_data = (packed_data >> DATA_WIDTH) | ((uint64_t)data[j] << (BEAT_WIDTH - DATA_WIDTH));
+      packed_data = (packed_data >> DATA_WIDTH) |
+                    ((uint64_t)data[j] << (BEAT_WIDTH - DATA_WIDTH));
     }
     printf("Sending data %lu\n", packed_data);
     reg_write64(CREECW_WRITE, packed_data);
   }
 
-  // FIXME: Get output length from creecW
-  int out_len = 8;
+  while (reg_read32(CREECW_NUM_BEATS_OUT) == 0) {}
+
+  // Receive the CREECBus transaction header from creecW
+  int out_len              = reg_read32(CREECW_NUM_BEATS_OUT);
+  int compressed           = reg_read32(CREECW_CR_OUT);
+  int encrypted            = reg_read32(CREECW_E_OUT);
+  int ecc                  = reg_read32(CREECW_ECC_OUT);
+  int compressed_pad_bytes = reg_read32(CREECW_CR_PADBYTES_OUT);
+  int encrypted_pad_bytes  = reg_read32(CREECW_E_PADBYTES_OUT);
+  int ecc_pad_bytes        = reg_read32(CREECW_ECC_PADBYTES_OUT);
+
+  printf("Received header: %d %d %d %d %d %d %d\n",
+    out_len, compressed, encrypted, ecc,
+    compressed_pad_bytes, encrypted_pad_bytes, ecc_pad_bytes);
+
   int numErrors = 0;
+
   for (i = 0; i < out_len; i++) { 
     uint64_t output = reg_read64(CREECW_READ);
     for (j = 0; j < DATA_WIDTH; j++) {
@@ -68,6 +94,12 @@ int main(void)
   } else {
     printf("creecW FAILED with %d mismatches!\n", numErrors);
   }
+
+  // TODO: Introduce noise to the received data (within allowable range
+  // stipulated by Reed-Solomon code)
+  // Pass the noisy data to the Read Path creecR and check if
+  // we can recover the original data
+
 
   printf("Done!\n");
 	return 0;
