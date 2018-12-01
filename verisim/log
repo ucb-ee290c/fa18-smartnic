@@ -1,0 +1,5 @@
+mkdir -p /home/nqdtan/fa18-smartnic/verisim/generated-src
+cd /home/nqdtan/fa18-smartnic && sbt "runMain interconnect.Generator  /home/nqdtan/fa18-smartnic/verisim/generated-src interconnect TestHarness freechips.rocketchip.system DefaultConfig"
+make: *** Deleting file '/home/nqdtan/fa18-smartnic/verisim/generated-src/freechips.rocketchip.system.DefaultConfig.fir'
+/home/nqdtan/fa18-smartnic/Makefrag:20: recipe for target '/home/nqdtan/fa18-smartnic/verisim/generated-src/freechips.rocketchip.system.DefaultConfig.fir' failed
+make: *** [/home/nqdtan/fa18-smartnic/verisim/generated-src/freechips.rocketchip.system.DefaultConfig.fir] Terminated
