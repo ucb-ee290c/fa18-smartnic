@@ -17,7 +17,7 @@ int main(void)
                     2, 2, 2, 2, 2, 2, 2, 2,
                     2, 2, 2, 2, 2, 2, 2, 2,
                     0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 3,
                     3, 4, 4, 4, 4, 4, 4, 4};
 
   int i, j;
@@ -37,9 +37,9 @@ int main(void)
   for (i = 0; i < out_len; i++) { 
     uint64_t output = reg_read64(CREECW_READ);
     for (j = 0; j < DATA_WIDTH; j++) {
-      uint8_t out_data = output & 0xFF;
+      int8_t out_data = output & 0xFF;
       output = output >> DATA_WIDTH;
-      printf("Got out_data %d\n", out_data);
+      printf("Got out_data (i=%d, j=%d) %d\n", i, j, out_data);
     }
   }
 
