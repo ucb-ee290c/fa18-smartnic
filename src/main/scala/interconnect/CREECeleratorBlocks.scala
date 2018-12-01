@@ -19,7 +19,7 @@ import freechips.rocketchip.subsystem.BaseSubsystem
   */
 abstract class WriteQueue
 (
-  val depth: Int = 8,
+  val depth: Int = 16,
   val streamParameters: AXI4StreamMasterParameters = AXI4StreamMasterParameters()
 )(implicit p: Parameters) extends LazyModule with HasCSR {
   // stream node, output only
@@ -59,7 +59,7 @@ abstract class WriteQueue
   */
 class TLWriteQueue
 (
-  depth: Int = 8,
+  depth: Int = 16,
   csrAddress: AddressSet = AddressSet(0x2000, 0xff),
   beatBytes: Int = 8,
 )(implicit p: Parameters) extends WriteQueue(depth) with TLHasCSR {
@@ -84,7 +84,7 @@ class TLWriteQueue
   */
 abstract class ReadQueue
 (
-  val depth: Int = 8,
+  val depth: Int = 16,
   val streamParameters: AXI4StreamSlaveParameters = AXI4StreamSlaveParameters()
 )(implicit p: Parameters) extends LazyModule with HasCSR {
   val streamNode = AXI4StreamSlaveNode(streamParameters)
@@ -125,7 +125,7 @@ abstract class ReadQueue
   */
 class TLReadQueue
 (
-  depth: Int = 8,
+  depth: Int = 16,
   csrAddress: AddressSet = AddressSet(0x2100, 0xff),
   beatBytes: Int = 8
 )(implicit p: Parameters) extends ReadQueue(depth) with TLHasCSR {
@@ -223,6 +223,7 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
     // FIXME: being true all the time?
     creeceleratorWrite.io.out.header.ready := true.B
     creeceleratorWrite.io.out.data.ready := (state === sSendOut) && out.ready
+    out.bits.data := creeceleratorWrite.io.out.data.bits.data
 
     // We need to take into account of the back-pressure from Streamnode in
     // and from Streamnode out as well
