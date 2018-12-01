@@ -89,7 +89,7 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
         
       driver.pushTransactions(txaction)
       
-      c.clock.step(60) 
+      c.clock.step(100) 
 
       val out = monitor.receivedTransactions.dequeueAll(_ => true)
       assert(outGold == out)
@@ -97,7 +97,9 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
   }
 
   "AESHWModel" should "match decryption with HLT" in {
-    val txaction = Seq(CREECHighLevelTransaction(data, 0x0, encrypted = true))
+    val txaction = Seq(CREECHighLevelTransaction(data, 0x0, encrypted = true),
+                       CREECHighLevelTransaction(data, 0x1, encrypted = true)
+    )
         
     // SW golden model
     val swModel = new CREECDecryptHighModel
@@ -110,7 +112,7 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
         
       driver.pushTransactions(txaction)
       
-      c.clock.step(60) 
+      c.clock.step(100) 
 
       val out = monitor.receivedTransactions.dequeueAll(_ => true)
       assert(outGold == out)
@@ -118,7 +120,9 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
   }
 
   "AESHWModel" should "loop" in {
-    val txaction = Seq(CREECHighLevelTransaction(data, 0x0))
+    val txaction = Seq(CREECHighLevelTransaction(data, 0x0),
+                       CREECHighLevelTransaction(data, 0x1)
+    )
 
     test(new AESTopCREECBus(new AESBusParams)) { c =>
       val encDriver = new CREECDriver(c.io.encrypt_slave, c.clock)
@@ -129,12 +133,12 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
 
       encDriver.pushTransactions(txaction)
 
-      c.clock.step(60)
+      c.clock.step(100)
 
       val mid  = encMonitor.receivedTransactions.dequeueAll(_ => true)
       decDriver.pushTransactions(mid)
 
-      c.clock.step(60)
+      c.clock.step(100)
       val out = decMonitor.receivedTransactions.dequeueAll(_ => true)
       assert(out == txaction)
     }

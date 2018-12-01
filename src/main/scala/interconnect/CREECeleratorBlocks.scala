@@ -173,6 +173,98 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
     require(descriptorWidth <= in.params.n * 8, "Streaming interface too small")
 
     // TODO
+    in.bits.last := false.B
+    out.bits.last := false.B
+
+    val creeceleratorWrite = Module(new CREECeleratorWrite())
+    val busParams = creeceleratorWrite.creecBusParams
+
+    // There are three states:
+    //   - sSendHeader: for sending the header to the creeceleratorWrite
+    //   - sSendData: for sending the data to the creeceleratorWrite
+    //   - sSendOut: for waiting until the CREEC computation finish and
+    //               sending the result to the StreamNode out
+    val sSendHeader :: sSendData :: sSendOut :: Nil = Enum(3)
+    val state = RegInit(sSendHeader)
+
+    val beatCnt = RegInit(0.U(32.W))
+    val beatLen = 6.U//Reg(UInt(32.W))
+    val newBeatLen = RegInit(0.U(32.W))
+
+
+    val headerBeat = new TransactionHeader(busParams).Lit(
+                       len = 0.U,
+                       id = 0.U,
+                       addr = 0.U,
+                       compressed = false.B,
+                       encrypted = false.B,
+                       ecc = false.B,
+                       compressionPadBytes = 0.U,
+                       eccPadBytes = 0.U,
+                       encryptionPadBytes = 0.U)
+    val dataBeat = new TransactionData(busParams).Lit(
+                     data = 0.U,
+                     id = 0.U)
+
+    when (creeceleratorWrite.io.out.header.fire()) {
+      newBeatLen := creeceleratorWrite.io.out.header.bits.len + 1.U
+    }
+
+    creeceleratorWrite.io.in.header.bits := headerBeat
+    // override len field
+    creeceleratorWrite.io.in.header.bits.len := beatLen - 1.U
+    creeceleratorWrite.io.in.header.valid := (state === sSendHeader)
+
+    creeceleratorWrite.io.in.data.bits := dataBeat
+    // override data field
+    creeceleratorWrite.io.in.data.bits.data := in.bits.data
+    creeceleratorWrite.io.in.data.valid := (state === sSendData) && in.valid
+
+    // FIXME: being true all the time?
+    creeceleratorWrite.io.out.header.ready := true.B
+    creeceleratorWrite.io.out.data.ready := (state === sSendOut) && out.ready
+
+    // We need to take into account of the back-pressure from Streamnode in
+    // and from Streamnode out as well
+    in.ready := (state === sSendData) && creeceleratorWrite.io.in.data.ready
+    out.valid := (state === sSendOut) && creeceleratorWrite.io.out.data.valid
+
+    switch (state) {
+      is (sSendHeader) {
+        when (creeceleratorWrite.io.in.header.fire()) {
+          state := sSendData
+        }
+      }
+
+      is (sSendData) {
+        when (creeceleratorWrite.io.in.data.fire()) {
+          when (beatCnt === beatLen - 1.U) {
+            state := sSendOut
+            beatCnt := 0.U
+          }
+          .otherwise {
+            beatCnt := beatCnt + 1.U
+          }
+        }
+      }
+
+      is (sSendOut) {
+        when (creeceleratorWrite.io.out.data.fire()) {
+          when (beatCnt === newBeatLen - 1.U) {
+            state := sSendHeader
+            beatCnt := 0.U
+          }
+          .otherwise {
+            beatCnt := beatCnt + 1.U
+          }
+        }
+      }
+    }
+//    // TODO: figure out how to set beatLen via MMIO of this block
+//    regmap(
+//      0x0 -> Seq(RegField.r(32, beatLen)),
+//    )
+
   }
 }
 
