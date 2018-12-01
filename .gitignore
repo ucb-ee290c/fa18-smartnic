@@ -347,3 +347,6 @@ hs_err_pid*
 verisim/generated*
 verisim/verilator*
 verisim/simulator*
+
+# RISCV binary
+*.riscv
