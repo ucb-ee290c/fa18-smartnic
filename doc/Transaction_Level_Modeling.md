@@ -9,8 +9,7 @@ We defined 2 levels of `Transaction` abstractions specific to the CREECBus.
 
 `CREECLowLevelTransaction`s (LLT) can be either a `CREECHeaderBeat` or `CREECDataBeat`, and they represent a single header or data beat respectively. LLTs are `BusParams` specific and they are designed to be driven or monitored on a specific instance of the CREECBus. They expose the inner details of the bus, and therefore closely resemble the `TransactionHeader` and `TransactionData` Bundles which make up the CREECBus Bundle. Only a few blocks are modeled using LLTs, such as the width converter and CREEC passthrough.
 
-![Alt text](./img/tlm.svg)
-<img src="./img/tlm.svg">
+![Transaction Level Modeling Overview](./img/tlm.svg)
 
 # Software Modeling
 We defined a formal notion of a software model for our blocks in `TransactionModeling.scala` in the `SoftwareModel` abstract class. A `SoftwareModel` is type parameterized on the types of input and output transactions it can receive and send.
