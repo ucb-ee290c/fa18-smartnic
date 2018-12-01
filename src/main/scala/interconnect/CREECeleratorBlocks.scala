@@ -169,19 +169,18 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
     val in = streamNode.in.head._1
     val out = streamNode.out.head._1
 
-    val descriptorWidth: Int = 64
-    require(descriptorWidth <= in.params.n * 8, "Streaming interface too small")
-
     // TODO
     in.bits.last := false.B
     out.bits.last := false.B
 
-    val creeceleratorWrite = Module(new CREECeleratorWrite())
-    val busParams = creeceleratorWrite.creecBusParams
+    val creecW = Module(new CREECeleratorWrite())
+    val busParams = creecW.creecBusParams
+    require(busParams.dataWidth <= in.params.n * 8,
+            "Streaming interface too small")
 
     // There are three states:
-    //   - sSendHeader: for sending the header to the creeceleratorWrite
-    //   - sSendData: for sending the data to the creeceleratorWrite
+    //   - sSendHeader: for sending the header to the creecW
+    //   - sSendData: for sending the data to the creecW
     //   - sSendOut: for waiting until the CREEC computation finish and
     //               sending the result to the StreamNode out
     val sSendHeader :: sSendData :: sSendOut :: Nil = Enum(3)
@@ -206,39 +205,39 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
                      data = 0.U,
                      id = 0.U)
 
-    when (creeceleratorWrite.io.out.header.fire()) {
-      newBeatLen := creeceleratorWrite.io.out.header.bits.len + 1.U
+    when (creecW.io.out.header.fire()) {
+      newBeatLen := creecW.io.out.header.bits.len + 1.U
     }
 
-    creeceleratorWrite.io.in.header.bits := headerBeat
+    creecW.io.in.header.bits := headerBeat
     // override len field
-    creeceleratorWrite.io.in.header.bits.len := beatLen - 1.U
-    creeceleratorWrite.io.in.header.valid := (state === sSendHeader)
+    creecW.io.in.header.bits.len := beatLen - 1.U
+    creecW.io.in.header.valid := (state === sSendHeader)
 
-    creeceleratorWrite.io.in.data.bits := dataBeat
+    creecW.io.in.data.bits := dataBeat
     // override data field
-    creeceleratorWrite.io.in.data.bits.data := in.bits.data
-    creeceleratorWrite.io.in.data.valid := (state === sSendData) && in.valid
+    creecW.io.in.data.bits.data := in.bits.data
+    creecW.io.in.data.valid := (state === sSendData) && in.valid
 
     // FIXME: being true all the time?
-    creeceleratorWrite.io.out.header.ready := true.B
-    creeceleratorWrite.io.out.data.ready := (state === sSendOut) && out.ready
-    out.bits.data := creeceleratorWrite.io.out.data.bits.data
+    creecW.io.out.header.ready := true.B
+    creecW.io.out.data.ready := (state === sSendOut) && out.ready
+    out.bits.data := creecW.io.out.data.bits.data
 
     // We need to take into account of the back-pressure from Streamnode in
     // and from Streamnode out as well
-    in.ready := (state === sSendData) && creeceleratorWrite.io.in.data.ready
-    out.valid := (state === sSendOut) && creeceleratorWrite.io.out.data.valid
+    in.ready := (state === sSendData) && creecW.io.in.data.ready
+    out.valid := (state === sSendOut) && creecW.io.out.data.valid
 
     switch (state) {
       is (sSendHeader) {
-        when (creeceleratorWrite.io.in.header.fire()) {
+        when (creecW.io.in.header.fire()) {
           state := sSendData
         }
       }
 
       is (sSendData) {
-        when (creeceleratorWrite.io.in.data.fire()) {
+        when (creecW.io.in.data.fire()) {
           when (beatCnt === beatLen - 1.U) {
             state := sSendOut
             beatCnt := 0.U
@@ -250,7 +249,7 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
       }
 
       is (sSendOut) {
-        when (creeceleratorWrite.io.out.data.fire()) {
+        when (creecW.io.out.data.fire()) {
           when (beatCnt === newBeatLen - 1.U) {
             state := sSendHeader
             beatCnt := 0.U
