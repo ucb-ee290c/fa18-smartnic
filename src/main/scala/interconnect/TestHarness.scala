@@ -8,12 +8,26 @@ import freechips.rocketchip.devices.debug.Debug
 import freechips.rocketchip.diplomacy.LazyModule
 import freechips.rocketchip.util.GeneratorApp
 
-class TestHarness()(implicit p: Parameters) extends Module {
+class TestHarnessWrite()(implicit p: Parameters) extends Module {
   val io = IO(new Bundle {
     val success = Output(Bool())
   })
 
   val dut = Module(LazyModule(new ExampleTopWithCREECelerator).module)
+  dut.reset := reset.toBool() | dut.debug.ndreset
+
+  dut.dontTouchPorts()
+  dut.tieOffInterrupts()
+  dut.connectSimAXIMem()
+  Debug.connectDebug(dut.debug, clock, reset.toBool(), io.success)
+}
+
+class TestHarnessRead()(implicit p: Parameters) extends Module {
+  val io = IO(new Bundle {
+    val success = Output(Bool())
+  })
+
+  val dut = Module(LazyModule(new ExampleTopWithCREECeleratorRead).module)
   dut.reset := reset.toBool() | dut.debug.ndreset
 
   dut.dontTouchPorts()

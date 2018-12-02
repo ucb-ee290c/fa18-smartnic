@@ -55,7 +55,6 @@ class CREECeleratorRead extends Module {
 
   val io = IO(new Bundle {
     val in = Flipped(new CREECBus(BusParams.creec))
-    // FIXME: BusParams.blockDev?
     val out = new CREECBus(BusParams.creec)
   })
 

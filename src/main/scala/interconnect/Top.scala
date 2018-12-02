@@ -24,3 +24,9 @@ class ExampleTopWithCREECelerator(implicit p: Parameters) extends ExampleTop
     with HasPeripheryCREECelerator {
   override lazy val module = new ExampleTopModule(this)
 }
+
+class ExampleTopWithCREECeleratorRead(implicit p: Parameters) extends ExampleTop
+    // mix in CREECeleratorRead
+    with HasPeripheryCREECeleratorRead {
+  override lazy val module = new ExampleTopModule(this)
+}

@@ -63,6 +63,13 @@ To run all `uTest` tests use `mill creec[2.12.4].test`, and to run a specific te
 
 You can use the `-w` watch command for tests as well.
 
+### Integration
+There are separate integration builds for the CREECelerator pipeline with Rocketchip. Builds can be made using the Makefile in the `verisim` directory, which builds Verilator-based executables.
+To build the write pipeline, run `make MODEL=TestHarnessWrite`. To build the read pipeline, run `make MODEL=TestHarnessRead`.
+
+Basic tests can be found in the `tests` directory. They can be compiled to `riscv` test stimuli using make from the `tests` directory, which can then be run using the generated executables. `creec.riscv` is a write test. `creec_decrypt.riscv` is a read test.
+
+
 ## Modules
 
 ### Compression
