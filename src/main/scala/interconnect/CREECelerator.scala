@@ -94,7 +94,85 @@ class CREECeleratorRead extends Module {
   aes.io.encrypt_master.data.nodeq()
 }
 
+//----------------
+
+class CREECeleratorFull extends Module {
+  val creecBusParams = new CREECBusParams
+  val aesBusParams = new AESBusParams
+  val eccBusParams = new ECCBusParams
+
+  val io = IO(new Bundle {
+    val write_in = Flipped(new CREECBus(BusParams.blockDev))
+    val write_out = new CREECBus(BusParams.creec)
+
+    val read_in = Flipped(new CREECBus(BusParams.creec))
+    val read_out = new CREECBus(BusParams.creec)
+  })
+
+  implicit val compressorBus: BusParams = creecBusParams
+
+  //---------
+
+  val compressor = Module(new Compressor(io.write_in.p, compress = true))
+
+  val widthConvertWrite1 = Module(new CREECWidthConverter(p1 = creecBusParams,
+    p2 = aesBusParams))
+
+  val aes = Module(new AESTopCREECBus(aesBusParams))
+
+  val widthConvertWrite2 = Module(new CREECWidthConverter(p1 = aesBusParams,
+    p2 = creecBusParams))
+
+  val eccEncoder = Module(new ECCEncoderTop(RSParams.RS16_8_8,
+    creecBusParams,
+    eccBusParams))
+
+  val widthConvertWrite3 = Module(new CREECWidthConverter(p1 = eccBusParams,
+    p2 = creecBusParams))
+
+  compressor.io.in <> io.write_in
+  widthConvertWrite1.io.slave <> compressor.io.out
+  aes.io.encrypt_slave <> widthConvertWrite1.io.master
+  widthConvertWrite2.io.slave <> aes.io.encrypt_master
+  eccEncoder.io.slave <> widthConvertWrite2.io.master
+  widthConvertWrite3.io.slave <> eccEncoder.io.master
+  io.write_out <> widthConvertWrite3.io.master
+
+  //---------
+
+  //Expand to ECC
+  val widthConvertRead1 = Module(new CREECWidthConverter(p1 = creecBusParams,
+    p2 = eccBusParams))
+
+  val eccDecoder = Module(new ECCDecoderTop(RSParams.RS16_8_8,
+    eccBusParams,
+    creecBusParams))
+
+  val widthConvertRead2 = Module(new CREECWidthConverter(p1 = creecBusParams,
+    p2 = aesBusParams))
+
+  val widthConvertRead3 = Module(new CREECWidthConverter(p1 = aesBusParams,
+    p2 = creecBusParams))
+
+  val stripper = Module(new CREECStripper(creecBusParams))
+
+  val decompressor = Module(new Compressor(io.read_out.p, compress = false))
+
+  widthConvertRead1.io.slave <> io.read_in
+  eccDecoder.io.slave <> widthConvertRead1.io.master
+  widthConvertRead2.io.slave <> eccDecoder.io.master
+  aes.io.decrypt_slave <> widthConvertRead2.io.master
+  widthConvertRead3.io.slave <> aes.io.decrypt_master
+  stripper.io.slave <> widthConvertRead3.io.master
+  decompressor.io.in <> stripper.io.master
+  io.read_out <> decompressor.io.out
+
+  //------
+
+}
+
 object CREECeleratorApp extends App {
   Driver.execute(Array("None"), () => new CREECeleratorWrite())
   Driver.execute(Array("None"), () => new CREECeleratorRead())
+  Driver.execute(Array("None"), () => new CREECeleratorFull())
 }
