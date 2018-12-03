@@ -1,26 +1,45 @@
-#define CREECW_WRITE            0x2000
-#define CREECW_WRITE_COUNT      0x2008
-#define CREECW_READ             0x2100
-#define CREECW_READ_COUNT       0x2108
-
-#define CREECW_ENABLE           0x2200
-// Header info
-#define CREECW_NUM_BEATS_IN     0x2204
-#define CREECW_NUM_BEATS_OUT    0x2208
-#define CREECW_CR_OUT           0x220c
-#define CREECW_E_OUT            0x2210
-#define CREECW_ECC_OUT          0x2214
-#define CREECW_CR_PADBYTES_OUT  0x2218
-#define CREECW_E_PADBYTES_OUT   0x221c
-#define CREECW_ECC_PADBYTES_OUT 0x2220
-
-
-#define BEAT_WIDTH 64 // 64-bit per beat
-#define DATA_WIDTH 8  // 8-bit per data of a beat
-
+#define BYTE_WIDTH 8
+#define BYTES_PER_BEAT 8
+#define BEAT_WIDTH (BYTES_PER_BEAT * BYTE_WIDTH)
 #include <stdio.h>
 
+#include "creec_configs.h"
 #include "mmio.h"
+
+void header_write(uint32_t BASE_ADDR,
+                  uint32_t len,
+                  uint32_t compressed, uint32_t encrypted, uint32_t ecc,
+                  uint32_t compressed_pad_bytes,
+                  uint32_t encrypted_pad_bytes,
+                  uint32_t ecc_pad_bytes) {
+  reg_write32(BASE_ADDR + NUM_BEATS_IN_OFFSET, len);
+  reg_write32(BASE_ADDR + CR_IN_OFFSET, compressed);
+  reg_write32(BASE_ADDR + E_IN_OFFSET, encrypted);
+  reg_write32(BASE_ADDR + ECC_IN_OFFSET, ecc);
+  reg_write32(BASE_ADDR + CR_PADBYTES_IN_OFFSET, compressed_pad_bytes);
+  reg_write32(BASE_ADDR + E_PADBYTES_IN_OFFSET, encrypted_pad_bytes);
+  reg_write32(BASE_ADDR + ECC_PADBYTES_IN_OFFSET, ecc_pad_bytes);
+}
+
+void header_read(uint32_t BASE_ADDR, uint32_t *header) {
+  header[0] = reg_read32(BASE_ADDR + NUM_BEATS_OUT_OFFSET);
+  header[1] = reg_read32(BASE_ADDR + CR_OUT_OFFSET);
+  header[2] = reg_read32(BASE_ADDR + E_OUT_OFFSET);
+  header[3] = reg_read32(BASE_ADDR + ECC_OUT_OFFSET);
+  header[4] = reg_read32(BASE_ADDR + CR_PADBYTES_OUT_OFFSET);
+  header[5] = reg_read32(BASE_ADDR + E_PADBYTES_OUT_OFFSET);
+  header[6] = reg_read32(BASE_ADDR + ECC_PADBYTES_OUT_OFFSET);
+}
+
+uint64_t pack_data(uint8_t *input, int i) {
+  int j;
+  uint64_t result = 0;
+  for (j = i * BYTES_PER_BEAT; j < (i + 1) * BYTES_PER_BEAT; j++) {
+    result = (result >> BYTES_PER_BEAT) |
+		         ((uint64_t)input[j] << (BEAT_WIDTH - BYTE_WIDTH));
+  }
+  return result;
+}
 
 int main(void)
 {
@@ -42,32 +61,28 @@ int main(void)
                        -30, -85, 3, 112, -15, -21, 6, 25,
                        10, -107, 88, 26, 109, -71, -85, -99};
 
-  int ref_len = (int)(sizeof(gold_data) / DATA_WIDTH);
-  int ref_compressed = 1;
-  int ref_encrypted = 1;
-  int ref_ecc = 1;
-  int ref_compressed_pad_bytes = 4;
-  int ref_encrypted_pad_bytes = 8;
-  int ref_ecc_pad_bytes = 0;
+  uint32_t ref_len = (uint32_t)(sizeof(gold_data) / BYTES_PER_BEAT);
+  uint32_t ref_compressed = 1;
+  uint32_t ref_encrypted = 1;
+  uint32_t ref_ecc = 1;
+  uint32_t ref_compressed_pad_bytes = 4;
+  uint32_t ref_encrypted_pad_bytes = 8;
+  uint32_t ref_ecc_pad_bytes = 0;
 
   int i, j;
-  int len = sizeof(data) / DATA_WIDTH;
+  uint32_t len = sizeof(data) / BYTES_PER_BEAT;
 
-  reg_write32(CREECW_NUM_BEATS_IN, len);
+  header_write(CREECW_ENABLE, len, 0, 0, 0, 0, 0, 0);
   reg_write32(CREECW_ENABLE, 1);
 
   for (i = 0; i < len; i++) {
-    uint64_t packed_data = 0;
-    for (j = i * DATA_WIDTH; j < (i + 1) * DATA_WIDTH; j++) {
-      packed_data = (packed_data >> DATA_WIDTH) |
-                    ((uint64_t)data[j] << (BEAT_WIDTH - DATA_WIDTH));
-    }
+    uint64_t packed_data = pack_data(data, i);
     printf("Sending data %lu\n", packed_data);
-    reg_write64(CREECW_WRITE, packed_data);
+    reg_write64(WRITEQ_W, packed_data);
   }
 
   uint16_t counter = 0;
-  while (reg_read32(CREECW_NUM_BEATS_OUT) == 0) {
+  while (reg_read32(CREECW_ENABLE + NUM_BEATS_OUT_OFFSET) == 0) {
     counter += 1;
 //    if (i % 10 == 0) {
 //        printf("counter %d\n", counter);
@@ -76,42 +91,47 @@ int main(void)
   printf("finished at counter %d\n", counter);
 
   // Receive the CREECBus transaction header from creecW
-  int out_len              = reg_read32(CREECW_NUM_BEATS_OUT);
-  int compressed           = reg_read32(CREECW_CR_OUT);
-  int encrypted            = reg_read32(CREECW_E_OUT);
-  int ecc                  = reg_read32(CREECW_ECC_OUT);
-  int compressed_pad_bytes = reg_read32(CREECW_CR_PADBYTES_OUT);
-  int encrypted_pad_bytes  = reg_read32(CREECW_E_PADBYTES_OUT);
-  int ecc_pad_bytes        = reg_read32(CREECW_ECC_PADBYTES_OUT);
+  uint32_t headerW[7];
+  header_read(CREECW_ENABLE, headerW);
+  uint32_t lenW                  = headerW[0];
+  uint32_t compressedW           = headerW[1];
+  uint32_t encryptedW            = headerW[2];
+  uint32_t eccW                  = headerW[3];
+  uint32_t compressed_pad_bytesW = headerW[4];
+  uint32_t encrypted_pad_bytesW  = headerW[5];
+  uint32_t ecc_pad_bytesW        = headerW[6];
 
   printf("Received header: %d %d %d %d %d %d %d\n",
-    out_len, compressed, encrypted, ecc,
-    compressed_pad_bytes, encrypted_pad_bytes, ecc_pad_bytes);
+    lenW, compressedW, encryptedW, eccW,
+    compressed_pad_bytesW, encrypted_pad_bytesW, ecc_pad_bytesW);
 
   printf("Expected header: %d %d %d %d %d %d %d\n",
       ref_len, ref_compressed, ref_encrypted, ref_ecc,
       ref_compressed_pad_bytes, ref_encrypted_pad_bytes, ref_ecc_pad_bytes);
 
-  int numErrors = 0;
+  int numErrorsW = 0;
 
-  for (i = 0; i < out_len; i++) { 
-    uint64_t output = reg_read64(CREECW_READ);
-    for (j = 0; j < DATA_WIDTH; j++) {
+  int8_t data_outW[10 * BYTES_PER_BEAT];
+
+  for (i = 0; i < lenW; i++) { 
+    uint64_t output = reg_read64(READQ_W);
+    for (j = 0; j < BYTES_PER_BEAT; j++) {
       int8_t out_data = output & 0xFF;
-      output = output >> DATA_WIDTH;
+      data_outW[i * BYTES_PER_BEAT + j] = out_data;
+      output = output >> BYTES_PER_BEAT;
       printf("OUT: (i=%d, j=%d) creecW=%d, gold=%d\n",
-             i, j, out_data, gold_data[i * DATA_WIDTH +j]);
-      if (out_data != gold_data[i * DATA_WIDTH + j]) {
-        numErrors += 1;
+             i, j, out_data, gold_data[i * BYTES_PER_BEAT +j]);
+      if (out_data != gold_data[i * BYTES_PER_BEAT + j]) {
+        numErrorsW += 1;
         printf("Mismatch!\n");
       }
     }
   }
 
-  if (numErrors == 0) {
+  if (numErrorsW == 0) {
     printf("creecW PASSED!\n");
   } else {
-    printf("creecW FAILED with %d mismatches!\n", numErrors);
+    printf("creecW FAILED with %d mismatches!\n", numErrorsW);
   }
 
   // TODO: Introduce noise to the received data (within allowable range
@@ -119,6 +139,70 @@ int main(void)
   // Pass the noisy data to the Read Path creecR and check if
   // we can recover the original data
 
+  header_write(CREECR_ENABLE, lenW,
+               compressedW, encryptedW, eccW,
+               compressed_pad_bytesW,
+               encrypted_pad_bytesW,
+               ecc_pad_bytesW);
+  reg_write32(CREECR_ENABLE, 1);
+
+  for (i = 0; i < lenW; i++) {
+    uint64_t packed_data = pack_data(data_outW, i);
+    printf("Sending data %lu\n", packed_data);
+    reg_write64(WRITEQ_R, packed_data);
+  }
+
+  counter = 0;
+  while (reg_read32(CREECR_ENABLE + NUM_BEATS_OUT_OFFSET) == 0) {
+    counter += 1;
+//    if (i % 10 == 0) {
+//        printf("counter %d\n", counter);
+//    }
+  }
+  printf("finished at counter %d\n", counter);
+
+  // Receive the CREECBus transaction header from creecR
+  uint32_t headerR[7];
+  header_read(CREECR_ENABLE, headerR);
+  uint32_t lenR                  = headerR[0];
+  uint32_t compressedR           = headerR[1];
+  uint32_t encryptedR            = headerR[2];
+  uint32_t eccR                  = headerR[3];
+  uint32_t compressed_pad_bytesR = headerR[4];
+  uint32_t encrypted_pad_bytesR  = headerR[5];
+  uint32_t ecc_pad_bytesR        = headerR[6];
+
+  printf("Received header: %d %d %d %d %d %d %d\n",
+    lenR, compressedR, encryptedR, eccR,
+    compressed_pad_bytesR, encrypted_pad_bytesR, ecc_pad_bytesR);
+
+  printf("Expected header: 6 0 0 0 0 0 0\n");
+
+  int numErrorsR = 0;
+
+  int8_t data_outR[10 * BYTES_PER_BEAT];
+
+  for (i = 0; i < lenR; i++) { 
+    uint64_t output = reg_read64(READQ_R);
+
+    for (j = 0; j < BYTES_PER_BEAT; j++) {
+      int8_t out_data = output & 0xFF;
+      data_outR[i * BYTES_PER_BEAT + j] = out_data;
+      output = output >> BYTES_PER_BEAT;
+      printf("OUT: (i=%d, j=%d) creecR=%d, gold=%d\n",
+             i, j, out_data, data[i * BYTES_PER_BEAT +j]);
+      if (out_data != data[i * BYTES_PER_BEAT + j]) {
+        numErrorsR += 1;
+        printf("Mismatch!\n");
+      }
+    }
+  }
+
+  if (numErrorsR == 0) {
+    printf("creecR PASSED!\n");
+  } else {
+    printf("creecR FAILED with %d mismatches!\n", numErrorsR);
+  }
 
   printf("Done!\n");
 	return 0;

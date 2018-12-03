@@ -8,7 +8,7 @@ import freechips.rocketchip.devices.debug.Debug
 import freechips.rocketchip.diplomacy.LazyModule
 import freechips.rocketchip.util.GeneratorApp
 
-class TestHarnessWrite()(implicit p: Parameters) extends Module {
+class TestHarness()(implicit p: Parameters) extends Module {
   val io = IO(new Bundle {
     val success = Output(Bool())
   })
