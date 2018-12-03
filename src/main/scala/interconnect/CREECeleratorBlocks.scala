@@ -286,19 +286,19 @@ abstract class CREECeleratorBlock[D, U, EO, EI, B <: Data, T]
     regmap(
       0x00 -> Seq(RegField.w(1,  creecEnable)),
       0x04 -> Seq(RegField.w(32, numBeatsIn)),
-      0x0c -> Seq(RegField.r(1,  crIn)),
-      0x10 -> Seq(RegField.r(1,  eIn)),
-      0x14 -> Seq(RegField.r(1,  eccIn)),
-      0x18 -> Seq(RegField.r(32, crPadBytesIn)),
-      0x1c -> Seq(RegField.r(32, ePadBytesIn)),
-      0x20 -> Seq(RegField.r(32, eccPadBytesIn)),
-      0x24 -> Seq(RegField.r(32, numBeatsOut)),
-      0x28 -> Seq(RegField.r(1,  crOut)),
-      0x2c -> Seq(RegField.r(1,  eOut)),
-      0x30 -> Seq(RegField.r(1,  eccOut)),
-      0x34 -> Seq(RegField.r(32, crPadBytesOut)),
-      0x38 -> Seq(RegField.r(32, ePadBytesOut)),
-      0x3c -> Seq(RegField.r(32, eccPadBytesOut))
+      0x08 -> Seq(RegField.w(1,  crIn)),
+      0x0c -> Seq(RegField.w(1,  eIn)),
+      0x10 -> Seq(RegField.w(1,  eccIn)),
+      0x14 -> Seq(RegField.w(32, crPadBytesIn)),
+      0x18 -> Seq(RegField.w(32, ePadBytesIn)),
+      0x1c -> Seq(RegField.w(32, eccPadBytesIn)),
+      0x20 -> Seq(RegField.r(32, numBeatsOut)),
+      0x24 -> Seq(RegField.r(1,  crOut)),
+      0x28 -> Seq(RegField.r(1,  eOut)),
+      0x2c -> Seq(RegField.r(1,  eccOut)),
+      0x30 -> Seq(RegField.r(32, crPadBytesOut)),
+      0x34 -> Seq(RegField.r(32, ePadBytesOut)),
+      0x38 -> Seq(RegField.r(32, eccPadBytesOut))
     )
 
   }
