@@ -24,24 +24,26 @@ class CREECStripper(busParams: BusParams) extends Module {
 
   // This looks like we have to follow the same order as we compose the blocks
   val newLen = Wire(chiselTypeOf(headerReg.len))
-
-  when (!headerReg.encrypted && headerReg.encryptionPadBytes =/= 0.U) {
-    newLen := headerReg.len - headerReg.encryptionPadBytes / busParams.bytesPerBeat.U
+  when (!headerReg.ecc && headerReg.eccPadBytes =/= 0.U) {
+    val sLen = headerReg.eccPadBytes.asTypeOf(chiselTypeOf(headerReg.len)) /
+               busParams.bytesPerBeat.U
+    newLen := headerReg.len - sLen
+    io.master.header.bits.eccPadBytes := 0.U
+  }
+  .elsewhen (!headerReg.encrypted && headerReg.encryptionPadBytes =/= 0.U) {
+    val sLen =
+      headerReg.encryptionPadBytes.asTypeOf(chiselTypeOf(headerReg.len)) /
+      busParams.bytesPerBeat.U
+    newLen := headerReg.len - sLen
     io.master.header.bits.encryptionPadBytes := 0.U
   }
-  //TODO: investigate why below does not work in Rocket integration
-//  when (!headerReg.ecc && headerReg.eccPadBytes =/= 0.U) {
-//    newLen := headerReg.len - headerReg.eccPadBytes / busParams.bytesPerBeat.U
-//    io.master.header.bits.eccPadBytes := 0.U
-//  }
-//  .elsewhen (!headerReg.encrypted && headerReg.encryptionPadBytes =/= 0.U) {
-//    newLen := headerReg.len - headerReg.encryptionPadBytes / busParams.bytesPerBeat.U
-//    io.master.header.bits.encryptionPadBytes := 0.U
-//  }
-//  .elsewhen (!headerReg.compressed && headerReg.compressionPadBytes =/= 0.U) {
-//    newLen := headerReg.len - headerReg.compressionPadBytes / busParams.bytesPerBeat.U
-//    io.master.header.bits.compressionPadBytes := 0.U
-//  }
+  .elsewhen (!headerReg.compressed && headerReg.compressionPadBytes =/= 0.U) {
+    val sLen =
+      headerReg.compressionPadBytes.asTypeOf(chiselTypeOf(headerReg.len)) /
+      busParams.bytesPerBeat.U
+    newLen := headerReg.len - sLen
+    io.master.header.bits.compressionPadBytes := 0.U
+  }
   .otherwise {
     newLen := headerReg.len
   }
