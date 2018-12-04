@@ -1,6 +1,5 @@
 package compression
 
-import chisel3.Module
 import chisel3.tester._
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import interconnect._
@@ -93,25 +92,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
     )
   )
 
-  def runTest(c: Module,
-              model: SoftwareModel[CREECHighLevelTransaction, CREECHighLevelTransaction],
-              driver: CREECDriver,
-              monitor: CREECMonitor,
-              tx: Seq[CREECHighLevelTransaction]): Unit = {
-    val outGold = model.processTransactions(tx)
-    driver.pushTransactions(tx)
-    var cycle = 0
-    val timeout = 2000
-    while (cycle <= timeout && monitor.receivedTransactions.length < outGold.length) {
-      c.clock.step()
-      cycle += 1
-    }
-    if (cycle >= timeout)
-      println("Test timed out!")
-    val out = monitor.receivedTransactions.dequeueAll(_ => true)
-    assert(out == outGold)
-    // TODO: (testers2 usability) assert kills everything and prevents vcd generation
-  }
+
 
   "the CREECDifferentialCoder module" should "encode and decode data" in {
     for (encode <- List(true, false)) {
@@ -119,7 +100,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
         val model = new CREECDifferentialCoderModel(encode = encode)
         val driver = new CREECDriver(c.io.in, c.clock)
         val monitor = new CREECMonitor(c.io.out, c.clock)
-        runTest(c, model, driver, monitor, transactions)
+        TesterUtils.runTest(c, model, driver, monitor, transactions)
       }
     }
   }
@@ -130,7 +111,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
         val model = new CREECRunLengthCoderModel(encode = encode)
         val driver = new CREECDriver(c.io.in, c.clock)
         val monitor = new CREECMonitor(c.io.out, c.clock)
-        runTest(c, model, driver, monitor, transactions)
+        TesterUtils.runTest(c, model, driver, monitor, transactions)
       }
     }
   }
@@ -140,7 +121,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
       val model = new CompressorModel(compress = true)
       val driver = new CREECDriver(c.io.in, c.clock)
       val monitor = new CREECMonitor(c.io.out, c.clock)
-      runTest(c, model, driver, monitor, transactions)
+      TesterUtils.runTest(c, model, driver, monitor, transactions)
     }
   }
 
@@ -151,7 +132,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
       val model = new CompressorModel(compress = false)
       val driver = new CREECDriver(c.io.in, c.clock)
       val monitor = new CREECMonitor(c.io.out, c.clock)
-      runTest(c, model, driver, monitor, compressedTransactions)
+      TesterUtils.runTest(c, model, driver, monitor, compressedTransactions)
     }
   }
 }
