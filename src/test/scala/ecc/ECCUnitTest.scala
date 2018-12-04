@@ -287,17 +287,21 @@ class ECCTester extends ECCSpec {
     } should be(true)
   }
 
-  "ECCEncoderTop" should "work" in {
-    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ECCEncoderTop(rsParams, busParams, busECCParams)) {
-      c => new ECCEncoderTopUnitTester(c, trials,verbose)
-    } should be(true)
-  }
+  // Only uses these tests if RS configuration conforms nicely
+  // with the bus data width
+  if (busParams.dataWidth == (rsParams.symbolWidth * rsParams.k)) {
+    "ECCEncoderTop" should "work" in {
+      iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
+      new ECCEncoderTop(rsParams, busParams, busECCParams)) {
+        c => new ECCEncoderTopUnitTester(c, trials,verbose)
+      } should be(true)
+    }
 
-  "ECCDecoderTop" should "work" in {
-    iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
-    new ECCDecoderTop(rsParams, busECCParams, busParams)) {
-      c => new ECCDecoderTopUnitTester(c, trials, verbose)
-    } should be(true)
+    "ECCDecoderTop" should "work" in {
+      iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>
+      new ECCDecoderTop(rsParams, busECCParams, busParams)) {
+        c => new ECCDecoderTopUnitTester(c, trials, verbose)
+      } should be(true)
+    }
   }
 }

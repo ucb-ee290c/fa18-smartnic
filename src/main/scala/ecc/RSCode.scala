@@ -8,6 +8,7 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
   val numPars = numSyms - numMsgs
   var Log2Val: Array[Int] = new Array[Int](numRoots)
   var Val2Log: Array[Int] = new Array[Int](numRoots)
+
   // Primitive Polynomial
   val fConst = {
     symbolWidth match {
@@ -91,6 +92,8 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
     }
     result
   }
+
+  val invTable = (1 until numRoots) map { x => inv(x) }
 
   // Generator Polynomial
   // g(X) = (X + a^1)(X + a^2)(X + a^3) ... (X + a^numPars)
@@ -328,7 +331,7 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
         val chienRootVal = Log2Val(numRoots - 1 - (numSyms - idx))
         correctedSyms(idx - 1) = correctedSyms(idx - 1) ^
           mul(evaluatePoly(evaluatorsA, chienRootVal),
-              inv(mul(chienRootVal, evaluatePoly(locatorsDeriv, chienRootVal))))
+              invTable(mul(chienRootVal, evaluatePoly(locatorsDeriv, chienRootVal)) - 1))
       }
 
       correctedSyms

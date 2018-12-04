@@ -44,7 +44,7 @@ case class RSParams(
   val gCoeffs: Seq[Int] = Seq(3, 2, 1, 3),
   val fConst: Int = 11,
   val Log2Val: Seq[Int] = Seq(1, 2, 4, 3, 6, 7, 5, 1),
-  val Val2Log: Seq[Int] = Seq(0, 7, 1, 3, 2, 6, 4, 5)
+  val invTable: Seq[Int] = Seq(1, 5, 6, 7, 2, 3, 4) // inv(i) == invTable(i - 1)
 ) {
 
   // GF Arithmetic operations
@@ -133,7 +133,7 @@ object RSParams {
       gCoeffs = rs.gCoeffs,
       fConst = rs.fConst,
       rs.Log2Val,
-      rs.Val2Log
+      rs.invTable
     )
   }
 }
