@@ -134,10 +134,46 @@ int main(void)
     printf("creecW FAILED with %d mismatches!\n", numErrorsW);
   }
 
-  // TODO: Introduce noise to the received data (within allowable range
-  // stipulated by Reed-Solomon code)
-  // Pass the noisy data to the Read Path creecR and check if
-  // we can recover the original data
+    // Make some noise to test ECC capability
+  data_outW[16 * 0 + 0] = 0;
+  data_outW[16 * 0 + 1] = 1;
+  data_outW[16 * 0 + 2] = 2;
+  data_outW[16 * 0 + 3] = 3;
+
+  data_outW[16 * 1 + 0] = 0;
+  data_outW[16 * 1 + 1] = 1;
+  data_outW[16 * 1 + 2] = 2;
+  data_outW[16 * 1 + 3] = 3;
+
+  data_outW[16 * 2 + 0] = 0;
+  data_outW[16 * 2 + 1] = 1;
+  data_outW[16 * 2 + 2] = 2;
+  data_outW[16 * 2 + 3] = 3;
+
+  data_outW[16 * 3 + 0] = 0;
+  data_outW[16 * 3 + 1] = 1;
+  data_outW[16 * 3 + 2] = 2;
+  data_outW[16 * 3 + 3] = 3;
+
+  data_outW[16 * 4 + 0] = 0;
+  data_outW[16 * 4 + 1] = 1;
+  data_outW[16 * 4 + 2] = 2;
+  data_outW[16 * 4 + 3] = 3;
+
+  data_outW[16 * 5 + 0] = 0;
+  data_outW[16 * 5 + 1] = 1;
+  data_outW[16 * 5 + 2] = 2;
+  data_outW[16 * 5 + 3] = 3;
+
+  data_outW[16 * 6 + 0] = 0;
+  data_outW[16 * 6 + 1] = 1;
+  data_outW[16 * 6 + 2] = 2;
+  data_outW[16 * 6 + 3] = 3;
+
+  data_outW[16 * 7 + 0] = 0;
+  data_outW[16 * 7 + 1] = 1;
+  data_outW[16 * 7 + 2] = 2;
+  data_outW[16 * 7 + 3] = 3;
 
   header_write(CREECR_ENABLE, lenW,
                compressedW, encryptedW, eccW,
