@@ -26,9 +26,7 @@ object TesterUtils {
     if (cycle >= timeout)
       println("Test timed out!")
     val out = monitor.receivedTransactions.dequeueAll(_ => true)
-    println("got: " + out)
-    println("exp: " + outGold)
-//    assert(out == outGold)
+    assert(out == outGold)
     // TODO: (testers2 usability) assert kills everything and prevents vcd generation
   }
 }
