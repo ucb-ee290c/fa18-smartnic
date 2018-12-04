@@ -342,3 +342,11 @@ hs_err_pid*
 *.v
 *.fir
 *.json 
+
+#verisim
+verisim/generated*
+verisim/verilator*
+verisim/simulator*
+
+# RISCV binary
+*.riscv

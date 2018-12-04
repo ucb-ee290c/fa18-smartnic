@@ -320,7 +320,7 @@ class BasicFIFO(width: Int, length: Int) extends Module {
     val reset = Input(Bool())
     val out = Output(UInt(width.W))
   })
-  val fifo = Reg(Vec(length, UInt(width.W)))
+  val fifo = RegInit(VecInit(Seq.fill(length)(0.U(width.W))))
   val head = RegInit(0.U((log2Ceil(length) + 1).W))
   val tail = RegInit(0.U((log2Ceil(length) + 1).W))
 

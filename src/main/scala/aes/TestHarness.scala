@@ -1,6 +1,4 @@
-// See LICENSE.SiFive for license details.
-
-package interconnect
+package aes
 
 import chisel3._
 import freechips.rocketchip.config.Parameters
@@ -13,21 +11,7 @@ class TestHarness()(implicit p: Parameters) extends Module {
     val success = Output(Bool())
   })
 
-  val dut = Module(LazyModule(new ExampleTopWithCREECelerator).module)
-  dut.reset := reset.toBool() | dut.debug.ndreset
-
-  dut.dontTouchPorts()
-  dut.tieOffInterrupts()
-  dut.connectSimAXIMem()
-  Debug.connectDebug(dut.debug, clock, reset.toBool(), io.success)
-}
-
-class TestHarnessRead()(implicit p: Parameters) extends Module {
-  val io = IO(new Bundle {
-    val success = Output(Bool())
-  })
-
-  val dut = Module(LazyModule(new ExampleTopWithCREECeleratorRead).module)
+  val dut = Module(LazyModule(new ExampleTopWithAES).module)
   dut.reset := reset.toBool() | dut.debug.ndreset
 
   dut.dontTouchPorts()

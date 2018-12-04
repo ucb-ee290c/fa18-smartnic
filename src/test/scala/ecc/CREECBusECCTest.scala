@@ -6,13 +6,6 @@ import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
 
 class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
-  val testerArgs = Array(
-    "-fiwv",
-    "--backend-name", "treadle",
-    "--tr-write-vcd",
-    "--target-dir", "test_run_dir/creec",
-    "--top-name")
-
   val busParams = new CREECBusParams
   val busECCParams = new ECCBusParams
 

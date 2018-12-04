@@ -168,6 +168,7 @@ class RSDecoder(val rsParams: RSParams = new RSParams()) extends Module {
   // a^0, a^1, a^2, ..., a^(2**symbolWidth - 1)
   val rootVals = VecInit(rsParams.Log2Val.map(_.U))
   val numRoots = math.pow(2, rsParams.symbolWidth).toInt
+  val invTable = VecInit(rsParams.invTable.map(_.U))
 
   // This PolyCompute is for syndrome computation
   // It has n - k cells with n inputs
@@ -292,7 +293,7 @@ class RSDecoder(val rsParams: RSParams = new RSParams()) extends Module {
   // This can introduce a long critical path
   val denom = rsParams.GFOp.mul(locDerivResult, rootVals(rootValIdx))
   val errorMagReg = RegNext(rsParams.GFOp.mul(evalResult,
-                                              rsParams.GFOp.inv(denom)))
+                                              invTable(denom - 1.U)))
 
   evalPolyCmp.io.eVals := (0 until evalPolyCmp.getNumCells()).map(
                            x => rootVals(rootValIdx))
@@ -365,7 +366,10 @@ class RSDecoder(val rsParams: RSParams = new RSParams()) extends Module {
       }
 
       when (syndCmpOutCntDone) {
-        state := sKeyEquationSolver
+        // If there is no syndrome found (degB is 0), proceed to send output
+        // because the input sequence is correct.
+        // Otherwise, begin Key equation solver
+        state := Mux(degB === 0.U, sErrorCorrection0, sKeyEquationSolver)
       }
     }
 

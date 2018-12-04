@@ -3,12 +3,6 @@ package aes
 import chisel3._
 import chisel3.util._
 import interconnect.{BusParams, CREECBusParams, CREECBus}
-//import freechips.rocketchip.subsystem.BaseSubsystem
-//import freechips.rocketchip.config.{Parameters, Field}
-//import freechips.rocketchip.diplomacy._
-//import freechips.rocketchip.regmapper.{HasRegMap, RegField}
-//import freechips.rocketchip.tilelink._
-
 
 class AESTopBundle extends Bundle {
     val key_in      = Input(UInt(128.W))
@@ -150,7 +144,7 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
 
     //State Definitions
     //Chisel Enum syntax requires the 's' at the beginning
-    val sIDLE :: sDATA_WAIT :: sCOMP_WAIT :: sCOMPUTE :: sDONE :: Nil = Enum(5)
+    val sIDLE :: sHEADER_SEND :: sDATA_WAIT :: sCOMP_WAIT :: sCOMPUTE :: sDONE :: Nil = Enum(6)
     val state = RegInit(sIDLE)
 
     //IO Wrapper Reg for Module
@@ -160,24 +154,18 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
     val dataOutReg = Reg(UInt(128.W))
     val dataIDReg  = Reg(UInt(busParams.idBits.W))
 
+    val headerReg = Reg(chiselTypeOf(io.slave.header.bits))
+
     //Decoupled IO
     io.slave.header.ready := state === sIDLE
     io.slave.data.ready   := state === sDATA_WAIT
 
     // Forward the header
-    // TODO: wait for fire?
-    io.master.header.valid      := RegNext(io.slave.header.valid)
-    io.master.header.bits.len   := RegNext(io.slave.header.bits.len)
-    io.master.header.bits.addr  := RegNext(io.slave.header.bits.addr)
-    io.master.header.bits.id    := RegNext(io.slave.header.bits.id)
+    io.master.header.bits <> headerReg
+    // Flip the encrypted metadata
+    io.master.header.bits.encrypted := ~headerReg.encrypted
+    io.master.header.valid := state === sHEADER_SEND
 
-    // TODO: Handle Metadata better
-    io.master.header.bits.compressed := RegNext(io.slave.header.bits.compressed)
-    io.master.header.bits.ecc        := RegNext(io.slave.header.bits.ecc)
-    io.master.header.bits.encrypted  := true.B
-    io.master.header.bits.compressionPadBytes := RegNext(io.slave.header.bits.compressionPadBytes)
-    io.master.header.bits.eccPadBytes := RegNext(io.slave.header.bits.eccPadBytes)
-    io.master.header.bits.encryptionPadBytes := RegNext(io.slave.header.bits.encryptionPadBytes)
 
     // TODO: Handle id better
     io.master.data.valid     := state === sDONE
@@ -206,10 +194,18 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
             dataIDReg := 0.U
 
             when (io.slave.header.fire()) {
-                state := sDATA_WAIT
+                state := sHEADER_SEND
                 totalBeats := (io.slave.header.bits.len + 1.U) // length is 0-indexed
+                headerReg := io.slave.header.bits
             }
         }
+
+        is (sHEADER_SEND) {
+            when (io.master.header.fire()) {
+                state := sDATA_WAIT
+            }
+        }
+
         //Waiting for data
         //On data fire, wait for compute to be ready
         is (sDATA_WAIT) {
@@ -299,7 +295,5 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
 
     connectDecoupled(decrypt_FSM.io.aes_data_in, AESTop.io.decrypt_data_in)
     connectDecoupled(AESTop.io.decrypt_data_out, decrypt_FSM.io.aes_data_out)
-    // TODO: hack, should be properly resolved inside BusFSM
-    io.decrypt_master.header.bits.encrypted := false.B
 }
 

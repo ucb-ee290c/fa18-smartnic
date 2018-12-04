@@ -24,34 +24,42 @@ class CREECStripper(busParams: BusParams) extends Module {
 
   // This looks like we have to follow the same order as we compose the blocks
   val newLen = Wire(chiselTypeOf(headerReg.len))
-
   when (!headerReg.ecc && headerReg.eccPadBytes =/= 0.U) {
-    newLen := headerReg.len - headerReg.eccPadBytes / busParams.bytesPerBeat.U
+    val sLen = headerReg.eccPadBytes.asTypeOf(chiselTypeOf(headerReg.len)) /
+               busParams.bytesPerBeat.U
+    newLen := headerReg.len - sLen
     io.master.header.bits.eccPadBytes := 0.U
   }
   .elsewhen (!headerReg.encrypted && headerReg.encryptionPadBytes =/= 0.U) {
-    newLen := headerReg.len - headerReg.encryptionPadBytes / busParams.bytesPerBeat.U
+    val sLen =
+      headerReg.encryptionPadBytes.asTypeOf(chiselTypeOf(headerReg.len)) /
+      busParams.bytesPerBeat.U
+    newLen := headerReg.len - sLen
     io.master.header.bits.encryptionPadBytes := 0.U
   }
   .elsewhen (!headerReg.compressed && headerReg.compressionPadBytes =/= 0.U) {
-    newLen := headerReg.len - headerReg.compressionPadBytes / busParams.bytesPerBeat.U
+    val sLen =
+      headerReg.compressionPadBytes.asTypeOf(chiselTypeOf(headerReg.len)) /
+      busParams.bytesPerBeat.U
+    newLen := headerReg.len - sLen
     io.master.header.bits.compressionPadBytes := 0.U
   }
   .otherwise {
     newLen := headerReg.len
   }
 
+  val numBeatsExpected = newLen + 1.U
+  val numBeatsOriginal = headerReg.len + 1.U
+  val beatCnt = RegInit(0.U(32.W))
+
   io.master.header.bits.len := newLen
 
   io.slave.header.ready := state === sRecvHeader
   io.master.header.valid := state === sSendHeader
   io.slave.data.ready := state === sRecvData
-  io.master.data.valid := state === sSendData
+  io.master.data.valid := state === sSendData && (beatCnt <= numBeatsExpected)
 
   io.master.data.bits.data := dataOutReg
-
-  val numBeats = newLen + 1.U
-  val beatCnt = RegInit(0.U(32.W))
 
   switch (state) {
     is (sRecvHeader) {
@@ -80,9 +88,9 @@ class CREECStripper(busParams: BusParams) extends Module {
     }
 
     is (sSendData) {
-      when (io.master.data.fire()) {
+      when (io.master.data.fire() || beatCnt >= numBeatsExpected) {
         // Receive the next header if all beats have sent out
-        when (beatCnt === numBeats) {
+        when (beatCnt === numBeatsOriginal) {
           state := sRecvHeader
         }
         .otherwise {

@@ -72,6 +72,6 @@ class ECCSpec extends FlatSpec with Matchers {
     gCoeffs = rs.gCoeffs,
     fConst = rs.fConst,
     rs.Log2Val,
-    rs.Val2Log
+    rs.invTable
   )
 }
