@@ -50,11 +50,11 @@ case class CREECHeaderBeat(
   compressionPadBytes: Int = 0,
   eccPadBytes: Int = 0,
   encryptionPadBytes: Int = 0)(implicit p: BusParams) extends CREECLowLevelTransaction {
-  require(len <= p.maxBeats)
+  require(len <= (p.maxBeats - 1))
   require(id <= p.maxInFlight)
 }
 case class CREECDataBeat(data: Seq[Byte], id: Int)(implicit p: BusParams) extends CREECLowLevelTransaction {
-  require(id <= p.maxBeats)
+  require(id <= p.maxInFlight)
   // data.length = 64 bits, 128 bits, 256 bits, etc... = data width of CREECBus
   require(data.length == p.bytesPerBeat)
 }
