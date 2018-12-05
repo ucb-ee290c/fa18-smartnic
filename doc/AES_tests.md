@@ -21,11 +21,13 @@ Testers:
 - `SubKeyExpansionTester`: Sanity check for a single stage of KeyExpansion
 - `SubCipherTester`: Sanity check for a complete encryption cipher (SubBytes, ShiftRows, MixColumns, AddRoundKey)
 - `SubStageTester`: Sanity check for the above cipher with KeyExpansion
-- `SubKeyScheduleTimeInterleaveTester`: Sanity check for time interleaved key generation
+- `SubKeyScheduleTimeInterleaveTester`: Sanity check for iterative key generation
 - `CREECBusAESTest`: Sanity check for the software model used for CREECBus
 
 Note that the `SubStageTester` does not have a reasonable analog in the decryption side, as all the round keys
 must be generated before even the first decryption stage.
+
+For module information, see [AES.md](AES.md)
 
 TODO: add `expect` functionality
 
@@ -36,8 +38,8 @@ and applies it to all three DUTS. These tests include `expect` statements, so hu
 
 Testers:
 - `AES128CombinationalTester`: Sanity check for the purely combinational AES128Combinational
-- `AES128Tester`: Sanity check for full time interleaved AES128, where rcon generation, key expansion, and cipher all live in one stage
-- `AES128TimeInterleaveTester`: Sanity check for AES128 where key expansion is performed combinationally and the cipher is time interleaved
+- `AES128Tester`: Sanity check for full iterative AES128, where rcon generation, key expansion, and cipher all live in one stage
+- `AES128TimeInterleaveTester`: Sanity check for AES128 where key expansion is performed combinationally and the cipher is iterative
 
 ## InvAES128SubmoduleTesters
 
@@ -63,7 +65,7 @@ and applies it to both DUTS. These tests include `expect` statements, so human i
 
 Testers:
 - `InvAES128CombinationalTester`: Sanity check for the purely combinational InvAES128Combinational
-- `InvAES128Tester`: Sanity check for InvAES128 where key expansion is performed combinationally and the decipher is time interleaved
+- `InvAES128Tester`: Sanity check for InvAES128 where key expansion is performed combinationally and the decipher is iterative
 
 ## AESTopTester
 
@@ -72,14 +74,14 @@ above tests, these tests are designed to verify one vector at a time. However, t
 encryption asynchronously when possible to demonstrated independent operation despite the shared key schedule.
 
 - `AESTopCombinationalTester`: Purely combinational system
-- `AESTopTimeInterleaveTester`: Combinational Key generation, time-interleaved encryption and decryption
-- `AESTopFullTimeInterleaveTester`: Pure time-interleaved system
+- `AESTopTimeInterleaveTester`: Combinational Key generation, iterative encryption and decryption
+- `AESTopFullTimeInterleaveTester`: Pure iterative system
 
 ## AESNISTTester
 
 This test uses the Known Answer Tests provided by [NIST](https://csrc.nist.gov/projects/cryptographic-algorithm-validation-program/block-ciphers).
 We use the Electronic Codebook AES-128 implementation and so use those tests. This provides 568 test cases.
-The test verifies `AESTopFullTimeInterleave`, which is a combined encryption-decryption engine with time-interleaved
+The test verifies `AESTopFullTimeInterleave`, which is a combined encryption-decryption engine with iterative
 encryption, decryption, and key-generation.
 
 The test structure is similar to that of `AESTopFullTimeInterleaveTester.` `AESNISTSpec` reads in the NIST
