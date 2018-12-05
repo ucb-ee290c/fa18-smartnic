@@ -14,7 +14,7 @@ Files:
 - AESHelper.scala: Helper modules (e.g. hardware multiplies for Rijndael field) and shared modules (e.g. key generation)
 - AES.scala: Modules for AES encryption
 - InvAES.scala: Modules for AES decryption
-- AESTop.scala: Full AES encryption and decryption modules, and hardware wrapper for [CREECBus](Interconnect_and Bus_Components.md)
+- AESTop.scala: Full AES encryption and decryption modules, and hardware wrapper for [CREECBus](Interconnect_and_Bus_Components.md)
 - AESApp.scala: Helper class to output Verilog
 - AESSWModel.scala: AES Interconnect Software Model for CREECBus
 
