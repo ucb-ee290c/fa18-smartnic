@@ -3,7 +3,6 @@ package aes
 import chisel3._
 import chisel3.util._
 import dspblocks._
-import dsptools.numbers._
 import freechips.rocketchip.amba.axi4stream._
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._

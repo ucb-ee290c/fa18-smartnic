@@ -2,7 +2,6 @@ package aes
 
 import chisel3._
 import chisel3.util._
-import interconnect.{CREECBusParams, CREECBus}
 
 
 class DataBundle extends Bundle {

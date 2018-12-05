@@ -20,17 +20,26 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
     }.toSeq
   }
 
-  val theRepublic = readTxFromFileFirst512("The_Republic_Plato.txt")
-  val theRepublicC = new CompressorModel(true).processTransactions(theRepublic)
-  val theRepublicCP = new CREECPadderModel(16).processTransactions(theRepublicC)
-  val theRepublicCPE = new CREECEncryptHighModel().processTransactions(theRepublicCP)
-  val theRepublicCPEE = new ECCEncoderTopModel(RSParams.RS16_8_8).processTransactions(theRepublicCPE)
-  val cilbuperEhtCPEE = new CommChannel(RSParams.RS16_8_8, noiseByteLevel = 4).processTransactions(theRepublicCPEE)
-  val cilbuperEhtCPE = new ECCDecoderTopModel(RSParams.RS16_8_8).processTransactions(cilbuperEhtCPEE)
-  val cilbuperEhtCP = new CREECDecryptHighModel().processTransactions(cilbuperEhtCPE)
-  val cilbuperEhtC = new CREECStripperModel().processTransactions(cilbuperEhtCP)
-  val cilbuperEht = new CompressorModel(false).processTransactions(cilbuperEhtC)
+  val theRepublic: Seq[CREECHighLevelTransaction] = readTxFromFileFirst512("The_Republic_Plato.txt")
+  val theRepublicC: Seq[CREECHighLevelTransaction] = new CompressorModel(true).processTransactions(theRepublic)
+  val theRepublicCP: Seq[CREECHighLevelTransaction] = new CREECPadderModel(16).processTransactions(theRepublicC)
+  val theRepublicCPE: Seq[CREECHighLevelTransaction] = new CREECEncryptHighModel().processTransactions(theRepublicCP)
+  val theRepublicCPEE: Seq[CREECHighLevelTransaction] = new ECCEncoderTopModel(RSParams.RS16_8_8).processTransactions(theRepublicCPE)
+  val cilbuperEhtCPEE: Seq[CREECHighLevelTransaction] = new CommChannel(RSParams.RS16_8_8, noiseByteLevel = 4).processTransactions(theRepublicCPEE)
+  val cilbuperEhtCPE: Seq[CREECHighLevelTransaction] = new ECCDecoderTopModel(RSParams.RS16_8_8).processTransactions(cilbuperEhtCPEE)
+  val cilbuperEhtCP: Seq[CREECHighLevelTransaction] = new CREECDecryptHighModel().processTransactions(cilbuperEhtCPE)
+  val cilbuperEhtC: Seq[CREECHighLevelTransaction] = new CREECStripperModel().processTransactions(cilbuperEhtCP)
+  val cilbuperEht: Seq[CREECHighLevelTransaction] = new CompressorModel(false).processTransactions(cilbuperEhtC)
   assert(cilbuperEht == theRepublic)
+
+  val theRepublicEnc: Seq[CREECHighLevelTransaction] = new CREECEncryptHighModel().processTransactions(theRepublic)
+  val theRepublicECC: Seq[CREECHighLevelTransaction] = new ECCEncoderTopModel(RSParams.RS16_8_8).processTransactions(theRepublic)
+
+  /*
+   * Use this flag to control whether standalone cycle counts or
+   * full-stack cycle counts are produced.
+   */
+  val standalone = true
 
   "this compress test" should "produce a cycle count when run" in {
     test(new Compressor(BusParams.blockDev, true)) { c =>
@@ -46,7 +55,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
       val model = new CREECEncryptHighModel
       val driver = new CREECDriver(c.io.encrypt_slave, c.clock)
       val monitor = new CREECMonitor(c.io.encrypt_master, c.clock)
-      TesterUtils.runTest(c, model, driver, monitor, theRepublicCP)
+      TesterUtils.runTest(c, model, driver, monitor, if(standalone) theRepublic else theRepublicCP)
     }
   }
 
@@ -55,7 +64,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
       val model = new ECCEncoderTopModel(RSParams.RS16_8_8)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
-      TesterUtils.runTest(c, model, driver, monitor, theRepublicCPE)
+      TesterUtils.runTest(c, model, driver, monitor, if(standalone) theRepublic else theRepublicCPE)
     }
   }
 
@@ -64,7 +73,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
       val model = new ECCDecoderTopModel(RSParams.RS16_8_8)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
-      TesterUtils.runTest(c, model, driver, monitor, cilbuperEhtCPEE, timeout = 10000)
+      TesterUtils.runTest(c, model, driver, monitor, if(standalone) theRepublicECC else cilbuperEhtCPEE, timeout = 10000)
     }
   }
 
@@ -73,7 +82,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
       val model = new CREECDecryptHighModel
       val driver = new CREECDriver(c.io.decrypt_slave, c.clock)
       val monitor = new CREECMonitor(c.io.decrypt_master, c.clock)
-      TesterUtils.runTest(c, model, driver, monitor, cilbuperEhtCPE)
+      TesterUtils.runTest(c, model, driver, monitor, if(standalone) theRepublicEnc else cilbuperEhtCPE)
     }
   }
 
@@ -84,7 +93,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
       val monitor = new CREECMonitor(c.io.out, c.clock)
       println(cilbuperEhtC)
       println(model.processTransactions(cilbuperEhtC))
-      TesterUtils.runTest(c, model, driver, monitor, cilbuperEhtC)
+      TesterUtils.runTest(c, model, driver, monitor, if(standalone) theRepublicC else cilbuperEhtC)
     }
   }
 }

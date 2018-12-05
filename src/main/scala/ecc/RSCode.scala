@@ -1,5 +1,4 @@
 package ecc
-import scala.math
 
 // Software implementation of the Reed-Solomon encoder & decoder
 class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
