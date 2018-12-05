@@ -54,14 +54,14 @@ Many of our full pipeline tests require large amounts of memory (> 1GB). We reco
 
 
 ## Integration testing
-The CREECelerator pipeline with Rocketchip can be compiled to Verilator-based executables.
-They can be made using the Makefile in the `verisim` directory. Running `make debug` will produce executables that can provide waveform dumps.
-To build the write pipeline, run `make MODEL=TestHarnessWrite`. To build the read pipeline, run `make MODEL=TestHarnessRead`.
+We have integrated the CREECelerator pipelines to the Rocket-chip infrastructure in a similar manner to the CORDIC lab. The pipelines communicates with the host processor via separate AXI4-Stream queues and memory-mapped registers. The CREECelerator pipelines with Rocket-chip can be compiled to a Verilator-based executable.
 
-Basic C tests can be found in the `tests` directory. They can be compiled to `riscv` test stimuli using make from the `tests` directory,
-which can then be run using the generated executables. Compilation requires a shell path to [riscv-tools](https://github.com/riscv/riscv-tools),
+They can be made using the Makefile in the `verisim` directory. Running `make debug` will produce executables that can provide waveform dumps.
+To build the pipelines, run `make MODEL=TestHarness`.
+
+A basic C test can be found in the `tests` directory. `creec.riscv` is a combined test for the write and read pipelines. It can be compiled to `riscv` test stimuli using make from the `tests` directory,
+which can then be run using the generated executable. Compilation requires a shell path to [riscv-tools](https://github.com/riscv/riscv-tools),
 which is included in the project template described above.
-`creec.riscv` is a test for the write pipeline. `creec_decrypt.riscv` is a test for the read pipeline.
 
 ## Synthesis using Hammer
 [Hammer](https://github.com/ucb-bar/hammer) setup files exist as a submodule in this project.
