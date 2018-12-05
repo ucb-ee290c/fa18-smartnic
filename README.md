@@ -104,6 +104,9 @@ The timing and area report will be generated inside the directory `out_{verilog_
 - ECC: source in `src/main/scala/ecc`, tests are in `src/test/scala/ecc`.
 - Bus Specification and Components, Verification Infrastructure, Top-Level CREECelerator: source in `src/main/scala/interconnect`, tests are in `src/test/scala/interconnect`.
 
+## Paper
+[Go here for the paper](doc/CREEC.pdf)
+
 # Supplemental
 ## Building and Testing With Mill
 This project can be compiled and tested with [mill](https://github.com/lihaoyi/mill) instead of sbt with a few caveats.
