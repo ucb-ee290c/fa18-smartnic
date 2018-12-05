@@ -2,17 +2,22 @@
 
 [![Build Status](https://travis-ci.org/ucberkeley-ee290c/fa18-smartnic.svg?branch=master)](https://travis-ci.org/ucberkeley-ee290c/fa18-smartnic)
 
-CREECelerator is a collection of composable hardware accelerators for compression, AES encryption, and Reed-Solomon codes (ECC)
+CREECelerator is a collection of *composable and modular* hardware accelerators for compression, AES encryption, and Reed-Solomon codes (ECC)
 implemented in Chisel. The accelerators can be arbitrarily composed and can interface with a host to provide both OS-invisible
-or filesystem-aware storage acceleration capabilities.
+or filesystem-aware **storage acceleration** capabilities.
 
-This repo will contain generic implementations of compression (RLE), encryption (AES), and error correction coding (Reed Solomon) blocks.
-They are integrated together using a simple custom bus called CREECBus. This pipeline is then integrated with Rocket-chip based on the
-ucb-bar [project template](https://github.com/ucb-bar/project-template).
+This repo contains generic implementations of compression (RLE), encryption (AES), and error-correcting code (Reed Solomon) blocks.
+They are integrated together using a simple custom bus called CREECBus.
 
-![blockDiagram](doc/img/creeceleratortop.png)
+<p align="center">
+<img align="center" src="doc/img/creeceleratortop.png" width="500"/>
+</p>
 
-![blockDiagram](doc/img/Rocket-top.PNG)
+This pipeline is integrated with Rocket-chip based on the ucb-bar [project template](https://github.com/ucb-bar/project-template).
+
+<p align="center">
+<img align="center" src="doc/img/Rocket-top.PNG" width="250"/>
+</p>
 
 Support for transaction level modeling and verification is a key component in CREECBus.
 
@@ -28,33 +33,24 @@ blocks for design exploration.
 ```
 git clone git@github.com:ucberkeley-ee290c/fa18-smartnic
 cd fa18-smartnic
-
 git submodule update --init --recursive
 
 # Clean local ivy package cache of chisel/firrtl JARs
-cd ~/.ivy2/local/edu.berkeley.cs
-rm -rf firrtl*
-rm -rf chisel*
+rm -rf ~/.ivy2/local/edu.berkeley.cs/firrtl*
+rm -rf ~/.ivy2/local/edu.berkeley.cs/chisel*
 
 cd firrtl
-sbt
-sbt:firrtl> compile
-sbt:firrtl> +publishLocal
-sbt:firrtl> exit
+sbt "compile; +publishLocal"
 
 cd ../chisel3
-sbt
-sbt:chisel3> compile
-sbt:chisel3> +publishLocal
-sbt:chisel3> exit
+sbt "compile; +publishLocal"
 ```
 
 # Building / Testing
-## With SBT
 At the top level of `fa18-smartnic`, run `sbt compile` and `sbt test`.
 You can also use `sbt testOnly` to run specific tests.
 Many of our full pipeline tests require large amounts of memory (> 1GB). We recommend setting SBT's memory limit to
-2GB or more using`sbt -mem 2048`.
+2GB or more using `sbt -mem 2048`.
 
 
 ## Integration testing
@@ -84,42 +80,23 @@ To synthesize a Verilog file with Hammer (basically Vivado synthesis for now), u
 
 The timing and area report will be generated inside the directory `out_{verilog_top_module}_{FPGANAME}`.
 
+# Docs
+## Generators
+1. Differential + Run-Length (De)Compressor ([design doc](doc/compression.md), [testing doc](doc/compression_tests.md))
+2. AES128 (De)Encryptor ([design doc](doc/AES.md), [testing doc](doc/AES.md))
+3. Reed-Solomon ECC (De)Encoder ([design doc](doc/ECC.md), [testing doc](doc/ECC_tests.md))
+4. Bus Interconnect and Bus Components ([design doc](doc/Interconnect_and_Bus_Components.md))
+## Verification Infrastructure
+[Go here for details](doc/Transaction_Level_Modeling.md) on the transaction-level modeling framework, the design and testing of software models, and how to use transaction stimulus to drive RTL simulation
+## Top-Level Integration
+[Go here for details](doc/Top_Level_Integration.md) on the top-level `CREECelerator` which chains together the compression -> encryption -> ECC blocks and gives an overview of top-level testing.
+## Source Code
+- Compression: source in `src/main/scala/compression`, tests in `src/test/scala/compression`.
+- AES Encryptor: source in `src/main/scala/aes`, tests in `src/test/scala/aes`.
+- ECC: source in `src/main/scala/ecc`, tests are in `src/test/scala/ecc`.
+- Bus Specification and Components, Verification Infrastructure, Top-Level CREECelerator: source in `src/main/scala/interconnect`, tests are in `src/test/scala/interconnect`.
 
-# Modules Details
-
-### Compression
-Module files are in `src/main/scala/compression`. Tests are in `src/test/scala/compression`.
-
-[Module Details](doc/compression.md)
-
-[Test Details](doc/compression_tests.md)
-
-### AES Encryption
-Module files are in `src/main/scala/aes`. Tests are in `src/test/scala/aes`.
-
-[Module Details](doc/AES.md)
-
-[Test Details](doc/AES.md)
-
-### ECC (Reed-Solomon)
-Module files are in `src/main/scala/ecc`. Tests are in `src/test/scala/ecc`.
-
-[Module Details](doc/ECC.md)
-
-[Test Details](doc/ECC_tests.md)
-
-### Interconnect
-Module files are in `src/main/scala/interconnect`. Tests are in `src/test/scala/interconnect`.
-
-[CREECBus Interconnect Details](doc/Interconnect_and_Bus_Components.md)
-
-[CREECelerator Details](doc/Top_Level_Integration.md)
-
-[Transaction Modeling Details](doc/Transaction_Level_Modeling.md)
-
-
-
-# Supplamental
+# Supplemental
 ## Building and Testing With Mill
 This project can be compiled and tested with [mill](https://github.com/lihaoyi/mill) instead of sbt with a few caveats.
 
