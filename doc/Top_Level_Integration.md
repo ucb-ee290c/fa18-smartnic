@@ -27,17 +27,6 @@ The loopback CREECelerator software test is in `/src/test/scala/interconnect/CRE
 ### RTL Testing
 The RTL test of the CREECelerator pipelines is in `src/test/scala/interconnect/CREECeleratorHWTest.scala`. It is run with `sbt testOnly interconnect.CREECeleratorHWTest`. The RTL simulation proceeds slowly (~10 Hz) due to limitations in treadle. As a result, only a few transactions can be pushed through the pipeline in a reasonable time and without running into a OutOfMemory exception. But it works!
 
-### RocketChip Testing
-We have integrated the CREECelerator pipelines to the Rocket-chip infrastructure in a similar manner to the CORDIC lab. The pipelines communicates with the host processor via separate AXI4-Stream queues and memory-mapped registers. To run the Rocket chip simulation, use the following commands
-
-```
-cd $PROJECT_DIR/tests/
-make
-cd $PROJECT_DIR/verisim/
-make MODEL=TestHarness
-./simulator-freechips.rocketchip.system-DefaultConfig ../tests/creec.riscv
-```
-
 ## Ideas for System-Level Testing
 ![System Level Testing](./img/system_level_testing.svg)
 
