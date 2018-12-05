@@ -54,7 +54,7 @@ Many of our full pipeline tests require large amounts of memory (> 1GB). We reco
 
 
 ## Integration testing
-The CREECelerator pipeline with Rocketchip can be copmiled to Verilator-based executables.
+The CREECelerator pipeline with Rocketchip can be compiled to Verilator-based executables.
 They can be made using the Makefile in the `verisim` directory. Running `make debug` will produce executables that can provide waveform dumps.
 To build the write pipeline, run `make MODEL=TestHarnessWrite`. To build the read pipeline, run `make MODEL=TestHarnessRead`.
 
@@ -72,7 +72,7 @@ To change the clock constraint (or add new constraint), modify the file `config/
 
 To select an FPGA, use one of the YAML files in the `config` folder. For example, to use the VC707 FPGA, use "VC707" as `FPGANAME` in the run command.
 
-To synthesize a Verilog file with Hammer (basically Vivado synthesis for now), use the following command:
+To synthesize a Verilog file with Hammer (Vivado logic synthesis), use the following command:
 
 ```
 ./runhammer.sh {path/to/verilog_file.v} {FPGANAME}
