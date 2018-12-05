@@ -54,7 +54,7 @@ Many of our full pipeline tests require large amounts of memory (> 1GB). We reco
 
 
 ## Integration testing
-We have integrated the CREECelerator pipelines to the Rocket-chip infrastructure in a similar manner to the CORDIC lab. The pipelines communicates with the host processor via separate AXI4-Stream queues and memory-mapped registers. The CREECelerator pipelines with Rocket-chip can be compiled to a Verilator-based executable.
+We have integrated the CREECelerator pipelines to the Rocket-chip infrastructure in a similar manner to the CORDIC lab. The pipelines communicate with the host processor via separate AXI4-Stream queues and memory-mapped registers. The CREECelerator pipelines with Rocket-chip can be compiled to a Verilator-based executable.
 
 They can be made using the Makefile in the `verisim` directory. Running `make debug` will produce executables that can provide waveform dumps.
 To build the pipelines, run `make MODEL=TestHarness`.
@@ -62,6 +62,14 @@ To build the pipelines, run `make MODEL=TestHarness`.
 A basic C test can be found in the `tests` directory. `creec.riscv` is a combined test for the write and read pipelines. It can be compiled to `riscv` test stimuli using make from the `tests` directory,
 which can then be run using the generated executable. Compilation requires a shell path to [riscv-tools](https://github.com/riscv/riscv-tools),
 which is included in the project template described above.
+
+```
+cd $PROJECT_DIR/tests/
+make
+cd $PROJECT_DIR/verisim/
+make MODEL=TestHarness
+./simulator-freechips.rocketchip.system-DefaultConfig ../tests/creec.riscv
+```
 
 ## Synthesis using Hammer
 [Hammer](https://github.com/ucb-bar/hammer) setup files exist as a submodule in this project.
