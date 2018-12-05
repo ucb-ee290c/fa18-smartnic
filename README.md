@@ -10,9 +10,14 @@ This repo will contain generic implementations of compression (RLE), encryption 
 They are integrated together using a simple custom bus called CREECBus. This pipeline is then integrated with Rocket-chip based on the
 ucb-bar [project template](https://github.com/ucb-bar/project-template).
 
-![blockDiagram](doc/img/creeceleratortop.png)
 
-![blockDiagram](doc/img/Rocket-top.PNG)
+<p align="center">
+  <img src="doc/img/creeceleratortop.png" width="460" >
+</p>
+
+<p align="center">
+  <img src="doc/img/Rocket-top.PNG" width="250" >
+</p>
 
 Support for transaction level modeling and verification is a key component in CREECBus.
 
@@ -108,7 +113,7 @@ Module files are in `src/main/scala/ecc`. Tests are in `src/test/scala/ecc`.
 
 [Test Details](doc/ECC_tests.md)
 
-### Interconnect
+### CREECBus Interconnect and Modeling
 Module files are in `src/main/scala/interconnect`. Tests are in `src/test/scala/interconnect`.
 
 [CREECBus Interconnect Details](doc/Interconnect_and_Bus_Components.md)
