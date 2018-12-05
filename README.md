@@ -16,7 +16,7 @@ They are integrated together using a simple custom bus called CREECBus.
 This pipeline is integrated with Rocket-chip based on the ucb-bar [project template](https://github.com/ucb-bar/project-template).
 
 <p align="center">
-<img align="center" src="doc/img/Rocket-top.PNG" width="250"/>
+<img align="center" src="doc/img/Rocket-top.PNG" width="300"/>
 </p>
 
 Support for transaction level modeling and verification is a key component in CREECBus.
