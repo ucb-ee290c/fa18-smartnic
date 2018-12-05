@@ -31,9 +31,9 @@ The RTL test of the CREECelerator pipelines is in `src/test/scala/interconnect/C
 We have integrated the CREECelerator pipelines to the Rocket-chip infrastructure in a similar manner to the CORDIC lab. The pipelines communicates with the host processor via separate AXI4-Stream queues and memory-mapped registers. To run the Rocket chip simulation, use the following commands
 
 ```
-cd tests/
+cd $PROJECT_DIR/tests/
 make
-cd verisim/
+cd $PROJECT_DIR/verisim/
 make MODEL=TestHarness
 ./simulator-freechips.rocketchip.system-DefaultConfig ../tests/creec.riscv
 ```
