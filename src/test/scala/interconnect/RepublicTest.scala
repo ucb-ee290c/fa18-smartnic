@@ -42,7 +42,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
   val standalone = true
 
   "this compress test" should "produce a cycle count when run" in {
-    test(new Compressor(BusParams.blockDev, true)) { c =>
+    test(new Compressor(BusParams.creec, true)) { c =>
       val model = new CompressorModel(compress = true)
       val driver = new CREECDriver(c.io.in, c.clock)
       val monitor = new CREECMonitor(c.io.out, c.clock)
