@@ -1,13 +1,11 @@
 package interconnect
 
-import aes.{AESBusParams, AESTopCREECBus}
+import aes.AESTopCREECBus
 import chisel3._
 import compression.Compressor
 import ecc.{ECCEncoderTop, ECCDecoderTop, RSParams, ECCBusParams}
 
 class CREECeleratorWrite extends Module {
-  val creecBusParams = new CREECBusParams
-  val aesBusParams = new AESBusParams
   val eccBusParams = new ECCBusParams
 
   val io = IO(new Bundle {
@@ -15,24 +13,25 @@ class CREECeleratorWrite extends Module {
     val out = new CREECBus(BusParams.creec)
   })
 
-  implicit val compressorBus: BusParams = creecBusParams
+  // TODO: remove this
+  implicit val compressorBus: BusParams = BusParams.creec
 
   val compressor = Module(new Compressor(io.in.p, compress = true))
 
-  val widthExpander = Module(new CREECWidthConverter(p1 = creecBusParams,
-                                                     p2 = aesBusParams))
+  val widthExpander = Module(new CREECWidthConverter(p1 = BusParams.creec,
+                                                     p2 = BusParams.aes))
 
-  val aes = Module(new AESTopCREECBus(aesBusParams))
+  val aes = Module(new AESTopCREECBus(BusParams.aes))
 
-  val widthContractor1 = Module(new CREECWidthConverter(p1 = aesBusParams,
-                                                        p2 = creecBusParams))
+  val widthContractor1 = Module(new CREECWidthConverter(p1 = BusParams.aes,
+                                                        p2 = BusParams.creec))
 
   val eccEncoder = Module(new ECCEncoderTop(RSParams.RS16_8_8,
-                                            creecBusParams,
+                                            BusParams.creec,
                                             eccBusParams))
 
   val widthContractor2 = Module(new CREECWidthConverter(p1 = eccBusParams,
-                                                        p2 = creecBusParams))
+                                                        p2 = BusParams.creec))
 
   compressor.io.in <> io.in
   widthExpander.io.slave <> compressor.io.out
@@ -50,7 +49,6 @@ class CREECeleratorWrite extends Module {
 
 class CREECeleratorRead extends Module {
   val creecBusParams = new CREECBusParams
-  val aesBusParams = new AESBusParams
   val eccBusParams = new ECCBusParams
 
   val io = IO(new Bundle {
@@ -68,11 +66,11 @@ class CREECeleratorRead extends Module {
                                             creecBusParams))
 
   val widthExpander2 = Module(new CREECWidthConverter(p1 = creecBusParams,
-                                                      p2 = aesBusParams))
+                                                      p2 = BusParams.aes))
 
-  val aes = Module(new AESTopCREECBus(aesBusParams))
+  val aes = Module(new AESTopCREECBus(BusParams.aes))
 
-  val widthContractor = Module(new CREECWidthConverter(p1 = aesBusParams,
+  val widthContractor = Module(new CREECWidthConverter(p1 = BusParams.aes,
                                                        p2 = creecBusParams))
 
   val stripper = Module(new CREECStripper(creecBusParams))
@@ -96,9 +94,9 @@ class CREECeleratorRead extends Module {
 
 //----------------
 
+// TODO avoid copying what we have above
 class CREECeleratorFull extends Module {
   val creecBusParams = new CREECBusParams
-  val aesBusParams = new AESBusParams
   val eccBusParams = new ECCBusParams
 
   val io = IO(new Bundle {
@@ -116,11 +114,11 @@ class CREECeleratorFull extends Module {
   val compressor = Module(new Compressor(io.write_in.p, compress = true))
 
   val widthConvertWrite1 = Module(new CREECWidthConverter(p1 = creecBusParams,
-    p2 = aesBusParams))
+    p2 = BusParams.aes))
 
-  val aes = Module(new AESTopCREECBus(aesBusParams))
+  val aes = Module(new AESTopCREECBus(BusParams.aes))
 
-  val widthConvertWrite2 = Module(new CREECWidthConverter(p1 = aesBusParams,
+  val widthConvertWrite2 = Module(new CREECWidthConverter(p1 = BusParams.aes,
     p2 = creecBusParams))
 
   val eccEncoder = Module(new ECCEncoderTop(RSParams.RS16_8_8,
@@ -149,9 +147,9 @@ class CREECeleratorFull extends Module {
     creecBusParams))
 
   val widthConvertRead2 = Module(new CREECWidthConverter(p1 = creecBusParams,
-    p2 = aesBusParams))
+    p2 = BusParams.aes))
 
-  val widthConvertRead3 = Module(new CREECWidthConverter(p1 = aesBusParams,
+  val widthConvertRead3 = Module(new CREECWidthConverter(p1 = BusParams.aes,
     p2 = creecBusParams))
 
   val stripper = Module(new CREECStripper(creecBusParams))

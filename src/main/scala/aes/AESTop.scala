@@ -242,14 +242,15 @@ class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Modu
     }
 }
 
-class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Module
+class AESTopCREECBus(p: BusParams) extends Module
     with HWKey {
+    assert(p == BusParams.aes, "This module doesn't accept custom BusParams (AES block size fixes dataWidth to 128)")
     val io = IO(new Bundle {
-        val encrypt_slave = Flipped(new CREECBus(busParams))
-        val encrypt_master = new CREECBus(busParams)
+        val encrypt_slave = Flipped(new CREECBus(p))
+        val encrypt_master = new CREECBus(p)
 
-        val decrypt_slave = Flipped(new CREECBus(busParams))
-        val decrypt_master = new CREECBus(busParams)
+        val decrypt_slave = Flipped(new CREECBus(p))
+        val decrypt_master = new CREECBus(p)
     })
 
     def connectDecoupled(master: DecoupledIO[Data], slave: DecoupledIO[Data]) = {
@@ -275,8 +276,8 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
     keyDoneReg  := keyDoneReg || AESTop.io.key_in.fire()
     
     // Encrypt ------------------------------------
-
-    val encrypt_FSM = Module(new AESCREECBusFSM(busParams))
+    // TODO: replace with bulk connects
+    val encrypt_FSM = Module(new AESCREECBusFSM(p))
     connectDecoupled(io.encrypt_slave.header, encrypt_FSM.io.slave.header)
     connectDecoupled(io.encrypt_slave.data, encrypt_FSM.io.slave.data)
     connectDecoupled(encrypt_FSM.io.master.header, io.encrypt_master.header)
@@ -287,7 +288,7 @@ class AESTopCREECBus(val busParams: BusParams = new CREECBusParams) extends Modu
     
     // Decrypt ------------------------------------
 
-    val decrypt_FSM = Module(new AESCREECBusFSM(busParams))
+    val decrypt_FSM = Module(new AESCREECBusFSM(p))
     connectDecoupled(io.decrypt_slave.header, decrypt_FSM.io.slave.header)
     connectDecoupled(io.decrypt_slave.data, decrypt_FSM.io.slave.data)
     connectDecoupled(decrypt_FSM.io.master.header, io.decrypt_master.header)

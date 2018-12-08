@@ -27,11 +27,9 @@ object AESEncryption {
   }
 }
 
-class AESBusParams extends BusParams(maxBeats = 128, maxInFlight=1, dataWidth=128)
-
 //Note: a combined encrypt-decrypt SW unit is not necessary since
 // the decrypt and encrypt are isolated at the bus level
-class CREECEncryptLowModel(p: AESBusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction]
+class CREECEncryptLowModel(p: BusParams = BusParams.aes) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction]
   with HWKey {
   override def process(in: CREECLowLevelTransaction) : Seq[CREECLowLevelTransaction] = {
     in match {
@@ -43,7 +41,7 @@ class CREECEncryptLowModel(p: AESBusParams) extends SoftwareModel[CREECLowLevelT
   }
 }
 
-class CREECDecryptLowModel(p: AESBusParams) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction]
+class CREECDecryptLowModel(p: BusParams = BusParams.aes) extends SoftwareModel[CREECLowLevelTransaction, CREECLowLevelTransaction]
   with HWKey {
   override def process(in: CREECLowLevelTransaction) : Seq[CREECLowLevelTransaction] = {
     in match {

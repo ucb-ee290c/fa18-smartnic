@@ -2,13 +2,12 @@ package interconnect
 
 import chisel3.tester._
 
-import aes.AESBusParams
 import org.scalatest.FlatSpec
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 
 class CREECWidthConverterTest extends FlatSpec with ChiselScalatestTester {
-  val busParamsBase = new CREECBusParams
-  val busParamsExpand2 = new AESBusParams
+  val busParamsBase = BusParams.creec
+  val busParamsExpand2 = BusParams.aes
 
   val testTx = Seq(
     CREECHeaderBeat(len = 1, id = 0x0, addr = 0x0)(busParamsBase),

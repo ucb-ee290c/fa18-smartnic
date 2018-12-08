@@ -1,6 +1,6 @@
 package interconnect
 
-import aes.{AESBusParams, AESTopCREECBus, CREECDecryptHighModel, CREECEncryptHighModel}
+import aes.{AESTopCREECBus, CREECDecryptHighModel, CREECEncryptHighModel}
 import chisel3.tester._
 import compression.{Compressor, CompressorModel}
 import ecc._
@@ -51,7 +51,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
   }
 
   "this encrypt test" should "produce a cycle count when run" in {
-    test(new AESTopCREECBus(new AESBusParams)) { c =>
+    test(new AESTopCREECBus(BusParams.aes)) { c =>
       val model = new CREECEncryptHighModel
       val driver = new CREECDriver(c.io.encrypt_slave, c.clock)
       val monitor = new CREECMonitor(c.io.encrypt_master, c.clock)
@@ -78,7 +78,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
   }
 
   "this decrypt test" should "produce a cycle count when run" in {
-    test(new AESTopCREECBus(new AESBusParams)) { c =>
+    test(new AESTopCREECBus(BusParams.aes)) { c =>
       val model = new CREECDecryptHighModel
       val driver = new CREECDriver(c.io.decrypt_slave, c.clock)
       val monitor = new CREECMonitor(c.io.decrypt_master, c.clock)

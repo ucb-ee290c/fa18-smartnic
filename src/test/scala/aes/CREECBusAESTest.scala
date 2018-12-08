@@ -22,7 +22,7 @@ class CREECBusAESSWTest extends FlatSpec {
   //Key is fixed in the SW model
   //TODO: Consider how to provide the model the key at time of test
   "AESSWModel" should "encrypt low" in {
-    implicit val busParams = new AESBusParams
+    val busParams = BusParams.aes
     val aesEncryptModel =
       new CREECHighToLowModel(busParams) ->
       new CREECEncryptLowModel(busParams) ->
@@ -33,7 +33,7 @@ class CREECBusAESSWTest extends FlatSpec {
   }
 
   "AESSWModel" should "decrypt low" in {
-    implicit val busParams = new AESBusParams
+    val busParams = BusParams.aes
     val aesDecryptModel =
       new CREECHighToLowModel(busParams) ->
       new CREECDecryptLowModel(busParams) ->
@@ -83,7 +83,7 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
     val outGold = swModel.processTransactions(txaction)
 
     // Encryption RTL model
-    test(new AESTopCREECBus(new AESBusParams)) { c =>
+    test(new AESTopCREECBus(BusParams.aes)) { c =>
       val driver = new CREECDriver(c.io.encrypt_slave, c.clock)
       val monitor = new CREECMonitor(c.io.encrypt_master, c.clock)
         
@@ -106,7 +106,7 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
     val outGold = swModel.processTransactions(txaction)
 
     // Decryption RTL model
-    test(new AESTopCREECBus(new AESBusParams)) { c =>
+    test(new AESTopCREECBus(BusParams.aes)) { c =>
       val driver = new CREECDriver(c.io.decrypt_slave, c.clock)
       val monitor = new CREECMonitor(c.io.decrypt_master, c.clock)
         
@@ -124,7 +124,7 @@ class CREECBusAESHWTest extends FlatSpec with ChiselScalatestTester {
                        CREECHighLevelTransaction(data, 0x1)
     )
 
-    test(new AESTopCREECBus(new AESBusParams)) { c =>
+    test(new AESTopCREECBus(BusParams.aes)) { c =>
       val encDriver = new CREECDriver(c.io.encrypt_slave, c.clock)
       val encMonitor = new CREECMonitor(c.io.encrypt_master, c.clock)
 
