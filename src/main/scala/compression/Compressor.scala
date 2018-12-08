@@ -521,7 +521,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
  * Generic module for CREEC coders (differential or runLength).
  */
 class CREECCoder(coderParams: CoderParams, operation: String)
-                (implicit creecParams: CREECBusParams) extends Module {
+                (implicit creecParams: BusParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)

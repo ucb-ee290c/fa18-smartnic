@@ -2,9 +2,6 @@ package aes
 
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
-import chisel3.util._
-import scala.math.pow
-
 
 class InvSubByteWrapper extends Module {
   val io = IO(new TopWrapper)

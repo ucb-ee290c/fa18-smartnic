@@ -1,7 +1,7 @@
 package compression
 
 import chisel3.tester.ChiselScalatestTester
-import interconnect.{BusParams, CREECBusParams, CREECHighLevelTransaction, SoftwareModel}
+import interconnect.{CREECHighLevelTransaction, SoftwareModel}
 import org.scalatest.FlatSpec
 
 class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
@@ -9,7 +9,6 @@ class CREECCompressionModelTester extends FlatSpec with ChiselScalatestTester {
     CREECHighLevelTransaction]](DUTFactory: Boolean => T,
                                 uncodedGold: Seq[CREECHighLevelTransaction],
                                 encodedGold: Seq[CREECHighLevelTransaction]): Unit = {
-    implicit val busParams: BusParams = new CREECBusParams
     val encodeModel = DUTFactory(true)
     val decodeModel = DUTFactory(false)
     val encoded = encodeModel.pushTransactions(uncodedGold)

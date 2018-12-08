@@ -1,13 +1,11 @@
 package ecc
-import chisel3._
 import chisel3.tester._
 import interconnect._
 import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
-import org.scalatest.FlatSpec
 
 class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
-  val busParams = new CREECBusParams
-  val busECCParams = new ECCBusParams
+  val busParams = BusParams.creec
+  val busECCParams = BusParams.ecc
 
   // Encoder testing
   val inputsEnc = trials.map(x =>
@@ -73,7 +71,6 @@ class CREECBusECCTest extends ECCSpec with ChiselScalatestTester {
 
   "ECCDecoderTop" should "be testable with testers2" in {
     test(new ECCDecoderTop(rsParams, busECCParams, busParams)) { c =>
-      val tx = CREECHighLevelTransaction(inputsDec, 0x1000)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
 

@@ -26,7 +26,7 @@ class ECCSpec extends FlatSpec with Matchers {
       printf("===TRIAL %d\n", t)
     }
 
-    var msgs = Seq.fill(numMsgs) {
+    val msgs = Seq.fill(numMsgs) {
       scala.util.Random.nextInt(rs.numRoots - 1)
     }
 

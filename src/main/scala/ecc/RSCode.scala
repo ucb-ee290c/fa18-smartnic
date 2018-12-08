@@ -99,7 +99,7 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
   //      = gCoeffs(0) + gCoeffs(1) * X^1 + gCoeffs(2) * X^2 + ... + gCoeffs(numPars) * X^numPars
   val gCoeffs = {
     val powSets = (0 to numPars - 1).toSet[Int].subsets.map(_.toList).toList
-    var coeffs = new Array[Int](numPars)
+    val coeffs = new Array[Int](numPars)
 
     for (i <- 0 until powSets.size) {
       val coeffIdx = numPars - powSets(i).size
@@ -112,7 +112,7 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
   }
 
   def encode(msgs: Seq[Int]): Seq[Int] = {
-    var pars: Array[Int] = new Array[Int](numPars)
+    val pars: Array[Int] = new Array[Int](numPars)
     for (i <- 0 until numMsgs) {
       val tmp = pars.map(x => x)
       val feedback = add(msgs(i), pars(numPars - 1))
@@ -197,10 +197,10 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
       inSyms
     } else {
       val size = numPars + 1
-      var evaluatorsA = new Array[Int](size)
-      var evaluatorsB = new Array[Int](size)
-      var locatorsA = new Array[Int](size)
-      var locatorsB = new Array[Int](size)
+      val evaluatorsA = new Array[Int](size)
+      val evaluatorsB = new Array[Int](size)
+      val locatorsA = new Array[Int](size)
+      val locatorsB = new Array[Int](size)
 
       evaluatorsA(numPars) = 1
 
@@ -320,7 +320,7 @@ class RSCode(numSyms: Int, numMsgs: Int, symbolWidth: Int,
       }
 
       // Error correction
-      var correctedSyms = new Array[Int](numSyms)
+      val correctedSyms = new Array[Int](numSyms)
       for (i <- 0 until numSyms) {
         correctedSyms(i) = inSyms(i)
       }

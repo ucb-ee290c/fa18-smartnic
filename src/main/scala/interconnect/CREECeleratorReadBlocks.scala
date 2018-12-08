@@ -55,7 +55,7 @@ abstract class CREECeleratorReadBlock[D, U, EO, EI, B <: Data, T]
     val eccPadBytesIn = RegInit(0.U(32.W))
 
     val creecR = Module(new CREECeleratorRead())
-    val busParams = creecR.creecBusParams
+    val busParams = creecR.io.in.p
     require(busParams.dataWidth <= in.params.n * 8,
             "Streaming interface too small")
 

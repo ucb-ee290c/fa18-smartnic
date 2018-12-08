@@ -1,7 +1,7 @@
 package compression
 
 import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
-import interconnect.CREECBusParams
+import interconnect.BusParams
 
 import scala.collection.immutable
 
@@ -348,7 +348,7 @@ class CompressionTester extends ChiselFlatSpec {
     "--target-dir", "test_run_dir/creec",
     "--top-name")
 
-  implicit val creecParams: CREECBusParams = new CREECBusParams
+  implicit val creecParams: BusParams = BusParams.creec
 
   "DifferentialCoder" should "encode" in {
     Driver.execute(testerArgs :+ "differential_encoder", () => new DifferentialCoder(

@@ -20,28 +20,28 @@ class AESNISTSpec extends FlatSpec with Matchers {
     }
 
     //Prepare the trials. We expect 568 tests
-    var trials = new ListBuffer[AESNISTTrial]()
-    var file_list = Seq(
+    val trials = new ListBuffer[AESNISTTrial]()
+    val file_list = Seq(
       "KAT_AES/ECBGFSbox128.rsp",
       "KAT_AES/ECBKeySbox128.rsp",
       "KAT_AES/ECBVarKey128.rsp",
       "KAT_AES/ECBVarTxt128.rsp")
 
     for (filename <- file_list) {
-      var lines = Source.fromResource(filename).getLines.toList
+      val lines = Source.fromResource(filename).getLines.toList
       var state = 0
 
-      var encrypt_key = new ListBuffer[BigInt]()
-      var encrypt_text = new ListBuffer[BigInt]()
-      var encrypt_ref = new ListBuffer[BigInt]()
+      val encrypt_key = new ListBuffer[BigInt]()
+      val encrypt_text = new ListBuffer[BigInt]()
+      val encrypt_ref = new ListBuffer[BigInt]()
 
-      var decrypt_key = new ListBuffer[BigInt]()
-      var decrypt_cipher = new ListBuffer[BigInt]()
-      var decrypt_ref = new ListBuffer[BigInt]()
+      val decrypt_key = new ListBuffer[BigInt]()
+      val decrypt_cipher = new ListBuffer[BigInt]()
+      val decrypt_ref = new ListBuffer[BigInt]()
 
       //Parsing state machine
       for (i <- 0 until lines.length) {
-        var curr = lines(i)
+        val curr = lines(i)
 
         if (curr.contains("ENCRYPT")) {
           state = 1
@@ -50,17 +50,17 @@ class AESNISTSpec extends FlatSpec with Matchers {
           state = 2
         }
         else if (curr.contains("KEY")) {
-          var key = curr.split(" ")(2)
+          val key = curr.split(" ")(2)
           if (state == 1) encrypt_key += convert(key)
           if (state == 2) decrypt_key += convert(key)
         }
         else if (curr.contains("CIPHERTEXT")) {
-          var cipher = curr.split(" ")(2)
+          val cipher = curr.split(" ")(2)
           if (state == 1) encrypt_ref += convert(cipher)
           if (state == 2) decrypt_cipher += convert(cipher)
         }
         else if (curr.contains("PLAINTEXT")) {
-          var plain = curr.split(" ")(2)
+          val plain = curr.split(" ")(2)
           if (state == 1) encrypt_text += convert(plain)
           if (state == 2) decrypt_ref += convert(plain)
         }
@@ -89,7 +89,7 @@ class AESNISTSpec extends FlatSpec with Matchers {
           inv_ref_out = decrypt_ref(i))
       }
     }
-    var trials_seq = trials.toSeq
+    val trials_seq = trials.toSeq
     AESNISTFullTimeInterleaveTester(trials_seq) should be(true)
   }
 }

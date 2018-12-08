@@ -6,7 +6,7 @@ import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
 
 class CREECPadderTest extends FlatSpec with ChiselScalatestTester {
-  implicit val busParams: BusParams = new CREECBusParams
+  implicit val busParams: BusParams = BusParams.creec
 
   val testTxUnaligned = Seq(
     CREECHighLevelTransaction(Seq(

@@ -4,7 +4,7 @@ import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
 
 class CREECPassthroughTest extends FlatSpec with ChiselScalatestTester {
-  val busParams = new CREECBusParams
+  val busParams = BusParams.creec
 
   // Test high-level transaction (unified stimulus)
   val highTx = Seq(CREECHighLevelTransaction(Seq(

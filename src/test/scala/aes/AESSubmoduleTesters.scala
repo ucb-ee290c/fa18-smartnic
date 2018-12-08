@@ -2,7 +2,6 @@ package aes
 
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
-import chisel3.util._
 import scala.math.pow
 
 class TopWrapper extends Bundle {

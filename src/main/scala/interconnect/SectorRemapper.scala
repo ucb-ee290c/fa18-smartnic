@@ -1,7 +1,7 @@
 package interconnect
 import chisel3._
 import chisel3.util._
-import squants.information.{Bytes, Information}
+import squants.information.Information
 
 /**
   * This module takes 'block device' writes (sector aligned) from the CREEC pipeline that may have
@@ -20,11 +20,11 @@ class SectorRemapper(val maxSectors: Int = 2048*1024*1024*1024 / 512,
                      val nBuffers: Int = 8,
                      val nBlockDeviceTrackers: Int = 1) extends Module {
   val io = IO(new Bundle {
-    val wrSlave = new CREECBus(new CREECBusParams)
+    val wrSlave = new CREECBus(BusParams.creec)
     val wrMaster = new CREECBus(BusParams.blockDev)
 
     val rdSlave = new CREECBus(BusParams.blockDev)
-    val rdMaster = new CREECBus(new CREECBusParams)
+    val rdMaster = new CREECBus(BusParams.creec)
   })
 
   //class DataBuffer extends Module {

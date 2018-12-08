@@ -83,6 +83,10 @@ class ECCEncoderTop(val rsParams: RSParams,
                     val busInParams: BusParams,
                     val busOutParams: BusParams
   ) extends Module {
+  // This is the only bus configuration known to work
+  assert(busInParams == BusParams.creec)
+  assert(busOutParams == BusParams.ecc)
+
   val io = IO(new Bundle {
     val slave = Flipped(new CREECBus(busInParams))
     val master = new CREECBus(busOutParams)

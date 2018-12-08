@@ -1,9 +1,8 @@
 package ecc
-import scala.math
 
 import interconnect._
 import chisel3.iotesters
-import chisel3.iotesters.{ChiselFlatSpec, Driver, PeekPokeTester}
+import chisel3.iotesters.PeekPokeTester
 
 // These PeekPoke unit testers are for simple functional verification
 // For more advanced tests, check out the CREECBusECC test
@@ -166,7 +165,7 @@ class ECCEncoderTopUnitTester(c: ECCEncoderTop,
       if (peek(c.io.master.data.valid) == BigInt(1) &&
           peek(c.io.master.data.ready) == BigInt(1)) {
         var result: BigInt = peek(c.io.master.data.bits.data)
-        var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
+        val mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
         for (i <- 0 until c.busOutParams.dataWidth / c.rsParams.symbolWidth) {
           outputs = outputs :+ (result & mask).toInt
           result = result >> c.rsParams.symbolWidth
@@ -234,7 +233,7 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
       if (peek(c.io.master.data.valid) == BigInt(1) &&
           peek(c.io.master.data.ready) == BigInt(1)) {
         var result: BigInt = peek(c.io.master.data.bits.data)
-        var mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
+        val mask = BigInt(2).pow(c.rsParams.symbolWidth) - 1
         for (i <- 0 until c.busOutParams.dataWidth / c.rsParams.symbolWidth) {
           outputs = outputs :+ (result & mask).toInt
           result = result >> c.rsParams.symbolWidth
@@ -270,8 +269,8 @@ class ECCDecoderTopUnitTester(c: ECCDecoderTop,
   * sbt 'testOnly ecc.ECCTester'
   */
 class ECCTester extends ECCSpec {
-  val busParams = new CREECBusParams
-  val busECCParams = new ECCBusParams
+  val busParams = BusParams.creec
+  val busECCParams = BusParams.ecc
 
   "RSEncoder" should "work" in {
     iotesters.Driver.execute(Array("-tbn", "verilator", "-fiwv"), () =>

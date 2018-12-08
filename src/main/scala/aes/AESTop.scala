@@ -2,7 +2,7 @@ package aes
 
 import chisel3._
 import chisel3.util._
-import interconnect.{BusParams, CREECBusParams, CREECBus}
+import interconnect.{BusParams, CREECBus}
 
 class AESTopBundle extends Bundle {
     val key_in      = Input(UInt(128.W))
@@ -133,7 +133,7 @@ class AESTopFullTimeInterleave extends Module {
 //TODO: Add width conversion
 
 //Decrypt and Encrypt use the same state machine
-class AESCREECBusFSM(val busParams: BusParams = new CREECBusParams) extends Module {
+class AESCREECBusFSM(val busParams: BusParams) extends Module {
     val io = IO(new Bundle {
         val slave = Flipped(new CREECBus(busParams))
         val master = new CREECBus(busParams)

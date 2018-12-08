@@ -18,15 +18,16 @@ object BusParams {
   // Also from the MMU/remapper (master) to the block device model (slave) (address on 512B, 64 beats required)
   val blockDev = BusParams(64, 1, 64)
 
-  // Used internally to connect (compression -> parity/ECC -> encryption -> mapping/MMU unit)
+  // Used internally to connect (compression -> encryption -> ECC)
   val creec = BusParams(128, 1, 64)
   val creecInterleave = BusParams(128, 32, 64)
 
   // Wider bus interface for AES (aligned to block size)
   val aes = BusParams(128, 1, 128)
-}
 
-class CREECBusParams extends BusParams(128, 1, 64)
+  // ECC encoder unit takes in 64-bit wide bus and puts out a 128-bit wide bus (for RS(16,8) operation)
+  val ecc = BusParams(128, 1, 128)
+}
 
 class TransactionHeader(val p: BusParams) extends Bundle {
   val len = UInt(p.beatBits.W)

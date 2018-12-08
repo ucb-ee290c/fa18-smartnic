@@ -64,8 +64,7 @@ scalacOptions ++= Seq(
   "-Xlint:infer-any",
   "-Xlint:missing-interpolator",
   "-Ywarn-unused:imports",
-  "-Ywarn-unused:locals",
-  "-Ywarn-value-discard",
+  "-Ywarn-unused:locals"
 )
 
 javacOptions ++= javacOptionsVersion(scalaVersion.value)

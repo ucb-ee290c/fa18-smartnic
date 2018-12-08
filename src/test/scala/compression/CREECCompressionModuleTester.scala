@@ -6,7 +6,7 @@ import interconnect._
 import org.scalatest.FlatSpec
 
 class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
-  implicit val creecParams: CREECBusParams = new CREECBusParams
+  implicit val creecParams: BusParams = BusParams.creec
 
   val transactions = Seq(
     CREECHighLevelTransaction(

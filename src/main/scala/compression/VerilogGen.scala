@@ -1,9 +1,9 @@
 package compression
 
 import chisel3.Driver
-import interconnect.{BusParams, CREECBusParams}
+import interconnect.BusParams
 
 object VerilogGen extends App {
-  implicit val creecParams: CREECBusParams = new CREECBusParams
+  implicit val creecParams: BusParams = BusParams.creec
   Driver.execute(Array("None"), () => new Compressor(BusParams.blockDev, compress = true))
 }

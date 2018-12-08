@@ -8,7 +8,7 @@ import interconnect.CREECAgent.{CREECDriver, CREECMonitor}
 import org.scalatest.FlatSpec
 
 class RepublicTest extends FlatSpec with ChiselScalatestTester {
-  implicit val creecParams: CREECBusParams = new CREECBusParams
+  implicit val creecParams: BusParams = BusParams.creec
 
   def readTxFromFileFirst512(file: String): Seq[CREECHighLevelTransaction] = {
     import scala.io.Source
@@ -60,7 +60,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
   }
 
   "this ECC test" should "produce a cycle count when run" in {
-    test(new ECCEncoderTop(RSParams.RS16_8_8, creecParams, new ECCBusParams)) { c =>
+    test(new ECCEncoderTop(RSParams.RS16_8_8, creecParams, BusParams.ecc)) { c =>
       val model = new ECCEncoderTopModel(RSParams.RS16_8_8)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
@@ -69,7 +69,7 @@ class RepublicTest extends FlatSpec with ChiselScalatestTester {
   }
 
   "this unECC test" should "produce a cycle count when run" in {
-    test(new ECCDecoderTop(RSParams.RS16_8_8, new ECCBusParams, creecParams)) { c =>
+    test(new ECCDecoderTop(RSParams.RS16_8_8, BusParams.ecc, creecParams)) { c =>
       val model = new ECCDecoderTopModel(RSParams.RS16_8_8)
       val driver = new CREECDriver(c.io.slave, c.clock)
       val monitor = new CREECMonitor(c.io.master, c.clock)
