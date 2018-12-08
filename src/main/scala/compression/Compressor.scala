@@ -22,9 +22,7 @@ class FlaggedByte(width: Int = 8) extends Bundle {
  * has finished.
  * //TODO: unroll this maybe somehow.
  */
-class RunLengthCoder(coderParams: CoderParams,
-                     byteWidth: Int = 8)
-                    (implicit creecParams: BusParams) extends Module {
+class RunLengthCoder(coderParams: CoderParams, creecParams: BusParams, byteWidth: Int = 8) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(Input(new FlaggedByte(byteWidth))))
     val out = Decoupled(Output(new FlaggedByte(byteWidth)))
@@ -160,8 +158,7 @@ class RunLengthCoder(coderParams: CoderParams,
 /*
  * When encode is true, generate an encoder. When false, generate a decoder
  */
-case class CoderParams(encode: Boolean) {
-}
+case class CoderParams(encode: Boolean)
 
 /*
  * This module does the actual differential coding. It has no timing.
@@ -193,8 +190,7 @@ class DifferentialCoder(numElements: Int = 8,
  * This module lives on the CREEC bus and handles accumulation of transactions.
  */
 //TODO: deal with CREECMetadata. i.e. if read data is not compressed, don't uncompress.
-class CREECDifferentialCoder(coderParams: CoderParams)
-                            (implicit creecParams: BusParams) extends Module {
+class CREECDifferentialCoder(coderParams: CoderParams, creecParams: BusParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
@@ -351,8 +347,7 @@ class BasicFIFO(width: Int, length: Int) extends Module {
  * CREEC-level block for run-length encoding.
  * //TODO: combine this module with CREECDifferentialCoder
  */
-class CREECRunLengthCoder(coderParams: CoderParams)
-                         (implicit creecParams: BusParams) extends Module {
+class CREECRunLengthCoder(coderParams: CoderParams, creecParams: BusParams) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
@@ -379,7 +374,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
   //    pushCounter is for the data being pushed onto dataOutBuffer.
   val counter = RegInit(0.U(log2Ceil(8).W))
 
-  val coder = Module(new RunLengthCoder(coderParams))
+  val coder = Module(new RunLengthCoder(coderParams, creecParams))
 
   val beatBuilder = Reg(Vec(creecParams.dataWidth / 8, UInt(8.W)))
 
@@ -520,8 +515,7 @@ class CREECRunLengthCoder(coderParams: CoderParams)
 /*
  * Generic module for CREEC coders (differential or runLength).
  */
-class CREECCoder(coderParams: CoderParams, operation: String)
-                (implicit creecParams: BusParams) extends Module {
+class CREECCoder(coderParams: CoderParams, creecParams: BusParams, operation: String) extends Module {
   val io = IO(new Bundle {
     val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
@@ -530,11 +524,11 @@ class CREECCoder(coderParams: CoderParams, operation: String)
   require(List("differential", "runLength", "compression").contains(operation))
 
   val coder: Module = if (operation == "differential")
-    Module(new CREECDifferentialCoder(coderParams))
+    Module(new CREECDifferentialCoder(coderParams, creecParams))
   else if (operation == "runLength")
-    Module(new CREECRunLengthCoder(coderParams))
+    Module(new CREECRunLengthCoder(coderParams, creecParams))
   else
-    Module(new Compressor(BusParams.blockDev, compress = coderParams.encode))
+    Module(new Compressor(creecParams, compress = coderParams.encode))
 
   coder.io <> io
 }
@@ -550,15 +544,13 @@ class SnappyCompressorParams {
 /*
  * Top-level module for whole compression scheme. Slots into CREEC bus.
  */
-class Compressor(blockDeviceParams: BusParams,
-                 compress: Boolean)
-                (implicit creecParams: BusParams) extends Module {
+class Compressor(creecParams: BusParams, compress: Boolean) extends Module {
   val io = IO(new Bundle {
-    val in: CREECBus = Flipped(new CREECBus(blockDeviceParams))
+    val in: CREECBus = Flipped(new CREECBus(creecParams))
     val out: CREECBus = new CREECBus(creecParams)
   })
-  val differential = Module(new CREECDifferentialCoder(CoderParams(encode = compress)))
-  val runLength = Module(new CREECRunLengthCoder(CoderParams(encode = compress)))
+  val differential = Module(new CREECDifferentialCoder(CoderParams(encode = compress), creecParams))
+  val runLength = Module(new CREECRunLengthCoder(CoderParams(encode = compress), creecParams))
 
   if (compress) {
     io.in <> differential.io.in

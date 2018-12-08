@@ -103,9 +103,9 @@ The timing and area report will be generated inside the directory `out_{verilog_
 - AES Encryptor: source in `src/main/scala/aes`, tests in `src/test/scala/aes`.
 - ECC: source in `src/main/scala/ecc`, tests are in `src/test/scala/ecc`.
 - Bus Specification and Components, Verification Infrastructure, Top-Level CREECelerator: source in `src/main/scala/interconnect`, tests are in `src/test/scala/interconnect`.
-
-## Paper
-[Go here for the paper](doc/CREEC.pdf)
+## Paper and Presentation
+- [Go here for the paper](doc/CREEC.pdf)
+- [Go here for the presentation](doc/CREECelerator_Final_Presentation.pdf)
 
 # Supplemental
 ## Building and Testing With Mill

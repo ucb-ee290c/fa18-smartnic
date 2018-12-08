@@ -348,8 +348,6 @@ class CompressionTester extends ChiselFlatSpec {
     "--target-dir", "test_run_dir/creec",
     "--top-name")
 
-  implicit val creecParams: BusParams = BusParams.creec
-
   "DifferentialCoder" should "encode" in {
     Driver.execute(testerArgs :+ "differential_encoder", () => new DifferentialCoder(
       coderParams = CoderParams(encode = true))) {
@@ -366,42 +364,42 @@ class CompressionTester extends ChiselFlatSpec {
 
   "RunLengthEncoder" should "encode" in {
     Driver.execute(testerArgs :+ "run_length_encoder", () => new RunLengthCoder(
-      coderParams = CoderParams(encode = true))) {
+      coderParams = CoderParams(encode = true), BusParams.creec)) {
       c => new RunLengthCoderTester(c, true)
     } should be(true)
   }
 
   "RunLengthDecoder" should "decode" in {
     Driver.execute(testerArgs :+ "run_length_decoder", () => new RunLengthCoder(
-      coderParams = CoderParams(encode = false))) {
+      coderParams = CoderParams(encode = false), BusParams.creec)) {
       c => new RunLengthCoderTester(c, false)
     } should be(true)
   }
 
   "CREECDifferentialCoder" should "encode" in {
     Driver.execute(testerArgs :+ "creec_differential_encoder", () => new CREECCoder(
-      coderParams = CoderParams(encode = true), operation = "differential")) {
+      coderParams = CoderParams(encode = true), BusParams.creec, operation = "differential")) {
       c => new CREECCoderTester(c, true, "differential")
     } should be(true)
   }
 
   "CREECDifferentialCoder" should "decode" in {
     Driver.execute(testerArgs :+ "creec_differential_decoder", () => new CREECCoder(
-      coderParams = CoderParams(encode = false), operation = "differential")) {
+      coderParams = CoderParams(encode = false), BusParams.creec, operation = "differential")) {
       c => new CREECCoderTester(c, false, "differential")
     } should be(true)
   }
 
   "CREECRunLengthCoder" should "encode" in {
     Driver.execute(testerArgs :+ "creec_run_length_encoder", () => new CREECCoder(
-      coderParams = CoderParams(encode = true), operation = "runLength")) {
+      coderParams = CoderParams(encode = true), BusParams.creec, operation = "runLength")) {
       c => new CREECCoderTester(c, true, "runLength")
     } should be(true)
   }
 
   "CREECRunLengthCoder" should "decode" in {
     Driver.execute(testerArgs :+ "creec_run_length_decoder", () => new CREECCoder(
-      coderParams = CoderParams(encode = false), operation = "runLength")) {
+      coderParams = CoderParams(encode = false), BusParams.creec, operation = "runLength")) {
       c => new CREECCoderTester(c, false, "runLength")
     } should be(true)
   }
@@ -414,14 +412,14 @@ class CompressionTester extends ChiselFlatSpec {
 
   "Compressor" should "compress" in {
     Driver.execute(testerArgs :+ "compress", () => new CREECCoder(
-      coderParams = CoderParams(encode = true), operation = "compression")) {
+      coderParams = CoderParams(encode = true), BusParams.creec, operation = "compression")) {
       c => new CREECCoderTester(c, true, "compression")
     } should be(true)
   }
 
   "Compressor" should "decompress" in {
     Driver.execute(testerArgs :+ "uncompress", () => new CREECCoder(
-      coderParams = CoderParams(encode = false), operation = "compression")) {
+      coderParams = CoderParams(encode = false), BusParams.creec, operation = "compression")) {
       c => new CREECCoderTester(c, false, "compression")
     } should be(true)
   }

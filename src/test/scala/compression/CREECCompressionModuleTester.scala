@@ -6,8 +6,6 @@ import interconnect._
 import org.scalatest.FlatSpec
 
 class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
-  implicit val creecParams: BusParams = BusParams.creec
-
   val transactions = Seq(
     CREECHighLevelTransaction(
       Seq(
@@ -96,7 +94,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
 
   "the CREECDifferentialCoder module" should "encode and decode data" in {
     for (encode <- List(true, false)) {
-      test(new CREECDifferentialCoder(coderParams = CoderParams(encode = encode))) { c =>
+      test(new CREECDifferentialCoder(coderParams = CoderParams(encode = encode), BusParams.creec)) { c =>
         val model = new CREECDifferentialCoderModel(encode = encode)
         val driver = new CREECDriver(c.io.in, c.clock)
         val monitor = new CREECMonitor(c.io.out, c.clock)
@@ -107,7 +105,7 @@ class CREECCompressionModuleTester extends FlatSpec with ChiselScalatestTester {
 
   "the CREECRunLengthCoder module" should "encode and decode data" in {
     for (encode <- List(true)) {
-      test(new CREECRunLengthCoder(coderParams = CoderParams(encode = encode))) { c =>
+      test(new CREECRunLengthCoder(coderParams = CoderParams(encode = encode), BusParams.creec)) { c =>
         val model = new CREECRunLengthCoderModel(encode = encode)
         val driver = new CREECDriver(c.io.in, c.clock)
         val monitor = new CREECMonitor(c.io.out, c.clock)

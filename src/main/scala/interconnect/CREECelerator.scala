@@ -10,10 +10,6 @@ class CREECeleratorWrite extends Module {
     val in = Flipped(new CREECBus(BusParams.blockDev))
     val out = new CREECBus(BusParams.creec)
   })
-
-  // TODO: remove this
-  implicit val compressorBus: BusParams = BusParams.creec
-
   val compressor = Module(new Compressor(io.in.p, compress = true))
 
   val widthExpander = Module(new CREECWidthConverter(p1 = BusParams.creec,
