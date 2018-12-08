@@ -22,13 +22,13 @@ class AESNISTSpec extends FlatSpec with Matchers {
     //Prepare the trials. We expect 568 tests
     var trials = new ListBuffer[AESNISTTrial]()
     var file_list = Seq(
-      "./KAT_AES/ECBGFSbox128.rsp",
-      "./KAT_AES/ECBKeySbox128.rsp",
-      "./KAT_AES/ECBVarKey128.rsp",
-      "./KAT_AES/ECBVarTxt128.rsp")
+      "KAT_AES/ECBGFSbox128.rsp",
+      "KAT_AES/ECBKeySbox128.rsp",
+      "KAT_AES/ECBVarKey128.rsp",
+      "KAT_AES/ECBVarTxt128.rsp")
 
     for (filename <- file_list) {
-      var lines = Source.fromFile(filename).getLines.toList
+      var lines = Source.fromResource(filename).getLines.toList
       var state = 0
 
       var encrypt_key = new ListBuffer[BigInt]()
